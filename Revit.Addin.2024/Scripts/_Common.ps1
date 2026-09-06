@@ -121,6 +121,11 @@ function Get-AddinContext {
         # and the ribbon's "Check for Updates" keep working.
         ShareVersionRoot = $shareVersionRoot
         ShareDepsRoot    = Join-Path $shareVersionRoot 'dependencies'
+
+        # Where New-Package.ps1 writes the installable folder. A fixed path per Revit year, so
+        # there is always one known place to go and run Install.cmd from, rather than a new
+        # versioned folder per build. Override with -OutputRoot.
+        PackageRoot = Join-Path 'C:\Yehia\ProjectsApps\Revit.Addin' $RevitYear
     }
 }
 

@@ -39,7 +39,12 @@ $ErrorActionPreference = 'Stop'
 
 $ctx = Get-AddinContext -ScriptRoot $PSScriptRoot -RevitYear $RevitYear
 
-$SourceDir = $SourceDir.TrimEnd('\', '/')
+# MSBuild's $(TargetDir) ends in a backslash, so a post-build event written as
+#   -SourceDir "$(TargetDir)"
+# hands the shell ...\bin\Debug\" - where \" reads as an escaped quote, and the argument arrives
+# with a trailing double-quote still attached. Strip that before the backslash, or Test-Path fails
+# with "Illegal characters in path" and the build goes red after a successful compile.
+$SourceDir = $SourceDir.Trim('"').TrimEnd('\', '/')
 if (-not (Test-Path -LiteralPath $SourceDir)) { throw "Build output not found: $SourceDir" }
 
 $assembly = Join-Path $SourceDir "$($ctx.ProjectName).dll"
@@ -63,6 +68,10 @@ foreach ($root in $roots) {
         Write-Warn "not writable, skipped: $root"
         continue
     }
+
+    # Cheap when there is nothing to do (one Test-Path), and it keeps a development machine in the
+    # same state as a colleague's after the PluginTrail -> MH.RevitTools rename.
+    Remove-LegacyPayload -AddinRoot $root -Context $ctx -WhatIfOnly:$WhatIfOnly | Out-Null
 
     $n = Copy-Files -Path (Join-Path $SourceDir '*.dll') -Destination $payloadDir -WhatIfOnly:$WhatIfOnly
     if ($n -eq 0) { throw "No DLLs found in $SourceDir." }

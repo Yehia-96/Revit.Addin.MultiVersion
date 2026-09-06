@@ -6,19 +6,19 @@
     The missing half of Install.ps1: Install.ps1 expects a folder laid out a particular way, and
     this is what lays it out. Modelled on MH.IfcCustomExport's Build-Package.ps1.
 
-    Produces, under <repo>\artifacts\:
+    Produces, at C:\Yehia\ProjectsApps\Revit.Addin\<year>\ (override with -OutputRoot):
 
-        Revit.Addin.<year>-<version>\
-            MH.RevitTools\*.dll          the assemblies
-            Revit.Addin.<year>.addin   the manifest
-            version.txt                what this build is
-            Install.ps1                the installer
-            Install.cmd               double-clickable wrapper
-            _Common.ps1                helpers Install.ps1 needs
-            README.md                  what it is and how to install it
+        MH.RevitTools\*.dll          the assemblies
+        Revit.Addin.<year>.addin     the manifest
+        version.txt                  what this build is
+        Install.ps1                  the installer
+        Install.cmd                  double-clickable wrapper
+        _Common.ps1                  helpers Install.ps1 needs
+        README.md                    what it is and how to install it
 
-    Hand over the folder, or the .zip if -Zip was used. Nothing here touches the office share or
-    the local Revit installation -- it only writes into artifacts\.
+    A fixed folder per Revit year, cleared and rewritten each time, so there is always one known
+    place to go and run Install.cmd from. Hand over the folder, or the .zip if -Zip was used.
+    Nothing here touches the office share or the local Revit installation.
 
 .PARAMETER Zip
     Also produce Revit.Addin.<year>-<version>.zip beside the folder.
@@ -45,16 +45,33 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot '_Common.ps1')
 
 $ctx = Get-AddinContext -ScriptRoot $PSScriptRoot -RevitYear $RevitYear
-$repoRoot = Split-Path -Parent $ctx.ProjectDir
 
-if (-not $OutputRoot) { $OutputRoot = Join-Path $repoRoot 'artifacts' }
+if (-not $OutputRoot) { $OutputRoot = $ctx.PackageRoot }
+$packageDir = [IO.Path]::GetFullPath($OutputRoot)
 
-# Refuse to write outside the repository. A mistyped -OutputRoot should not be able to delete an
-# arbitrary folder, and this function does delete its target before rebuilding it.
-$repoFull = [IO.Path]::GetFullPath($repoRoot)
-$outFull = [IO.Path]::GetFullPath($OutputRoot)
-if (-not $outFull.StartsWith($repoFull, [StringComparison]::OrdinalIgnoreCase)) {
-    throw "Refusing to package outside the repository:`n  $outFull`nis not under`n  $repoFull"
+# This script clears its target before rebuilding it, so the target has to be checked rather than
+# trusted. Two guards, because -OutputRoot can be anything:
+#
+#   1. Depth. A drive root, or something one level below it, is never a package folder.
+#   2. Contents. An existing non-empty folder is only cleared if it looks like a package this
+#      script produced. Pointing it at a folder holding anything else fails instead of deleting.
+$segments = @($packageDir.TrimEnd('\', '/').Split([IO.Path]::DirectorySeparatorChar) | Where-Object { $_ })
+if ($segments.Count -lt 3) {
+    throw "Refusing to package into '$packageDir' - too close to the drive root to be safe."
+}
+
+if (Test-Path -LiteralPath $packageDir) {
+    $existing = @(Get-ChildItem -LiteralPath $packageDir -Force -ErrorAction SilentlyContinue)
+    if ($existing.Count -gt 0) {
+        $looksLikeOurs =
+            (Test-Path -LiteralPath (Join-Path $packageDir 'Install.ps1')) -or
+            (Test-Path -LiteralPath (Join-Path $packageDir $ctx.AddinFileName)) -or
+            (Test-Path -LiteralPath (Join-Path $packageDir $ctx.PayloadFolder)) -or
+            @($ctx.LegacyPayloadFolders | Where-Object { Test-Path -LiteralPath (Join-Path $packageDir $_) }).Count -gt 0
+        if (-not $looksLikeOurs) {
+            throw "'$packageDir' is not empty and does not look like a package folder.`nIt holds: $((($existing | Select-Object -First 5).Name) -join ', ')`nUse -OutputRoot to point somewhere else."
+        }
+    }
 }
 
 Write-Banner "Package $($ctx.ProjectName)" "Revit $($ctx.RevitYear)  |  $Configuration"
@@ -103,7 +120,6 @@ if ($version -ne $declared) {
 }
 
 $packageName = "$($ctx.ProjectName)-$version"
-$packageDir = Join-Path $OutputRoot $packageName
 
 Write-Info "version : $version"
 Write-Info "output  : $packageDir"
@@ -149,7 +165,8 @@ Set-Content -LiteralPath (Join-Path $packageDir 'Install.cmd') -Value $cmd -Enco
 Write-Step 'Install.ps1 + Install.cmd + README.md'
 
 if ($Zip) {
-    $zipPath = "$packageDir.zip"
+    # Beside the package folder, named with the version so several releases can sit together.
+    $zipPath = Join-Path (Split-Path -Parent $packageDir) "$packageName.zip"
     if (Test-Path -LiteralPath $zipPath) { Remove-Item -LiteralPath $zipPath -Force }
     Compress-Archive -Path (Join-Path $packageDir '*') -DestinationPath $zipPath
     $mb = [math]::Round((Get-Item -LiteralPath $zipPath).Length / 1MB, 1)
