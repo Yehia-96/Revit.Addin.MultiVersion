@@ -136,47 +136,8 @@ namespace Revit.Addin._2027
                 LargeImage = LoadIcon(assemblyName, 32, "Update_plugin.png"),
             };
             panelFunctionality.AddItem(btnCheckUpdate);
-            ShowStartupBanner(assemblyPath);
 
             return Result.Succeeded;
-        }
-
-        /// <summary>
-        /// Startup confirmation, shown once when Revit loads the add-in.
-        /// <para>
-        /// Deliberately reports the folder the assembly was actually loaded from, because that is
-        /// the thing worth verifying after the payload folder was renamed from PluginTrail to
-        /// MH.RevitTools: if the manifest and the install disagree, the add-in does not load at all
-        /// and this dialog never appears. Seeing it, with MH.RevitTools in the path, proves the
-        /// manifest, the install location and the deployed build all line up.
-        /// </para>
-        /// <para>
-        /// This is a visible marker for testing a release. Remove it once the rename is confirmed
-        /// in the office - a modal dialog on every Revit start gets old quickly.
-        /// </para>
-        /// </summary>
-        private static void ShowStartupBanner(string assemblyPath)
-        {
-            try
-            {
-                var version = FileVersionInfo.GetVersionInfo(assemblyPath).FileVersion;
-                var folder = System.IO.Path.GetFileName(System.IO.Path.GetDirectoryName(assemblyPath));
-
-                var dialog = new TaskDialog("MH Revit Tools")
-                {
-                    MainInstruction = $"MH Revit Tools {version} loaded",
-                    MainContent =
-                        $"Loaded from:  {folder}\n\n" +
-                        $"Full path:\n{assemblyPath}\n\n" +
-                        "If this says MH.RevitTools, the renamed payload folder is working.",
-                    CommonButtons = TaskDialogCommonButtons.Ok
-                };
-                dialog.Show();
-            }
-            catch
-            {
-                // A banner must never stop the add-in loading.
-            }
         }
 
         /// <summary>
