@@ -25,6 +25,16 @@
 .PARAMETER WhatIfOnly
     Show exactly what would be copied where, and write nothing.
 
+.PARAMETER KeepLegacy
+    Leave a superseded payload folder on the share. By default the old PluginTrail\ is deleted
+    after the new MH.RevitTools\ is in place, so the share carries exactly one payload rather than
+    two sets of assemblies with the manifest pointing at one of them.
+
+    Note this does not rescue anyone: a colleague still on a build that reads PluginTrail\ is
+    already broken by the rename, because the manifest they receive points at MH.RevitTools\.
+    Deleting it turns a silent failure into an obvious one. They need one manual re-install either
+    way -- see Scripts\README.md.
+
 .EXAMPLE
     pwsh -File Scripts\Publish-ToShare.ps1 -WhatIfOnly
 .EXAMPLE
@@ -37,6 +47,8 @@ param(
     [string]$SourceDir,
     [string]$ShareRoot,
     [switch]$AllowDebug,
+    # Leave a superseded payload folder (PluginTrail) on the share instead of deleting it.
+    [switch]$KeepLegacy,
     [switch]$WhatIfOnly
 )
 
@@ -88,6 +100,9 @@ if ($WhatIfOnly) {
     Copy-Files -Path $ctx.AddinFile -Destination $shareDepsRoot -WhatIfOnly | Out-Null
     Copy-Files -Path $ctx.VersionFile -Destination $shareDepsRoot -WhatIfOnly | Out-Null
     Copy-Files -Path $ctx.VersionDocsFile -Destination $shareVersionRoot -WhatIfOnly | Out-Null
+    if (-not $KeepLegacy) {
+        Remove-LegacyPayload -AddinRoot $shareDepsRoot -Context $ctx -WhatIfOnly | Out-Null
+    }
     Write-Info 'dry run, nothing written'
     exit 0
 }
@@ -96,7 +111,18 @@ if (-not (Test-Path -LiteralPath $shareVersionRoot)) {
     throw "Share not found: $shareVersionRoot`nIs the 31 BIM folder synced in Teams?"
 }
 
-if (-not $PSCmdlet.ShouldProcess($shareVersionRoot, "Publish v$version for Revit $($ctx.RevitYear) to the office share")) {
+# Name the legacy removal in the confirmation. This deletes from a folder colleagues pull from,
+# so it should not be a surprise buried in the output after the fact.
+$stale = @()
+if (-not $KeepLegacy) {
+    $stale = @($ctx.LegacyPayloadFolders | Where-Object {
+        Test-Path -LiteralPath (Join-Path $shareDepsRoot $_) -PathType Container
+    })
+}
+$action = "Publish v$version for Revit $($ctx.RevitYear) to the office share"
+if ($stale.Count) { $action += ", and delete the superseded $($stale -join ', ') folder from it" }
+
+if (-not $PSCmdlet.ShouldProcess($shareVersionRoot, $action)) {
     Write-Info 'cancelled, nothing written'
     exit 0
 }
@@ -122,6 +148,17 @@ if (Test-Path -LiteralPath $ctx.VersionDocsFile) {
 }
 else {
     Write-Warn 'version-docs.xlsx not found; changelog not updated on the share.'
+}
+
+# Deliberately last. Removing the superseded folder only after the new payload, the manifest and
+# version.txt are all in place means the share is never left without a valid payload, even if
+# something above throws.
+if (-not $KeepLegacy) {
+    $removed = @(Remove-LegacyPayload -AddinRoot $shareDepsRoot -Context $ctx)
+    if ($removed.Count) {
+        Write-Warn "Colleagues still on a build that reads $($removed -join ', ') can no longer update from the share."
+        Write-Warn 'Send them the New-Package.ps1 output once; see Scripts\README.md.'
+    }
 }
 
 Write-Ok "Published v$version for Revit $($ctx.RevitYear)."
