@@ -9,7 +9,7 @@
     Produces, under <repo>\artifacts\:
 
         Revit.Addin.<year>-<version>\
-            PluginTrail\*.dll          the assemblies
+            MH.RevitTools\*.dll          the assemblies
             Revit.Addin.<year>.addin   the manifest
             version.txt                what this build is
             Install.ps1                the installer

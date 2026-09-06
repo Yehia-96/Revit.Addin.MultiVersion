@@ -41,7 +41,7 @@ $ctx = Get-AddinContext -ScriptRoot $PSScriptRoot -RevitYear $RevitYear
 if (-not $SourceDir) { $SourceDir = $ctx.ProjectDir }
 $SourceDir = $SourceDir.TrimEnd('\', '/')
 
-# The payload may sit either loose in the folder or under PluginTrail\, depending on how it was
+# The payload may sit either loose in the folder or under MH.RevitTools\, depending on how it was
 # handed over. Accept both rather than failing on a detail the recipient cannot be expected to know.
 $payloadSource = Join-Path $SourceDir $ctx.PayloadFolder
 if (-not (Test-Path -LiteralPath $payloadSource)) { $payloadSource = $SourceDir }
@@ -77,6 +77,7 @@ if (-not (Test-Path -LiteralPath $addinRoot)) {
 Assert-RevitNotRunning | Out-Null
 
 if ($WhatIfOnly) {
+    Remove-LegacyPayload -AddinRoot $addinRoot -Context $ctx -WhatIfOnly | Out-Null
     Copy-Files -Path (Join-Path $payloadSource '*.dll') -Destination $installDir -WhatIfOnly | Out-Null
     Copy-Files -Path (Join-Path $SourceDir $ctx.AddinFileName) -Destination $addinRoot -WhatIfOnly | Out-Null
     Write-Info 'dry run, nothing written'
@@ -86,6 +87,11 @@ if ($WhatIfOnly) {
 if (-not (Test-Writable $addinRoot)) {
     throw "Cannot write to $addinRoot.`nRe-run from an elevated PowerShell, or pass -PerUser to install for yourself only."
 }
+
+# Clear out the previous release's folder first. Up to 5.1.0.0 the assemblies installed into
+# PluginTrail\; leaving it behind would put two copies of every DLL on the machine, with the
+# manifest pointing at only one of them.
+Remove-LegacyPayload -AddinRoot $addinRoot -Context $ctx | Out-Null
 
 $dlls = Copy-Files -Path (Join-Path $payloadSource '*.dll') -Destination $installDir
 if ($dlls -eq 0) { throw "No assemblies found in $payloadSource." }

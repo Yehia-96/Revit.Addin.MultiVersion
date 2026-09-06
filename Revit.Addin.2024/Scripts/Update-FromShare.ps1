@@ -77,6 +77,7 @@ if ($installedVersion -eq $shareVersion -and -not $Force) {
 Assert-RevitNotRunning | Out-Null
 
 if ($WhatIfOnly) {
+    Remove-LegacyPayload -AddinRoot $AddinRoot -Context $ctx -WhatIfOnly | Out-Null
     Copy-Files -Path (Join-Path $shareDllDir '*.dll') -Destination $installDir -WhatIfOnly | Out-Null
     Copy-Files -Path (Join-Path $shareDepsRoot $ctx.AddinFileName) -Destination $AddinRoot -WhatIfOnly | Out-Null
     Write-Info 'dry run, nothing written'
@@ -88,6 +89,10 @@ if (-not (Test-Writable $AddinRoot)) {
 }
 
 # --- copy ---------------------------------------------------------------------------------------
+
+# Same migration as Install.ps1: drop the previous release's PluginTrail\ before writing the new
+# folder, so the machine is not left carrying both.
+Remove-LegacyPayload -AddinRoot $AddinRoot -Context $ctx | Out-Null
 
 $dlls = Copy-Files -Path (Join-Path $shareDllDir '*.dll') -Destination $installDir
 if ($dlls -eq 0) { throw "No assemblies found on the share at $shareDllDir." }

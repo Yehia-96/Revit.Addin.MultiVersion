@@ -68,6 +68,21 @@ powershell -ExecutionPolicy Bypass -File Scripts\Install.ps1 -PerUser
 Every script takes `-RevitYear` to override the year, and `-WhatIfOnly` to write nothing.
 Run `Get-Help .\Scripts\Publish-ToShare.ps1 -Full` for the rest.
 
+## The payload folder was renamed
+
+The assemblies used to install into `Addins\<year>\PluginTrail\`. They now install into
+`Addins\<year>\MH.RevitTools\`, which says what it holds and sits beside `MH.IfcCustomExport`.
+
+`Install.ps1` and `Update-FromShare.ps1` delete a leftover `PluginTrail\` before writing the new
+folder, so nobody ends up with two copies of the assemblies and a manifest pointing at one of them.
+
+**Existing installations need one manual re-install.** The version colleagues are running has the
+old folder name compiled into it, and the update script it generates at runtime copies into
+`PluginTrail\` while the new manifest points at `MH.RevitTools\` — so the add-in would not load.
+The in-Revit *Check for Updates* button cannot carry itself across this rename. Send the package
+from `New-Package.ps1` once and have people run `Install.cmd`; after that, updates work normally
+again.
+
 ## Notes
 
 - The files are saved **UTF-8 with BOM** on purpose. Windows PowerShell 5.1 reads a BOM-less `.ps1`

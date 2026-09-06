@@ -2,7 +2,7 @@
 <RevitAddIns>
 	<AddIn Type="Application">
 		<Name>Plugin Tools</Name>
-		<Assembly>"C:\ProgramData\Autodesk\Revit\Addins\2024\PluginTrail\Revit.Addin.2024.dll"</Assembly>
+		<Assembly>"C:\ProgramData\Autodesk\Revit\Addins\2024\MH.RevitTools\Revit.Addin.2024.dll"</Assembly>
 		<AddInId>1e1d58d1-c8a1-4f1d-8c36-bef98a3773dc</AddInId>
 		<FullClassName>Revit.Addin._2024.App</FullClassName>
 		<VendorId>YH07</VendorId>

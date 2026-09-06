@@ -15,7 +15,7 @@
 
         Versions\<year>\version-docs.xlsx           changelog workbook
         Versions\<year>\dependencies\               .addin manifest + version.txt
-        Versions\<year>\dependencies\PluginTrail\   assemblies
+        Versions\<year>\dependencies\MH.RevitTools\   assemblies
 
     Publishing is never automatic. Nothing is written without -Confirm:$false or an explicit yes.
 

@@ -31,11 +31,11 @@ namespace Revit.Addin._2026.Commands
 
             string serverDir = Environment.ExpandEnvironmentVariables(
                 $@"%USERPROFILE%\Müller+Hereth GmbH\31 BIM - Dokumente\General\01 Software\01 Revit-Tools\Updates\Versions\{revitVersion}\dependencies");
-            string serverDllDir = Path.Combine(serverDir, "PluginTrail");
+            string serverDllDir = Path.Combine(serverDir, "MH.RevitTools");
             string serverAddinPath = Path.Combine(serverDir, $"Revit.Addin.{revitVersion}.addin");
             string serverVersionFile = Path.Combine(serverDir, "version.txt");
             string localAddinDir = $@"C:\ProgramData\Autodesk\Revit\Addins\{revitVersion}";
-            string localDllDir = Path.Combine(localAddinDir, "PluginTrail");
+            string localDllDir = Path.Combine(localAddinDir, "MH.RevitTools");
             string pluginDllName = $"Revit.Addin.{revitVersion}.dll";
 
             try

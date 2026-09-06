@@ -102,7 +102,15 @@ function Get-AddinContext {
         VersionFile      = Join-Path $projectDir 'version.txt'
         VersionDocsFile  = Join-Path $projectDir 'version-docs.xlsx'
         AssemblyInfoFile = Join-Path $projectDir 'Properties\AssemblyInfo.cs'
-        PayloadFolder    = 'PluginTrail'
+
+        # Folder the assemblies live in, under Addins\<year>\ locally and under dependencies\
+        # on the share. Named after the product so it sits beside MH.IfcCustomExport rather than
+        # reading as an unexplained folder.
+        PayloadFolder = 'MH.RevitTools'
+
+        # Folders a previous release installed into. Install and update remove these so a machine
+        # is not left with two copies of the assemblies and a manifest pointing at one of them.
+        LegacyPayloadFolders = @('PluginTrail')
 
         # Local install roots. Both are written so the add-in loads whether Revit reads the
         # per-user or the all-users manifest.
@@ -206,6 +214,45 @@ function Copy-Files {
         Copy-Item -LiteralPath $f.FullName -Destination $Destination -Force
     }
     return $files.Count
+}
+
+<#
+Removes payload folders left by earlier releases, so a machine does not end up with the assemblies
+in two places and a manifest pointing at only one of them. Returns the folders it removed.
+
+Deliberately narrow: it only ever deletes a folder named in LegacyPayloadFolders, directly under an
+add-ins root, and never the folder we are about to install into.
+#>
+function Remove-LegacyPayload {
+    param(
+        [string]$AddinRoot,
+        $Context,
+        [switch]$WhatIfOnly
+    )
+    $removed = @()
+    foreach ($legacy in $Context.LegacyPayloadFolders) {
+        if ($legacy -eq $Context.PayloadFolder) { continue }
+        $path = Join-Path $AddinRoot $legacy
+        if (-not (Test-Path -LiteralPath $path -PathType Container)) { continue }
+
+        $count = @(Get-ChildItem -LiteralPath $path -Recurse -File -ErrorAction SilentlyContinue).Count
+        if ($WhatIfOnly) {
+            Write-Info "would remove old $legacy\ ($count files) from $AddinRoot"
+            $removed += $legacy
+            continue
+        }
+        try {
+            Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction Stop
+            Write-Step "removed old $legacy\ ($count files)"
+            $removed += $legacy
+        }
+        catch {
+            # Usually Revit still holding a handle. Not fatal: the new folder installs either way,
+            # and the manifest points at it, so the stale copy is inert.
+            Write-Warn "could not remove old $legacy\ : $($_.Exception.Message)"
+        }
+    }
+    return $removed
 }
 
 <#
