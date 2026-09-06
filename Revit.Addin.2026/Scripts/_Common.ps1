@@ -52,15 +52,30 @@ function Get-AddinContext {
 
     # A manifest beside this script means we are in a package; otherwise look one level up.
     $projectDir = $ScriptRoot
-    $addin = Get-ChildItem -LiteralPath $projectDir -Filter '*.addin' -File -ErrorAction SilentlyContinue |
+    $candidates = @(Get-ChildItem -LiteralPath $projectDir -Filter '*.addin' -File -ErrorAction SilentlyContinue)
+    if ($candidates.Count -eq 0) {
+        $projectDir = Split-Path -Parent $ScriptRoot
+        $candidates = @(Get-ChildItem -LiteralPath $projectDir -Filter '*.addin' -File -ErrorAction SilentlyContinue)
+    }
+    if ($candidates.Count -eq 0) {
+        throw "No .addin manifest found in '$ScriptRoot' or its parent. Run this from a project's Scripts folder or from a package folder."
+    }
+
+    # Revit.Addin.2024 also ships Revit.Addin.2022.addin and .2023.addin, left from when one
+    # project built for three years. Picking the first match alphabetically would silently target
+    # Revit 2022, so match the folder name and only fall back when nothing matches.
+    $folderName = Split-Path -Leaf $projectDir
+    $addin = $candidates | Where-Object { [IO.Path]::GetFileNameWithoutExtension($_.Name) -eq $folderName } |
              Select-Object -First 1
     if (-not $addin) {
-        $projectDir = Split-Path -Parent $ScriptRoot
-        $addin = Get-ChildItem -LiteralPath $projectDir -Filter '*.addin' -File -ErrorAction SilentlyContinue |
-                 Select-Object -First 1
+        # Package folders are named <project>-<version>, e.g. Revit.Addin.2024-5.1.0.0.
+        $addin = $candidates | Where-Object { $folderName.StartsWith([IO.Path]::GetFileNameWithoutExtension($_.Name), [StringComparison]::OrdinalIgnoreCase) } |
+                 Sort-Object { $_.BaseName.Length } -Descending | Select-Object -First 1
     }
+    if (-not $addin -and $candidates.Count -eq 1) { $addin = $candidates[0] }
     if (-not $addin) {
-        throw "No .addin manifest found in '$ScriptRoot' or its parent. Run this from a project's Scripts folder or from a package folder."
+        $names = ($candidates | ForEach-Object { $_.Name }) -join ', '
+        throw "Cannot tell which manifest belongs to '$folderName'. Found: $names. Rename the folder to match one, or pass -RevitYear."
     }
 
     $addinFile = $addin.FullName
