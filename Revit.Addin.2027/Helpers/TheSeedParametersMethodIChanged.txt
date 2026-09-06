@@ -1,0 +1,104 @@
+       public static Tuple<int,int> AddParametersToElements(
+   Document projectDoc,
+   Dictionary<string, ParamMetaData> parameterMeta,
+   Dictionary<string, Dictionary<string, string>> familyData,
+   RevitApp app,
+   List<int> selectedBauteilnummer,
+   string sharedParameterFilePath)
+       {
+           // Open the shared parameter file
+           app.SharedParametersFilename = sharedParameterFilePath;
+           var defFile = app.OpenSharedParameterFile();
+           if (defFile == null)
+               throw new InvalidOperationException("Shared parameter file failed to open.");
+           // HashSet to track families that have already been processed
+           var processedFamilies = new HashSet<string>();
+           // Prepare a list to hold tuples of parameters and their values to be set by the API SetMultiple method
+           var allTuples = new List<Tuple<Parameter, ParameterValue>>();
+           int countValue = 0;
+           int countParam = 0;
+           var elementsByBN = GroupElementsByBauteilnummer(projectDoc);
+           // Filter elements by the selected Bauteilnummer
+           foreach (var bn in selectedBauteilnummer)
+           {
+               // Handle cases where the Bauteilnummer is not found in the family data
+               if (!elementsByBN.TryGetValue(bn.ToString(), out var matchingElems))
+                   continue;
+               // Fetch the parameters for this Bauteilnummer
+               var parameters = familyData[bn.ToString()];
+
+               // Loop over each FamilyInstance that matches the current Bauteilnummer (bn)
+               foreach (FamilyInstance fi in matchingElems)
+               {
+                   // Get the ordered parameters for the current FamilyInstance using API GetOrderedParameters method
+                   IList<Parameter> instanceParameters = fi.GetOrderedParameters();
+                   // Check if the Parameters already exist in the element instance itself 
+                   // if they do, we skip adding them to the family by filtering in this list using LINQ
+                   List<string> newParameters = new List<string>
+                       (parameters.Keys.Where
+                       (p => !instanceParameters.Any
+                       (ip => string.Equals(ip.Definition.Name, p, StringComparison.OrdinalIgnoreCase))));
+
+                   // Grab the Family object from the current FamilyInstance
+                   Family family = fi.Symbol.Family;
+                   // If the family has already been processed, skip it
+                   if (!processedFamilies.Add(family.Name)) continue;
+                  
+                   countParam = InjectParametersToFamily(projectDoc, family, defFile, parameterMeta, newParameters);
+               }
+
+               countValue = ApplyValuesToInstances(projectDoc, matchingElems, parameters, parameterMeta, allTuples);
+
+           }
+
+           if (allTuples.Any())
+           {
+               // If there are any tuples to set, we start a transaction to apply them
+               // Revit only allows modifying inside a transaction
+               using (var tx = new Transaction(projectDoc, "Apply Parameter Values"))
+               {
+                   tx.Start();
+                   // Use the API SetMultiple method to set all parameters and values at once
+                   Parameter.SetMultiple(allTuples);
+                   tx.Commit();
+               }
+           }
+           // Debug loop
+           foreach (var tuple in allTuples)
+           {
+               Parameter param = tuple.Item1;
+               ParameterValue value = tuple.Item2;
+
+               if (value is StringParameterValue stringValue)
+               {
+                   if (stringValue.Value == null)
+                   {
+                       Debug.WriteLine($"Value is null");
+                   }
+                   else
+                   {
+                       string realStringValue = stringValue.Value;
+                       string paramName = param.Definition.Name;
+                       Debug.WriteLine($"Parameter: {paramName}, Value: {realStringValue}");
+                   }
+               }
+               else if (value is IntegerParameterValue intValue)
+               {
+                   Debug.WriteLine($"Parameter: {param.Definition.Name}, Value: {intValue.Value}");
+               }
+               else if (value is DoubleParameterValue doubleValue)
+               {
+                   Debug.WriteLine($"Parameter: {param.Definition.Name}, Value: {doubleValue.Value}");
+               }
+               else
+               {
+                   Debug.WriteLine($"Parameter: {param.Definition.Name}, Value type not handled.");
+               }
+
+           }
+           // Return a tuple with the count of parameters and values set
+           Tuple<int, int> resultTuple = new Tuple<int, int>(countParam, countValue);
+
+           return resultTuple;
+
+       }

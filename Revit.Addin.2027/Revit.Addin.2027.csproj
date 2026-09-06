@@ -1,0 +1,173 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <PlatformTarget>x64</PlatformTarget>
+    <RootNamespace>Revit.Addin._2027</RootNamespace>
+    <AssemblyName>Revit.Addin.2027</AssemblyName>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+    <Configurations>Debug;Release</Configurations>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <!-- WFO1000 (WinForms "configure property serialization") is emitted at error
+         severity by the .NET 9/10 SDK analyzers. Our public Form properties expose
+         Action callbacks/selection data set programmatically (never via the WinForms
+         designer), so designer serialization doesn't apply. Suppress to keep the .cs
+         identical to the net8 (2026) copy. -->
+    <NoWarn>$(NoWarn);WFO1000</NoWarn>
+    <!-- SDK-style projects don't copy NuGet dependency DLLs to the output
+         folder by default (they're resolved at runtime via deps.json from the
+         NuGet cache). Revit addins must bundle their deps, because Revit
+         loads the addin assembly directly from the install path and has no
+         NuGet cache awareness. Package refs with ExcludeAssets="runtime"
+         (like Revit_All_Main_Versions_API_x64) are still excluded. -->
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)'=='Debug'">
+    <DefineConstants>DEBUG;TRACE;REVIT2027</DefineConstants>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)'=='Release'">
+    <DefineConstants>TRACE;REVIT2027</DefineConstants>
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Remove="Icons\ModernIcons\32\AddMaterialParametersRE.png" />
+    <None Remove="Icons\ModernIcons\32\FamilyFileUpdate.png" />
+    <None Remove="Icons\ModernIcons\32\HideElementsIcon.png" />
+    <None Remove="Icons\ModernIcons\32\ParameterAutomationIcon.png" />
+    <None Remove="Icons\ModernIcons\32\PopulateDbIcon.png" />
+    <None Remove="Icons\ModernIcons\32\Tables_Icon.png" />
+    <None Remove="Icons\ModernIcons\32\Update_plugin.png" />
+  </ItemGroup>
+
+  <!-- Revit 2027 API: compile-time only, not copied to output (Revit supplies at runtime) -->
+  <ItemGroup>
+    <PackageReference Include="Revit_All_Main_Versions_API_x64" Version="2027.0.2">
+      <IncludeAssets>compile; build</IncludeAssets>
+      <ExcludeAssets>runtime</ExcludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <!-- Application dependencies -->
+  <ItemGroup>
+    <PackageReference Include="AdaptiveCards" Version="3.1.0" />
+    <PackageReference Include="Azure.Core" Version="1.44.1" />
+    <PackageReference Include="Azure.Identity" Version="1.13.1" />
+    <PackageReference Include="ClosedXML" Version="0.104.2" />
+    <PackageReference Include="ClosedXML.Parser" Version="1.2.0" />
+    <PackageReference Include="DocumentFormat.OpenXml" Version="3.1.1" />
+    <PackageReference Include="DocumentFormat.OpenXml.Framework" Version="3.1.1" />
+    <PackageReference Include="EPPlus" Version="8.0.7" />
+    <PackageReference Include="EPPlus.Interfaces" Version="8.0.0" />
+    <PackageReference Include="ExcelNumberFormat" Version="1.1.0" />
+    <PackageReference Include="Microsoft.Bot.Builder" Version="4.22.9" />
+    <PackageReference Include="Microsoft.Bot.Connector" Version="4.22.9" />
+    <PackageReference Include="Microsoft.Bot.Connector.Streaming" Version="4.23.0" />
+    <PackageReference Include="Microsoft.Bot.Schema" Version="4.23.0" />
+    <PackageReference Include="Microsoft.Bot.Streaming" Version="4.23.0" />
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="5.2.2" />
+    <PackageReference Include="Microsoft.Extensions.Caching.Abstractions" Version="9.0.3" />
+    <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="9.0.3" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="9.0.3" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="9.0.3" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.3" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.3" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="9.0.3" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.3" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.3" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="9.0.3" />
+    <PackageReference Include="Microsoft.Extensions.Primitives" Version="9.0.3" />
+    <PackageReference Include="Microsoft.Identity.Client" Version="4.66.1" />
+    <PackageReference Include="Microsoft.Identity.Client.Extensions.Msal" Version="4.66.1" />
+    <PackageReference Include="Microsoft.Identity.Web.Certificateless" Version="3.1.0" />
+    <PackageReference Include="Microsoft.IdentityModel.Abstractions" Version="8.1.2" />
+    <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.1.2" />
+    <PackageReference Include="Microsoft.IdentityModel.Logging" Version="8.1.2" />
+    <PackageReference Include="Microsoft.IdentityModel.Protocols" Version="8.1.2" />
+    <PackageReference Include="Microsoft.IdentityModel.Protocols.OpenIdConnect" Version="8.1.2" />
+    <PackageReference Include="Microsoft.IdentityModel.Tokens" Version="8.1.2" />
+    <PackageReference Include="Microsoft.IO.RecyclableMemoryStream" Version="3.0.1" />
+    <PackageReference Include="Microsoft.Net.Http.Headers" Version="8.0.11" />
+    <PackageReference Include="Microsoft.Recognizers.Text" Version="1.3.2" />
+    <PackageReference Include="Microsoft.Recognizers.Text.Choice" Version="1.3.2" />
+    <PackageReference Include="Microsoft.Recognizers.Text.DateTime" Version="1.3.2" />
+    <PackageReference Include="Microsoft.Recognizers.Text.Number" Version="1.3.2" />
+    <PackageReference Include="Microsoft.Recognizers.Text.NumberWithUnit" Version="1.3.2" />
+    <PackageReference Include="Microsoft.Rest.ClientRuntime" Version="2.3.24" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="OfficeOpenXml.Core.ExcelPackage" Version="1.0.0" />
+    <PackageReference Include="RBush" Version="4.0.0" />
+    <PackageReference Include="SixLabors.Fonts" Version="1.0.1" />
+    <PackageReference Include="System.ClientModel" Version="1.1.0" />
+    <PackageReference Include="System.Configuration.ConfigurationManager" Version="8.0.1" />
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.1.2" />
+    <PackageReference Include="System.IO.Packaging" Version="8.0.1" />
+    <PackageReference Include="System.Memory.Data" Version="8.0.1" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
+  </ItemGroup>
+
+  <!-- WPF resources: embedded into the assembly for pack://application URIs.
+       SDK-style projects don't auto-glob PNGs as <Resource>, so every icon must
+       be declared explicitly (mirrors the old .NET Framework csproj). -->
+  <ItemGroup>
+    <Resource Include="Icons\AddMaterialParametersRE.png" />
+    <Resource Include="Icons\FamilyFileUpdate.png" />
+    <Resource Include="Icons\HideElementsIcon.png" />
+    <Resource Include="Icons\ModernIcons\32\AddMaterialParametersRE.png">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Resource>
+    <Resource Include="Icons\ModernIcons\32\FamilyFileUpdate.png">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Resource>
+    <Resource Include="Icons\ModernIcons\32\HideElementsIcon.png">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Resource>
+    <Resource Include="Icons\ModernIcons\32\ParameterAutomationIcon.png">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Resource>
+    <Resource Include="Icons\ModernIcons\32\PopulateDbIcon.png">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Resource>
+    <Resource Include="Icons\ModernIcons\32\Tables_Icon.png">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Resource>
+    <Resource Include="Icons\ModernIcons\32\Update_plugin.png">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Resource>
+    <Resource Include="Icons\ParameterAutomationIcon.png" />
+    <Resource Include="Icons\Tables_Icon.png" />
+    <Resource Include="Icons\Update_plugin.png" />
+  </ItemGroup>
+
+  <!-- Addin manifest must be present in project dir so post-build can find it -->
+  <ItemGroup>
+    <None Include="Revit.Addin.2027.addin" />
+    <None Include="postbuild.bat" />
+    <None Include="version.txt" />
+    <None Include="version-docs.xlsx" />
+    <None Include="Scripts\installer27.bat" />
+    <None Include="Scripts\version_increment.ps1" />
+  </ItemGroup>
+
+  <!-- Pre-build: for Release, run version increment (uses this project's own copy).
+       Uses an explicit Target so $(ProjectDir) etc. resolve at build time, not
+       at property-evaluation time (SDK-style quirk that otherwise leaves them empty). -->
+  <Target Name="CustomPreBuild" BeforeTargets="PreBuildEvent" Condition="'$(Configuration)' == 'Release'">
+    <Exec Command="start &quot;&quot; powershell.exe -NoExit -ExecutionPolicy Bypass -File &quot;$(ProjectDir)Scripts\version_increment.ps1&quot;" />
+  </Target>
+
+  <!-- Post-build: copy DLLs and .addin file, behaviour depends on configuration -->
+  <Target Name="CustomPostBuild" AfterTargets="PostBuildEvent">
+    <Exec Command="&quot;$(ProjectDir)postbuild.bat&quot; &quot;$(TargetDir)&quot; &quot;$(ProjectDir)&quot; &quot;$(Configuration)&quot;" />
+  </Target>
+
+</Project>

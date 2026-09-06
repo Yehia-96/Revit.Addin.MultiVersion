@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<RevitAddIns>
+	<AddIn Type="Application">
+		<Name>Plugin Tools</Name>
+		<Assembly>"C:\ProgramData\Autodesk\Revit\Addins\2022\PluginTrail\Revit.Addin.2022.dll"</Assembly>
+		<AddInId>1b0571ab-7eb1-4812-9320-6af7f90dee17</AddInId>
+		<FullClassName>Revit.Addin._2024.App</FullClassName>
+		<VendorId>YH07</VendorId>
+		<VendorDescription>Müller+Hereth</VendorDescription>
+	</AddIn>
+</RevitAddIns>
