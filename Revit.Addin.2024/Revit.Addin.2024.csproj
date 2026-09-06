@@ -488,14 +488,16 @@
   <ItemGroup>
     <None Include="app.config" />
     <None Include="packages.config" />
-    <None Include="postbuild.bat" />
-    <None Include="Scripts\installer.bat" />
-    <None Include="Scripts\LocalToServer.bat" />
-    <None Include="Scripts\run_plugin_update.bat" />
     <None Include="Revit.Addin.2024.addin" />
+    <None Include="Scripts\_Common.ps1" />
+    <None Include="Scripts\Deploy-Local.ps1" />
+    <None Include="Scripts\Publish-ToShare.ps1" />
+    <None Include="Scripts\Update-FromShare.ps1" />
+    <None Include="Scripts\Install.ps1" />
+    <None Include="Scripts\Bump-Version.ps1" />
+    <None Include="Scripts\Release-Wizard.ps1" />
     <None Include="Revit.Addin.2023.addin" />
     <None Include="Revit.Addin.2022.addin" />
-    <None Include="Scripts\version_increment.ps1" />
   </ItemGroup>
   <ItemGroup>
     <Resource Include="Icons\HideElementsIcon.png" />
@@ -536,25 +538,8 @@
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <PropertyGroup>
-    <PostBuildEvent>"$(ProjectDir)postbuild.bat" "$(TargetDir)" "$(ProjectDir)" "$(ConfigurationName)"
+    <PostBuildEvent>powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(ProjectDir)Scripts\Deploy-Local.ps1" -SourceDir "$(TargetDir)"
 </PostBuildEvent>
-  </PropertyGroup>
-  <PropertyGroup>
-    <PreBuildEvent>if "$(_IsInnerBuild)" == "true" goto :EndPreBuild
-if "$(ConfigurationName)" == "Release" (
-   start "" powershell.exe -NoExit -ExecutionPolicy Bypass -File "$(ProjectDir)\Scripts\version_increment.ps1"
-)
-if "$(ConfigurationName)" == "Release2023" (
-   start "" powershell.exe -NoExit -ExecutionPolicy Bypass -File "$(ProjectDir)\Scripts\version_increment.ps1"
-)
-if "$(ConfigurationName)" == "Release2022" (
-   start "" powershell.exe -NoExit -ExecutionPolicy Bypass -File "$(ProjectDir)\Scripts\version_increment.ps1"
-)
-if "$(ConfigurationName)" == "ReleaseAll" (
-   start "" powershell.exe -NoExit -ExecutionPolicy Bypass -File "$(ProjectDir)\Scripts\version_increment.ps1"
-)
-:EndPreBuild
-</PreBuildEvent>
   </PropertyGroup>
   <Import Project="..\packages\Microsoft.Data.SqlClient.SNI.5.1.1\build\net462\Microsoft.Data.SqlClient.SNI.targets" Condition="Exists('..\packages\Microsoft.Data.SqlClient.SNI.5.1.1\build\net462\Microsoft.Data.SqlClient.SNI.targets')" />
   <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">

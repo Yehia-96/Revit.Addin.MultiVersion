@@ -145,23 +145,21 @@
   <!-- Addin manifest must be present in project dir so post-build can find it -->
   <ItemGroup>
     <None Include="Revit.Addin.2026.addin" />
-    <None Include="postbuild.bat" />
+    <None Include="Scripts\_Common.ps1" />
+    <None Include="Scripts\Deploy-Local.ps1" />
+    <None Include="Scripts\Publish-ToShare.ps1" />
+    <None Include="Scripts\Update-FromShare.ps1" />
+    <None Include="Scripts\Install.ps1" />
+    <None Include="Scripts\Bump-Version.ps1" />
+    <None Include="Scripts\Release-Wizard.ps1" />
     <None Include="version.txt" />
     <None Include="version-docs.xlsx" />
-    <None Include="Scripts\installer26.bat" />
-    <None Include="Scripts\version_increment.ps1" />
   </ItemGroup>
 
-  <!-- Pre-build: for Release, run version increment (uses this project's own copy).
-       Uses an explicit Target so $(ProjectDir) etc. resolve at build time, not
-       at property-evaluation time (SDK-style quirk that otherwise leaves them empty). -->
-  <Target Name="CustomPreBuild" BeforeTargets="PreBuildEvent" Condition="'$(Configuration)' == 'Release'">
-    <Exec Command="start &quot;&quot; powershell.exe -NoExit -ExecutionPolicy Bypass -File &quot;$(ProjectDir)Scripts\version_increment.ps1&quot;" />
-  </Target>
 
   <!-- Post-build: copy DLLs and .addin file, behaviour depends on configuration -->
   <Target Name="CustomPostBuild" AfterTargets="PostBuildEvent">
-    <Exec Command="&quot;$(ProjectDir)postbuild.bat&quot; &quot;$(TargetDir)&quot; &quot;$(ProjectDir)&quot; &quot;$(Configuration)&quot;" />
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)Scripts\Deploy-Local.ps1&quot; -SourceDir &quot;$(TargetDir)&quot;" />
   </Target>
 
 </Project>
