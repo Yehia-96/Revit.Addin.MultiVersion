@@ -152,6 +152,8 @@
     <None Include="Scripts\Install.ps1" />
     <None Include="Scripts\Bump-Version.ps1" />
     <None Include="Scripts\Release-Wizard.ps1" />
+    <None Include="Scripts\README.md" />
+    <None Include="Scripts\New-Package.ps1" />
     <None Include="version.txt" />
     <None Include="version-docs.xlsx" />
   </ItemGroup>

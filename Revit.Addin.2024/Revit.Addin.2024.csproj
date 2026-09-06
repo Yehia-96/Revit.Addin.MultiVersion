@@ -496,6 +496,8 @@
     <None Include="Scripts\Install.ps1" />
     <None Include="Scripts\Bump-Version.ps1" />
     <None Include="Scripts\Release-Wizard.ps1" />
+    <None Include="Scripts\README.md" />
+    <None Include="Scripts\New-Package.ps1" />
     <None Include="Revit.Addin.2023.addin" />
     <None Include="Revit.Addin.2022.addin" />
   </ItemGroup>

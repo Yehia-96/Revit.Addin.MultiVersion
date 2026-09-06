@@ -32,13 +32,17 @@ function Write-Banner {
 # --- project layout -----------------------------------------------------------------------------
 
 <#
-Resolves everything from the folder this script lives in.
+Resolves everything from the folder this script lives in. Two layouts are supported, because the
+same scripts run from the source tree and from a package handed to a colleague:
 
-    <repo>\Revit.Addin.<year>\Scripts\_Common.ps1
-                              ^project        ^here
+    <repo>\Revit.Addin.<year>\Scripts\_Common.ps1     source tree; project is the parent
+    <package>\_Common.ps1                             package root; project is this folder
 
-The year comes from the project folder name, which is why one copy of these scripts serves
-2024, 2026 and 2027 without edits. Pass -RevitYear to override.
+The .addin manifest tells them apart and supplies the identity. Taking the name from the manifest
+rather than the folder matters: a package folder is called Revit.Addin.2024-5.1.0.0, so the folder
+name would give the wrong assembly name and the wrong-looking year.
+
+Pass -RevitYear to override.
 #>
 function Get-AddinContext {
     param(
@@ -46,25 +50,29 @@ function Get-AddinContext {
         [int]$RevitYear = 0
     )
 
-    $projectDir = Split-Path -Parent $ScriptRoot
-    $projectName = Split-Path -Leaf $projectDir
+    # A manifest beside this script means we are in a package; otherwise look one level up.
+    $projectDir = $ScriptRoot
+    $addin = Get-ChildItem -LiteralPath $projectDir -Filter '*.addin' -File -ErrorAction SilentlyContinue |
+             Select-Object -First 1
+    if (-not $addin) {
+        $projectDir = Split-Path -Parent $ScriptRoot
+        $addin = Get-ChildItem -LiteralPath $projectDir -Filter '*.addin' -File -ErrorAction SilentlyContinue |
+                 Select-Object -First 1
+    }
+    if (-not $addin) {
+        throw "No .addin manifest found in '$ScriptRoot' or its parent. Run this from a project's Scripts folder or from a package folder."
+    }
+
+    $addinFile = $addin.FullName
+    $projectName = [IO.Path]::GetFileNameWithoutExtension($addin.Name)
 
     if ($RevitYear -le 0) {
-        if ($projectName -match '(\d{4})') {
+        if ($projectName -match '(20\d{2})') {
             $RevitYear = [int]$Matches[1]
         }
         else {
-            throw "Cannot determine the Revit year from folder '$projectName'. Pass -RevitYear explicitly."
+            throw "Cannot determine the Revit year from manifest '$($addin.Name)'. Pass -RevitYear explicitly."
         }
-    }
-
-    $addinFile = Join-Path $projectDir "$projectName.addin"
-    if (-not (Test-Path -LiteralPath $addinFile)) {
-        # 2024 in the ProjectsApp repo is named Revit.Addin.2024; be forgiving if a project is
-        # ever renamed without its manifest following.
-        $found = Get-ChildItem -LiteralPath $projectDir -Filter '*.addin' -File -ErrorAction SilentlyContinue |
-                 Select-Object -First 1
-        if ($found) { $addinFile = $found.FullName }
     }
 
     $shareVersionRoot = Join-Path $env:USERPROFILE ("Müller+Hereth GmbH\31 BIM - Dokumente\General\01 Software\01 Revit-Tools\Updates\Versions\{0}" -f $RevitYear)
