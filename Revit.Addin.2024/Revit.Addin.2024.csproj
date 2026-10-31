@@ -438,6 +438,10 @@
     <Compile Include="Services\FamilyUpdate\IFamilyFileStep.cs" />
     <Compile Include="Services\FamilyUpdate\Steps\UpgradeFamilyVersionStep.cs" />
     <Compile Include="Services\ExcelParseResult.cs" />
+    <Compile Include="Services\Planungsdatenbank\PlanungsdatenbankLayout.cs" />
+    <Compile Include="Services\Planungsdatenbank\SheetGrid.cs" />
+    <Compile Include="Services\Planungsdatenbank\ExcelFormatDetector.cs" />
+    <Compile Include="Services\Planungsdatenbank\PlanungsdatenbankParser.cs" />
     <Compile Include="Services\FillPattern.cs" />
     <Compile Include="Services\ImportReport.cs" />
     <Compile Include="Services\MaterialAssignment.cs" />
