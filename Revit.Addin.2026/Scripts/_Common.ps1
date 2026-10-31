@@ -313,6 +313,73 @@ function Remove-LegacyPayload {
 }
 
 <#
+Installs the payload and manifest into BOTH add-in roots - all-users (%ProgramData%) and per-user
+(%APPDATA%) - the same pair Deploy-Local.ps1 writes. Returns how many roots were written.
+
+ProgramData is required and written first. The manifest's <Assembly> path is absolute and points
+at the ProgramData copy, so without it the add-in cannot load whichever manifest Revit reads; if
+it is not writable this throws before AppData is touched. AppData is best-effort and is skipped
+with a warning.
+
+Why both copies have to be kept in step: when the same manifest exists in both roots, Revit loads
+it once and logs the all-users one as "duplicated" - so the per-user (AppData) manifest is the one
+it actually reads. A stale AppData manifest would therefore win over a fresh ProgramData one.
+Every installer writes both for that reason.
+#>
+function Install-ToAddinRoots {
+    param(
+        $Context,
+        [string]$PayloadSource,
+        [string]$ManifestPath,
+        [switch]$WhatIfOnly
+    )
+    $roots = @(
+        @{ Path = $Context.ProgramDataAddinRoot; Required = $true },
+        @{ Path = $Context.AppDataAddinRoot; Required = $false }
+    )
+
+    $written = 0
+    foreach ($r in $roots) {
+        $root = $r.Path
+        $payloadDir = Get-PayloadDir -AddinRoot $root -Context $Context
+
+        if ($WhatIfOnly) {
+            Remove-LegacyPayload -AddinRoot $root -Context $Context -WhatIfOnly | Out-Null
+            Copy-Payload -SourceDir $PayloadSource -Destination $payloadDir -WhatIfOnly | Out-Null
+            Copy-Files -Path $ManifestPath -Destination $root -WhatIfOnly | Out-Null
+            continue
+        }
+
+        if (-not (Test-Writable $root)) {
+            if ($r.Required) {
+                throw "Cannot write to $root.`nRe-run from an elevated PowerShell. Installing to AppData alone is not enough: the manifest points at the ProgramData copy."
+            }
+            Write-Warn "not writable, skipped: $root"
+            continue
+        }
+
+        # Clear out the previous release's folder first, in each root. Up to 5.1.0.0 the
+        # assemblies installed into PluginTrail\; leaving it behind would put two copies of every
+        # DLL on the machine, with the manifest pointing at only one of them.
+        Remove-LegacyPayload -AddinRoot $root -Context $Context | Out-Null
+
+        $n = Copy-Payload -SourceDir $PayloadSource -Destination $payloadDir
+        if ($n -eq 0) { throw "No payload files found in $PayloadSource." }
+
+        if ((Copy-Files -Path $ManifestPath -Destination $root) -eq 0) {
+            throw "Manifest not found: $ManifestPath"
+        }
+
+        Unblock-Payload -Path $payloadDir
+        Unblock-Payload -Path $root
+
+        Write-Step "$n payload files + $($Context.AddinFileName) -> $root"
+        $written++
+    }
+    return $written
+}
+
+<#
 Files that arrive from SharePoint/OneDrive carry a Mark-of-the-Web alternate data stream, and .NET
 refuses to load a blocked assembly inside Revit. installer.bat offered this as an optional prompt;
 here it is unconditional, because a blocked DLL is never what anyone wants.

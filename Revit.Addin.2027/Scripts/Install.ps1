@@ -15,12 +15,16 @@
     Use this when someone has a copy of the folder. For the normal path -- pulling the current
     release off the Teams share -- use Update-FromShare.ps1 instead.
 
+    Installs into both add-in roots, all-users %ProgramData% and per-user %APPDATA%, the same
+    pair Deploy-Local.ps1 writes. ProgramData is required (the manifest points at that copy), so
+    run elevated; AppData is skipped with a warning if it cannot be written.
+
+    There used to be a -PerUser switch that installed to AppData only. It never worked on its
+    own - the manifest it copied still pointed at the ProgramData DLL - so it is gone.
+
 .PARAMETER SourceDir
     Folder holding the payload. Defaults to the folder this script sits beside, so the whole
     thing can be zipped and handed over as-is.
-
-.PARAMETER PerUser
-    Install into %APPDATA% for the current user instead of all-users %ProgramData%.
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File Install.ps1
@@ -29,7 +33,6 @@
 param(
     [int]$RevitYear = 0,
     [string]$SourceDir,
-    [switch]$PerUser,
     [switch]$WhatIfOnly
 )
 
@@ -55,12 +58,12 @@ if (-not (Test-Path -LiteralPath $assembly)) {
 $version = (Get-Item -LiteralPath $assembly).VersionInfo.FileVersion
 if (-not $version) { $version = 'unknown' } else { $version = $version.Trim() }
 
-if ($PerUser) { $addinRoot = $ctx.AppDataAddinRoot } else { $addinRoot = $ctx.ProgramDataAddinRoot }
-$installDir = Get-PayloadDir -AddinRoot $addinRoot -Context $ctx
+$addinRoot = $ctx.ProgramDataAddinRoot
 
 Write-Banner "Install $($ctx.ProjectName) v$version" "Revit $($ctx.RevitYear)"
 Write-Info "from: $payloadSource"
-Write-Info "to  : $addinRoot"
+Write-Info "to  : $($ctx.ProgramDataAddinRoot)"
+Write-Info "      $($ctx.AppDataAddinRoot)"
 
 # The guard installer.bat meant to have. The Addins\<year> folder is created by Revit's installer,
 # so its absence is a good signal that this Revit version is not on the machine.
@@ -76,37 +79,13 @@ if (-not (Test-Path -LiteralPath $addinRoot)) {
 
 Assert-RevitNotRunning | Out-Null
 
-if ($WhatIfOnly) {
-    Remove-LegacyPayload -AddinRoot $addinRoot -Context $ctx -WhatIfOnly | Out-Null
-    Copy-Payload -SourceDir $payloadSource -Destination $installDir -WhatIfOnly | Out-Null
-    Copy-Files -Path (Join-Path $SourceDir $ctx.AddinFileName) -Destination $addinRoot -WhatIfOnly | Out-Null
-    Write-Info 'dry run, nothing written'
-    exit 0
-}
-
-if (-not (Test-Writable $addinRoot)) {
-    throw "Cannot write to $addinRoot.`nRe-run from an elevated PowerShell, or pass -PerUser to install for yourself only."
-}
-
-# Clear out the previous release's folder first. Up to 5.1.0.0 the assemblies installed into
-# PluginTrail\; leaving it behind would put two copies of every DLL on the machine, with the
-# manifest pointing at only one of them.
-Remove-LegacyPayload -AddinRoot $addinRoot -Context $ctx | Out-Null
-
-$dlls = Copy-Payload -SourceDir $payloadSource -Destination $installDir
-if ($dlls -eq 0) { throw "No payload files found in $payloadSource." }
-Write-Step "$dlls payload files -> $installDir"
-
 # The manifest lives beside the payload folder, not inside it.
 $manifest = Join-Path $SourceDir $ctx.AddinFileName
 if (-not (Test-Path -LiteralPath $manifest)) { $manifest = $ctx.AddinFile }
-if ((Copy-Files -Path $manifest -Destination $addinRoot) -eq 0) {
-    throw "Manifest not found: $manifest"
-}
-Write-Step "$($ctx.AddinFileName) -> $addinRoot"
 
-Write-Step 'unblocking files (Mark-of-the-Web)...'
-Unblock-Payload -Path $installDir
-Unblock-Payload -Path $addinRoot
+# Both roots: ProgramData (required) then AppData. Legacy cleanup and unblocking happen per root.
+$written = Install-ToAddinRoots -Context $ctx -PayloadSource $payloadSource -ManifestPath $manifest -WhatIfOnly:$WhatIfOnly
 
-Write-Ok "Installed v$version. Start Revit $($ctx.RevitYear) and look for the Parameter Tools tab."
+if ($WhatIfOnly) { Write-Info 'dry run, nothing written'; exit 0 }
+
+Write-Ok "Installed v$version into $written add-in folder(s). Start Revit $($ctx.RevitYear) and look for the Parameter Tools tab."

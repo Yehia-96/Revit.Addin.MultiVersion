@@ -61,8 +61,8 @@ pwsh -File Scripts\Publish-ToShare.ps1 -WhatIfOnly
 # Update this machine from the share
 powershell -ExecutionPolicy Bypass -File Scripts\Update-FromShare.ps1
 
-# Install for one user only, no admin rights needed
-powershell -ExecutionPolicy Bypass -File Scripts\Install.ps1 -PerUser
+# Install from a handed-over folder (run elevated; writes ProgramData and AppData)
+powershell -ExecutionPolicy Bypass -File Scripts\Install.ps1
 ```
 
 Every script takes `-RevitYear` to override the year, and `-WhatIfOnly` to write nothing.

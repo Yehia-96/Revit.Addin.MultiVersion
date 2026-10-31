@@ -156,7 +156,7 @@ foreach ($f in 'Install.ps1', '_Common.ps1', 'README.md') {
 $cmd = @"
 @echo off
 REM Installs $($ctx.ProjectName) for Revit $($ctx.RevitYear). Right-click -> Run as administrator
-REM for an all-users install, or just double-click and answer the prompt for a per-user one.
+REM - it installs into both the all-users (ProgramData) and per-user (AppData) add-in folders.
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0Install.ps1" %*
 echo.
 pause

@@ -25,7 +25,6 @@
 param(
     [int]$RevitYear = 0,
     [string]$ShareRoot,
-    [string]$AddinRoot,
     [switch]$Force,
     [switch]$WhatIfOnly
 )
@@ -39,12 +38,15 @@ if ($ShareRoot) { $shareDepsRoot = Join-Path $ShareRoot 'dependencies' }
 else { $shareDepsRoot = $ctx.ShareDepsRoot }
 $shareDllDir = Join-Path $shareDepsRoot $ctx.PayloadFolder
 
-if (-not $AddinRoot) { $AddinRoot = $ctx.ProgramDataAddinRoot }
-$installDir = Get-PayloadDir -AddinRoot $AddinRoot -Context $ctx
+# Installs into both roots, like Install.ps1. The version check reads the ProgramData copy: both
+# manifests point at it, so it is the assembly Revit actually loads.
+$installDir = Get-PayloadDir -AddinRoot $ctx.ProgramDataAddinRoot -Context $ctx
+$manifestOnShare = Join-Path $shareDepsRoot $ctx.AddinFileName
 
 Write-Banner "Update $($ctx.ProjectName)" "Revit $($ctx.RevitYear)"
 Write-Info "share  : $shareDepsRoot"
-Write-Info "install: $AddinRoot"
+Write-Info "install: $($ctx.ProgramDataAddinRoot)"
+Write-Info "         $($ctx.AppDataAddinRoot)"
 
 if (-not (Test-Path -LiteralPath $shareDepsRoot)) {
     throw "Cannot reach the update share:`n  $shareDepsRoot`nOpen Teams and sync the 31 BIM folder, then try again."
@@ -67,7 +69,18 @@ if (Test-Path -LiteralPath $installedAssembly) {
 
 Write-Step "installed $installedVersion  ->  available $shareVersion"
 
-if ($installedVersion -eq $shareVersion -and -not $Force) {
+# When both roots hold the manifest, Revit reads the per-user (AppData) one and skips the
+# all-users one as "duplicated". So a stale AppData manifest would win even with a current
+# ProgramData install - do not call that up to date. A missing AppData manifest is fine: Revit
+# then reads the ProgramData one.
+$appDataManifest = Join-Path $ctx.AppDataAddinRoot $ctx.AddinFileName
+$appDataStale = $false
+if ((Test-Path -LiteralPath $appDataManifest) -and (Test-Path -LiteralPath $manifestOnShare)) {
+    $appDataStale = (Get-FileHash -LiteralPath $appDataManifest).Hash -ne (Get-FileHash -LiteralPath $manifestOnShare).Hash
+}
+if ($appDataStale) { Write-Warn 'the per-user manifest differs from the share; it will be refreshed.' }
+
+if ($installedVersion -eq $shareVersion -and -not $appDataStale -and -not $Force) {
     Write-Ok 'Already up to date.'
     exit 0
 }
@@ -76,36 +89,16 @@ if ($installedVersion -eq $shareVersion -and -not $Force) {
 
 Assert-RevitNotRunning | Out-Null
 
-if ($WhatIfOnly) {
-    Remove-LegacyPayload -AddinRoot $AddinRoot -Context $ctx -WhatIfOnly | Out-Null
-    Copy-Payload -SourceDir $shareDllDir -Destination $installDir -WhatIfOnly | Out-Null
-    Copy-Files -Path (Join-Path $shareDepsRoot $ctx.AddinFileName) -Destination $AddinRoot -WhatIfOnly | Out-Null
-    Write-Info 'dry run, nothing written'
-    exit 0
-}
-
-if (-not (Test-Writable $AddinRoot)) {
-    throw "Cannot write to $AddinRoot.`nRe-run this from an elevated PowerShell, or pass -AddinRoot `"$($ctx.AppDataAddinRoot)`" to install for yourself only."
+if (-not (Test-Path -LiteralPath $manifestOnShare)) {
+    throw "Manifest not found on the share: $manifestOnShare"
 }
 
 # --- copy ---------------------------------------------------------------------------------------
 
-# Same migration as Install.ps1: drop the previous release's PluginTrail\ before writing the new
-# folder, so the machine is not left carrying both.
-Remove-LegacyPayload -AddinRoot $AddinRoot -Context $ctx | Out-Null
+# Both roots: ProgramData (required) then AppData. Legacy PluginTrail\ cleanup, payload, manifest
+# and unblocking all happen per root, exactly as Install.ps1 does.
+$written = Install-ToAddinRoots -Context $ctx -PayloadSource $shareDllDir -ManifestPath $manifestOnShare -WhatIfOnly:$WhatIfOnly
 
-$dlls = Copy-Payload -SourceDir $shareDllDir -Destination $installDir
-if ($dlls -eq 0) { throw "No payload files found on the share at $shareDllDir." }
-Write-Step "$dlls payload files -> $installDir"
+if ($WhatIfOnly) { Write-Info 'dry run, nothing written'; exit 0 }
 
-$manifestOnShare = Join-Path $shareDepsRoot $ctx.AddinFileName
-if ((Copy-Files -Path $manifestOnShare -Destination $AddinRoot) -eq 0) {
-    throw "Manifest not found on the share: $manifestOnShare"
-}
-Write-Step "$($ctx.AddinFileName) -> $AddinRoot"
-
-Write-Step 'unblocking files (Mark-of-the-Web)...'
-Unblock-Payload -Path $installDir
-Unblock-Payload -Path $AddinRoot
-
-Write-Ok "Updated to $shareVersion. Start Revit $($ctx.RevitYear) to use it."
+Write-Ok "Updated to $shareVersion in $written add-in folder(s). Start Revit $($ctx.RevitYear) to use it."
