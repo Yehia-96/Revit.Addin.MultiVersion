@@ -222,6 +222,58 @@ function Copy-Files {
 }
 
 <#
+Copies the add-in payload: the whole build tree, not just the assemblies beside it.
+
+Copying only *.dll was wrong for the SDK-style projects and is why a 2027 install was incomplete.
+A .NET (Core) build puts things the runtime needs outside the top-level *.dll set:
+
+    <name>.deps.json                                  how dependencies are resolved
+    runtimes\win-x64\native\...SqlClient.SNI.dll      native code, needed by DB access
+    de\, fr\, ...\*.resources.dll                     satellite resources
+
+Revit.Addin.2024 is .NET Framework, where the loader probes the folder and flat assemblies really
+are enough - which is exactly why that one has always worked and masked this.
+
+Excluded: *.pdb and *.xml. Debug symbols and IntelliSense documentation are never needed at
+runtime, and for the 2024 payload they are ~100 files of pure noise.
+#>
+function Copy-Payload {
+    param(
+        [string]$SourceDir,
+        [string]$Destination,
+        [string[]]$Exclude = @('*.pdb', '*.xml'),
+        [switch]$WhatIfOnly
+    )
+    if (-not (Test-Path -LiteralPath $SourceDir)) { return 0 }
+
+    $items = @(Get-ChildItem -LiteralPath $SourceDir -Recurse -File -ErrorAction SilentlyContinue |
+        Where-Object { $name = $_.Name; -not ($Exclude | Where-Object { $name -like $_ }) })
+    if ($items.Count -eq 0) { return 0 }
+
+    $root = (Resolve-Path -LiteralPath $SourceDir).Path.TrimEnd('\', '/')
+    $subdirs = @($items | Where-Object { $_.DirectoryName.TrimEnd('\', '/') -ne $root }).Count
+
+    if ($WhatIfOnly) {
+        $sample = ($items | Select-Object -First 3 | ForEach-Object { $_.Name }) -join ', '
+        Write-Info "would copy $($items.Count) files ($sample, ...) incl. $subdirs in subfolders -> $Destination"
+        return $items.Count
+    }
+
+    foreach ($f in $items) {
+        # Recreate the folder each file sits in, so runtimes\ and the satellite folders keep their
+        # shape. The runtime looks them up by relative path; flattening them breaks resolution.
+        $rel = $f.FullName.Substring($root.Length).TrimStart('\', '/')
+        $target = Join-Path $Destination $rel
+        $targetDir = Split-Path -Parent $target
+        if (-not (Test-Path -LiteralPath $targetDir)) {
+            New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+        }
+        Copy-Item -LiteralPath $f.FullName -Destination $target -Force
+    }
+    return $items.Count
+}
+
+<#
 Removes payload folders left by earlier releases, so a machine does not end up with the assemblies
 in two places and a manifest pointing at only one of them. Returns the folders it removed.
 

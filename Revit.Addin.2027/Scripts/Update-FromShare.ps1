@@ -78,7 +78,7 @@ Assert-RevitNotRunning | Out-Null
 
 if ($WhatIfOnly) {
     Remove-LegacyPayload -AddinRoot $AddinRoot -Context $ctx -WhatIfOnly | Out-Null
-    Copy-Files -Path (Join-Path $shareDllDir '*.dll') -Destination $installDir -WhatIfOnly | Out-Null
+    Copy-Payload -SourceDir $shareDllDir -Destination $installDir -WhatIfOnly | Out-Null
     Copy-Files -Path (Join-Path $shareDepsRoot $ctx.AddinFileName) -Destination $AddinRoot -WhatIfOnly | Out-Null
     Write-Info 'dry run, nothing written'
     exit 0
@@ -94,9 +94,9 @@ if (-not (Test-Writable $AddinRoot)) {
 # folder, so the machine is not left carrying both.
 Remove-LegacyPayload -AddinRoot $AddinRoot -Context $ctx | Out-Null
 
-$dlls = Copy-Files -Path (Join-Path $shareDllDir '*.dll') -Destination $installDir
-if ($dlls -eq 0) { throw "No assemblies found on the share at $shareDllDir." }
-Write-Step "$dlls assemblies -> $installDir"
+$dlls = Copy-Payload -SourceDir $shareDllDir -Destination $installDir
+if ($dlls -eq 0) { throw "No payload files found on the share at $shareDllDir." }
+Write-Step "$dlls payload files -> $installDir"
 
 $manifestOnShare = Join-Path $shareDepsRoot $ctx.AddinFileName
 if ((Copy-Files -Path $manifestOnShare -Destination $AddinRoot) -eq 0) {

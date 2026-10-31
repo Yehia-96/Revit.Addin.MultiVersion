@@ -73,16 +73,16 @@ foreach ($root in $roots) {
     # same state as a colleague's after the PluginTrail -> MH.RevitTools rename.
     Remove-LegacyPayload -AddinRoot $root -Context $ctx -WhatIfOnly:$WhatIfOnly | Out-Null
 
-    $n = Copy-Files -Path (Join-Path $SourceDir '*.dll') -Destination $payloadDir -WhatIfOnly:$WhatIfOnly
-    if ($n -eq 0) { throw "No DLLs found in $SourceDir." }
+    $n = Copy-Payload -SourceDir $SourceDir -Destination $payloadDir -WhatIfOnly:$WhatIfOnly
+    if ($n -eq 0) { throw "No payload files found in $SourceDir." }
     $totalDlls = $n
 
     $m = Copy-Files -Path $ctx.AddinFile -Destination $root -WhatIfOnly:$WhatIfOnly
     if ($m -eq 0) { throw "Manifest not found: $($ctx.AddinFile)" }
 
-    Write-Step "$n DLLs + $($ctx.AddinFileName) -> $root"
+    Write-Step "$n payload files + $($ctx.AddinFileName) -> $root"
 }
 
 if ($WhatIfOnly) { Write-Info 'dry run, nothing written'; exit 0 }
 
-Write-Ok "Deployed $totalDlls assemblies for Revit $($ctx.RevitYear). Share untouched."
+Write-Ok "Deployed $totalDlls payload files for Revit $($ctx.RevitYear). Share untouched."

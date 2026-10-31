@@ -78,7 +78,7 @@ Assert-RevitNotRunning | Out-Null
 
 if ($WhatIfOnly) {
     Remove-LegacyPayload -AddinRoot $addinRoot -Context $ctx -WhatIfOnly | Out-Null
-    Copy-Files -Path (Join-Path $payloadSource '*.dll') -Destination $installDir -WhatIfOnly | Out-Null
+    Copy-Payload -SourceDir $payloadSource -Destination $installDir -WhatIfOnly | Out-Null
     Copy-Files -Path (Join-Path $SourceDir $ctx.AddinFileName) -Destination $addinRoot -WhatIfOnly | Out-Null
     Write-Info 'dry run, nothing written'
     exit 0
@@ -93,9 +93,9 @@ if (-not (Test-Writable $addinRoot)) {
 # manifest pointing at only one of them.
 Remove-LegacyPayload -AddinRoot $addinRoot -Context $ctx | Out-Null
 
-$dlls = Copy-Files -Path (Join-Path $payloadSource '*.dll') -Destination $installDir
-if ($dlls -eq 0) { throw "No assemblies found in $payloadSource." }
-Write-Step "$dlls assemblies -> $installDir"
+$dlls = Copy-Payload -SourceDir $payloadSource -Destination $installDir
+if ($dlls -eq 0) { throw "No payload files found in $payloadSource." }
+Write-Step "$dlls payload files -> $installDir"
 
 # The manifest lives beside the payload folder, not inside it.
 $manifest = Join-Path $SourceDir $ctx.AddinFileName

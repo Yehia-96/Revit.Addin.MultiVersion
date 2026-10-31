@@ -138,9 +138,9 @@ if (Test-Path -LiteralPath $packageDir) { Remove-Item -LiteralPath $packageDir -
 New-Item -ItemType Directory -Path $packageDir -Force | Out-Null
 
 $payloadDir = Join-Path $packageDir $ctx.PayloadFolder
-$dlls = Copy-Files -Path (Join-Path $buildDir '*.dll') -Destination $payloadDir
-if ($dlls -eq 0) { throw "No DLLs found in $buildDir." }
-Write-Step "$dlls assemblies -> $($ctx.PayloadFolder)\"
+$dlls = Copy-Payload -SourceDir $buildDir -Destination $payloadDir
+if ($dlls -eq 0) { throw "No payload files found in $buildDir." }
+Write-Step "$dlls payload files -> $($ctx.PayloadFolder)\"
 
 Copy-Files -Path $ctx.AddinFile -Destination $packageDir | Out-Null
 Copy-Files -Path $ctx.VersionFile -Destination $packageDir | Out-Null

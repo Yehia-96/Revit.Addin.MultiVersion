@@ -96,7 +96,7 @@ Write-Info "from : $SourceDir"
 Write-Info "to   : $shareVersionRoot"
 
 if ($WhatIfOnly) {
-    Copy-Files -Path (Join-Path $SourceDir '*.dll') -Destination $shareDllDir -WhatIfOnly | Out-Null
+    Copy-Payload -SourceDir $SourceDir -Destination $shareDllDir -WhatIfOnly | Out-Null
     Copy-Files -Path $ctx.AddinFile -Destination $shareDepsRoot -WhatIfOnly | Out-Null
     Copy-Files -Path $ctx.VersionFile -Destination $shareDepsRoot -WhatIfOnly | Out-Null
     Copy-Files -Path $ctx.VersionDocsFile -Destination $shareVersionRoot -WhatIfOnly | Out-Null
@@ -127,9 +127,9 @@ if (-not $PSCmdlet.ShouldProcess($shareVersionRoot, $action)) {
     exit 0
 }
 
-$dlls = Copy-Files -Path (Join-Path $SourceDir '*.dll') -Destination $shareDllDir
-if ($dlls -eq 0) { throw "No DLLs found in $SourceDir." }
-Write-Step "$dlls assemblies -> $shareDllDir"
+$dlls = Copy-Payload -SourceDir $SourceDir -Destination $shareDllDir
+if ($dlls -eq 0) { throw "No payload files found in $SourceDir." }
+Write-Step "$dlls payload files -> $shareDllDir"
 
 if ((Copy-Files -Path $ctx.AddinFile -Destination $shareDepsRoot) -eq 0) {
     throw "Manifest not found: $($ctx.AddinFile)"
