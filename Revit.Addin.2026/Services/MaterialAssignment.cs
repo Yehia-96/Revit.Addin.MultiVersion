@@ -57,12 +57,22 @@ namespace Revit.Addin._2026.Services
 
                 foreach (var kvp in materialDict)
                 {
-                    int btNum = int.Parse(kvp.Key);
+                    // Keys come in two shapes: "1101" from the Material-Bauteilliste, and
+                    // "1101-1" (Bauteilnummer + Bauteilunternummer) from the Planungsdatenbank.
+                    // int.Parse would throw on the second, so both go through the one parser
+                    // that also builds them. A plain key matches exactly as it always did.
+                    int btNum, subNum;
+                    bool hasSubNumber;
+                    if (!Planungsdatenbank.PlanungsdatenbankParser.TryParseFamilyKey(kvp.Key, out btNum, out hasSubNumber, out subNum))
+                    {
+                        report.AddWarn($"'{kvp.Key}' is not a Bauteilnummer; skipped.");
+                        continue;
+                    }
                     Material mat = kvp.Value;
 
                     if (mat == null)
                     {
-                        report.AddWarn($"No material found in document for Bauteilnummer '{btNum}'.");
+                        report.AddWarn($"No material found in document for Bauteilnummer '{kvp.Key}'.");
                         continue;
                     }
 
@@ -71,13 +81,19 @@ namespace Revit.Addin._2026.Services
                         {
                             var p = fi.LookupParameter(BAUTEILNUMMER);
                             var value = p?.AsInteger();
-                            return value.HasValue && value.Value == btNum;
+                            if (!(value.HasValue && value.Value == btNum)) return false;
+                            if (!hasSubNumber) return true;
+
+                            // A family without the sub-number parameter reads as 0, matching a
+                            // blank Bauteilunternummer cell - the same rule the parameter applier uses.
+                            var sub = fi.LookupParameter("Bauteilunternummer");
+                            return (sub == null ? 0 : sub.AsInteger()) == subNum;
                         })
                         .ToList();
 
                     if (elements.Count == 0)
                     {
-                        report.AddWarn($"No elements found with Bauteilnummer '{btNum}' for material '{mat.Name}'.");
+                        report.AddWarn($"No elements found with Bauteilnummer '{kvp.Key}' for material '{mat.Name}'.");
                         continue;
                     }
 
@@ -106,7 +122,7 @@ namespace Revit.Addin._2026.Services
                             }
 
                             matParam.Set(mat.Id);
-                            report.AddInfo($"Assigned material '{mat.Name}' to element ID {element.Id} with Bauteilnummer '{btNum}'.");
+                            report.AddInfo($"Assigned material '{mat.Name}' to element ID {element.Id} with Bauteilnummer '{kvp.Key}'.");
                         }
                         catch (Exception ex)
                         {

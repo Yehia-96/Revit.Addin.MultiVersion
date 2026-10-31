@@ -257,6 +257,57 @@ namespace Revit.Addin._2024.Services
         // This is important because we add the parameter values using the SetMultiple method
         // Which requires an IList of Tuple of Parameter and ParameterValue
         // (IList<Tuple<Parameter, ParameterValue>>)
+        /// <summary>
+        /// As <see cref="ConvertValue(Document, ForgeTypeId, string)"/>, but for a measurement
+        /// whose unit the source states explicitly.
+        /// <para>
+        /// The three-argument form reads a length in the <em>project's display unit</em> - right
+        /// for the Material-Bauteilliste, which states no unit, so values were always typed in
+        /// whatever the project shows. The Planungsdatenbank writes <c>[m]</c> beside every
+        /// length, so a project displaying millimetres would otherwise read a 0.5 m thickness as
+        /// 0.5 mm. When the unit is known, this converts from it instead.
+        /// </para>
+        /// <para>
+        /// A null or unrecognised unit falls through to the three-argument behaviour unchanged,
+        /// which is what every Material-Bauteilliste value gets.
+        /// </para>
+        /// </summary>
+        public static ParameterValue ConvertValue(Document doc, ForgeTypeId spec, string raw, string unit)
+            {
+                ForgeTypeId sourceUnit = SourceUnit(unit);
+                if (sourceUnit == null || string.IsNullOrWhiteSpace(raw))
+                    return ConvertValue(doc, spec, raw);
+
+                bool measured = spec == SpecTypeId.Length || spec == SpecTypeId.Area ||
+                                spec == SpecTypeId.Volume || spec == SpecTypeId.Angle;
+                if (!measured)
+                    return ConvertValue(doc, spec, raw);
+
+                double value;
+                if (!double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out value))
+                    return new StringParameterValue(raw);
+
+                return new DoubleParameterValue(UnitUtils.ConvertToInternalUnits(value, sourceUnit));
+            }
+
+        /// <summary>Revit unit for a workbook unit such as "[m]", or null when it is not one we convert from.</summary>
+        private static ForgeTypeId SourceUnit(string unit)
+            {
+                switch (Normalise(unit))
+                {
+                    case "m": return UnitTypeId.Meters;
+                    case "cm": return UnitTypeId.Centimeters;
+                    case "mm": return UnitTypeId.Millimeters;
+                    case "m²":
+                    case "m2": return UnitTypeId.SquareMeters;
+                    case "m³":
+                    case "m3": return UnitTypeId.CubicMeters;
+                    case "°":
+                    case "grad": return UnitTypeId.Degrees;
+                    default: return null;
+                }
+            }
+
         public static ParameterValue ConvertValue(Document doc, ForgeTypeId spec, string raw)
             {
                 if (string.IsNullOrWhiteSpace(raw))
@@ -297,6 +348,14 @@ namespace Revit.Addin._2024.Services
                         ForgeTypeId unitId = fmt.GetUnitTypeId();
                         double internalVal = UnitUtils.ConvertToInternalUnits(displayVal, unitId);
                         return new DoubleParameterValue(internalVal);
+                    }
+
+                    // A unitless number. Only the Planungsdatenbank mapping produces this spec;
+                    // without this branch it fell through to a string value, which Revit refuses
+                    // on a numeric parameter.
+                    if (spec == SpecTypeId.Number)
+                    {
+                        return new DoubleParameterValue(double.Parse(raw, CultureInfo.InvariantCulture));
                     }
 
                     return new StringParameterValue(raw);

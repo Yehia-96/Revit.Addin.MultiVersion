@@ -81,10 +81,25 @@ namespace Revit.Addin._2024.Services.Planungsdatenbank
         }
 
         /// <summary>Trimmed text of a cell. Never null.</summary>
+        /// <remarks>
+        /// Numeric cells are formatted with the invariant culture. <c>GetString()</c> uses the
+        /// current culture, so on a German-locale machine - which is every machine in this office -
+        /// a thickness of 0.5 would come back as "0,5", and every later
+        /// <c>double.Parse(..., InvariantCulture)</c> would fail on it.
+        /// </remarks>
         internal string Text(int row, int column)
         {
             if (row < 1 || column < 1) return string.Empty;
-            string raw = _sheet.Cell(row, column).GetString();
+
+            IXLCell cell = _sheet.Cell(row, column);
+            if (cell.DataType == XLDataType.Number)
+            {
+                double number;
+                if (cell.TryGetValue(out number))
+                    return number.ToString("R", CultureInfo.InvariantCulture);
+            }
+
+            string raw = cell.GetString();
             return raw == null ? string.Empty : raw.Trim();
         }
 

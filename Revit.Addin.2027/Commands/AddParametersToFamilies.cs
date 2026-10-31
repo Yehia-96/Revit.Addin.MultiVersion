@@ -3,6 +3,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using Revit.Addin._2027.Helpers;
 using Revit.Addin._2027.Services;
+using Revit.Addin._2027.Services.Planungsdatenbank;
 using Revit.Addin._2027.UI;
 using System;
 using System.Collections.Generic;
@@ -21,7 +22,9 @@ namespace Revit.Addin._2027.Commands
         private string _excelFilePath;
 
         public static string _sharedParamPath;
-        private static bool isNew;
+        // Which reader runs is decided by WorkbookLoader from the workbook itself. This replaces
+        // an isNew flag that was never assigned, which made first-run loading and the menu's
+        // "Add Excel" button use two different readers.
         // 🟢 This command is designed to be run once per session, so we use a static field to track that
         public Result Execute(ExternalCommandData cdata, ref string message, ElementSet elements)
         {
@@ -71,8 +74,10 @@ namespace Revit.Addin._2027.Commands
                     }
                     _sharedParamPath = openTxt.FileName;
 
-                    ExcelParser.NewReadExcelStructured(_excelFilePath);
-
+                    WorkbookLoader.Load(_excelFilePath);
+                    // Silent on a clean load, as before; a problem in the workbook is shown.
+                    if (WorkbookLoader.Problems.Count > 0)
+                        TaskDialog.Show("Workbook loaded with problems", WorkbookLoader.Summary());
 
                     // shared parameter file
                     SharedParameterSeeder.EnsureParametersExist(
@@ -83,17 +88,20 @@ namespace Revit.Addin._2027.Commands
                     _firstRun = false;
                 }
 
-                // Convert the List of strings to ints of selected Bauteilnummernfrom the Excel data
-                //List<int> selectedBauteilnummer = ExcelParser.FamilyData.Keys
-                //                              .Select(int.Parse)
-                //                              .ToList();
-
+                // The menu's selection list is by Bauteilnummer. Planungsdatenbank keys carry the
+                // sub-number too ("1101-1"), so read the number out of either shape; several
+                // sub-elements of one Bauteil show as that Bauteil once.
                 var selectedBauteilnummer = new List<int>();
+                var seen = new HashSet<int>();
 
                 foreach (var key in ExcelParser.FamilyData.Keys)
                 {
-                    if (int.TryParse(key, out int bn))
-                        selectedBauteilnummer.Add(bn);
+                    int bn, sub;
+                    bool hasSub;
+                    if (PlanungsdatenbankParser.TryParseFamilyKey(key, out bn, out hasSub, out sub))
+                    {
+                        if (seen.Add(bn)) selectedBauteilnummer.Add(bn);
+                    }
                     else
                         System.Diagnostics.Debug.WriteLine(
                             $"[WARN] Non-numeric Bauteilnummer key in FamilyData: '{key}'");
@@ -115,15 +123,20 @@ namespace Revit.Addin._2027.Commands
                     if (openExcel.ShowDialog() == DialogResult.OK)
                     {
                         _excelFilePath = openExcel.FileName;
-                        if (isNew)
+                        WorkbookLoader.Load(_excelFilePath);
+
+                        // Loading here could switch formats, and a Planungsdatenbank brings
+                        // parameters the shared-parameter file has never seen. Seed them now, or
+                        // "Add Parameters" would find no definitions for them.
+                        if (!string.IsNullOrWhiteSpace(_sharedParamPath))
                         {
-                            ExcelParser.NewReadExcelStructured(_excelFilePath);
+                            SharedParameterSeeder.EnsureParametersExist(
+                                app,
+                                new[] { ExcelParser.ParameterDefinitions, ExcelParser.MaterialParameterDefinitions },
+                                _sharedParamPath);
                         }
-                        else
-                        {
-                            ExcelParser.ReadExcelStructured(_excelFilePath);
-                        }
-                        TaskDialog.Show("Info", "Excel file loaded successfully.");
+
+                        TaskDialog.Show("Info", WorkbookLoader.Summary());
                     }
                 };
                 // 🟢 OnAddSharedParamClicked is triggered when the user clicks the "Add Parameters" button
@@ -136,7 +149,8 @@ namespace Revit.Addin._2027.Commands
                         ExcelParser.FamilyData,
                         app,
                         ui.SpecificSelection.SelectedBauteilnummern,
-                        _sharedParamPath);
+                        _sharedParamPath,
+                        WorkbookLoader.KeysIncludeSubNumber);
 
                     TaskDialog.Show("Info", count.Item1 == 0 && count.Item2 == 0 ? "No matching elements found." : $"{count.Item1} parameters applied.\n{count.Item2} values applied");
                     didWork = count.Item1 > 0 || count.Item2 > 0;

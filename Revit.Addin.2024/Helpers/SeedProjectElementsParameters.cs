@@ -249,7 +249,7 @@ namespace Revit.Addin._2024.Helpers
                     if (!IsParameterEmpty(p) && ParamMetaData.AreValuesEqual(p, incomingValue))
                         continue;
 
-                    ParameterValue converted = ParamMetaData.ConvertValue(projectDoc, meta.DataTypeRevit, incomingValue);
+                    ParameterValue converted = ParamMetaData.ConvertValue(projectDoc, meta.DataTypeRevit, incomingValue, meta.Unit);
 
                     familyTuples.Add(Tuple.Create(p, converted));
                     valuesWritten++;
@@ -282,7 +282,7 @@ namespace Revit.Addin._2024.Helpers
                     if (!IsParameterEmpty(p) && ParamMetaData.AreValuesEqual(p, incomingValue))
                         continue;
 
-                    ParameterValue converted = ParamMetaData.ConvertValue(projectDoc, meta.DataTypeRevit, incomingValue);
+                    ParameterValue converted = ParamMetaData.ConvertValue(projectDoc, meta.DataTypeRevit, incomingValue, meta.Unit);
                     otherTuples.Add(Tuple.Create(p, converted));
                     valuesWritten++;
                 }

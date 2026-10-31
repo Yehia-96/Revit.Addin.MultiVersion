@@ -54,8 +54,28 @@ namespace Revit.Addin._2026.Services.Planungsdatenbank
         /// <summary>Distinct <c>Parametergruppe</c> values seen.</summary>
         internal HashSet<string> ParameterGroupsSeen { get; private set; }
 
+        /// <summary>
+        /// One entry per material to create in Revit, in sheet order. Plain records rather than
+        /// <c>MaterialsDto</c>, whose constructor throws on bad input - converting happens when
+        /// the result is loaded, where a bad row can be reported instead of aborting the read.
+        /// </summary>
+        internal List<PlanungsdatenbankMaterial> Materials { get; private set; }
+
+        /// <summary>Materialname for each Material-ID - the join between the two sheets.</summary>
+        internal Dictionary<string, string> MaterialNamesById { get; private set; }
+
+        /// <summary>
+        /// Which material each Bauteil gets: <see cref="PlanungsdatenbankParser.FamilyKey(int,int)"/>
+        /// to Materialname. Resolved from the Bauteil's Material-ID, because Revit materials are
+        /// named by Materialname - the same convention the old format followed.
+        /// </summary>
+        internal Dictionary<string, string> ElementMaterial { get; private set; }
+
         internal PlanungsdatenbankParseResult()
         {
+            Materials = new List<PlanungsdatenbankMaterial>();
+            MaterialNamesById = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            ElementMaterial = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             ParameterDefinitions = new Dictionary<string, ParamMetaData>(StringComparer.OrdinalIgnoreCase);
             MaterialParameterDefinitions = new Dictionary<string, ParamMetaData>(StringComparer.OrdinalIgnoreCase);
             FamilyData = new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
@@ -66,6 +86,25 @@ namespace Revit.Addin._2026.Services.Planungsdatenbank
             DataTypesSeen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             ParameterGroupsSeen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         }
+    }
+
+    /// <summary>A material as the workbook describes it, before it becomes a Revit material.</summary>
+    internal sealed class PlanungsdatenbankMaterial
+    {
+        internal string MaterialId;
+        internal string Name;
+
+        /// <summary>
+        /// The Materialgruppe - Beton, Metall, Kunststoff, Boden, Erdbau, Sonstiges. Material
+        /// creation maps exactly these words to a Revit material class already.
+        /// </summary>
+        internal string Type;
+
+        /// <summary>Never null: empty when the workbook has no pattern yet.</summary>
+        internal string SurfacePattern = string.Empty;
+
+        /// <summary>Never null: empty when the workbook has no pattern yet.</summary>
+        internal string CutPattern = string.Empty;
     }
 
     /// <summary>
@@ -94,6 +133,56 @@ namespace Revit.Addin._2026.Services.Planungsdatenbank
         }
 
         /// <summary>
+        /// Reads a data key back into its parts. Accepts both shapes in use:
+        /// <list type="bullet">
+        /// <item><c>"1101"</c> - the Material-Bauteilliste, Bauteilnummer only; <paramref name="hasSubNumber"/> is false.</item>
+        /// <item><c>"1101-1"</c> - this format, built by <see cref="FamilyKey"/>; <paramref name="hasSubNumber"/> is true.</item>
+        /// </list>
+        /// So a consumer can handle whichever workbook is loaded without being told which, and an
+        /// old-format key keeps meaning exactly what it always did.
+        /// </summary>
+        internal static bool TryParseFamilyKey(string key, out int bauteilnummer, out bool hasSubNumber, out int bauteilunternummer)
+        {
+            bauteilnummer = 0;
+            bauteilunternummer = 0;
+            hasSubNumber = false;
+            if (string.IsNullOrWhiteSpace(key)) return false;
+
+            string trimmed = key.Trim();
+            int dash = trimmed.IndexOf('-');
+            if (dash < 0)
+                return int.TryParse(trimmed, System.Globalization.NumberStyles.Integer,
+                    System.Globalization.CultureInfo.InvariantCulture, out bauteilnummer);
+
+            hasSubNumber = true;
+            return int.TryParse(trimmed.Substring(0, dash), System.Globalization.NumberStyles.Integer,
+                       System.Globalization.CultureInfo.InvariantCulture, out bauteilnummer)
+                && int.TryParse(trimmed.Substring(dash + 1), System.Globalization.NumberStyles.Integer,
+                       System.Globalization.CultureInfo.InvariantCulture, out bauteilunternummer);
+        }
+
+        /// <summary>
+        /// Qualifies a column name with the Parameterset it belongs to, for the columns whose
+        /// short name is not unique within a sheet.
+        /// <para>
+        /// The workbook reuses short names across sets: Objektdatenbank has a
+        /// <c>Beschreibung</c> in both <c>Bauteilinformation</c> and <c>Produktinformation</c>,
+        /// and Materialdatenbank has two <c>Kategorie</c> columns and two <c>Bezeichnung</c>
+        /// columns. Revit identifies a shared parameter by name alone, so those cannot both
+        /// exist unqualified.
+        /// </para>
+        /// <para>
+        /// Both sides of a clash are qualified, not just the second one - picking a winner by
+        /// column order would be arbitrary, and whichever lost would silently disappear.
+        /// </para>
+        /// </summary>
+        internal static string QualifiedName(string columnName, string parameterSet)
+        {
+            if (string.IsNullOrWhiteSpace(parameterSet)) return columnName;
+            return columnName + " (" + parameterSet.Trim() + ")";
+        }
+
+        /// <summary>
         /// Reads the workbook at <paramref name="path"/>.
         /// </summary>
         /// <exception cref="InvalidDataException">A required sheet or label row is missing.</exception>
@@ -104,11 +193,17 @@ namespace Revit.Addin._2026.Services.Planungsdatenbank
 
             var result = new PlanungsdatenbankParseResult();
 
+            // Families are read before materials but refer to them by Material-ID, so the IDs are
+            // collected here and resolved to names once both sheets are in.
+            var materialIdByFamilyKey = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
             using (var workbook = new XLWorkbook(path))
             {
-                ReadObjects(workbook, result);
+                ReadObjects(workbook, result, materialIdByFamilyKey);
                 ReadMaterials(workbook, result);
             }
+
+            ResolveElementMaterials(materialIdByFamilyKey, result);
 
             if (result.ParameterDefinitions.Count == 0)
                 result.Problems.Add("No family parameters were found in " + PlanungsdatenbankLayout.Sheets.Objects + ".");
@@ -118,59 +213,178 @@ namespace Revit.Addin._2026.Services.Planungsdatenbank
             return result;
         }
 
-        // --- Objektdatenbank ------------------------------------------------------------------
+        // --- shared column handling -----------------------------------------------------------
 
-        private static void ReadObjects(XLWorkbook workbook, PlanungsdatenbankParseResult result)
+        /// <summary>One parameter column: where it is, and the name Revit will see.</summary>
+        private sealed class Column
         {
-            SheetGrid sheet = SheetGrid.Open(workbook, PlanungsdatenbankLayout.Sheets.Objects);
+            internal string Name;
+            internal int Index;
+        }
 
+        /// <summary>
+        /// Column number of a required header, by its exact text in the header row.
+        /// </summary>
+        /// <exception cref="InvalidDataException">
+        /// The column is absent, which means the sheet is not the shape we expect - better to
+        /// say so than to read a sheet that cannot be keyed.
+        /// </exception>
+        private static int FindColumn(SheetGrid sheet, int headerRow, string header)
+        {
+            foreach (KeyValuePair<string, int> candidate in sheet.HeaderColumns(headerRow))
+            {
+                if (string.Equals(candidate.Key, header, StringComparison.OrdinalIgnoreCase))
+                    return candidate.Value;
+            }
+            throw new InvalidDataException("Sheet \"" + sheet.SheetName + "\" has no \"" + header + "\" column.");
+        }
+
+        /// <summary>As <see cref="FindColumn"/>, for a column the read can do without: 0 when absent.</summary>
+        private static int TryFindColumn(SheetGrid sheet, int headerRow, string header)
+        {
+            foreach (KeyValuePair<string, int> candidate in sheet.HeaderColumns(headerRow))
+            {
+                if (string.Equals(candidate.Key, header, StringComparison.OrdinalIgnoreCase))
+                    return candidate.Value;
+            }
+            return 0;
+        }
+
+        /// <summary>
+        /// Turns a sheet's header row into the parameter columns to read, with names made unique,
+        /// and registers a <see cref="ParamMetaData"/> for each.
+        /// <para>
+        /// Both sheets share one layout, so this serves both; only the identity columns and the
+        /// parameter target differ.
+        /// </para>
+        /// </summary>
+        private static List<Column> PrepareColumns(
+            SheetGrid sheet,
+            string sheetName,
+            HashSet<int> identityColumns,
+            ParamMetaData.ParamTarget target,
+            Dictionary<string, ParamMetaData> definitions,
+            PlanungsdatenbankParseResult result)
+        {
             int nameRow = sheet.RequireLabelRow(PlanungsdatenbankLayout.Labels.ParameterName);
             int groupRow = sheet.RequireLabelRow(PlanungsdatenbankLayout.Labels.ParameterGroup);
             int typeRow = sheet.RequireLabelRow(PlanungsdatenbankLayout.Labels.DataType);
+            int setRow = sheet.LabelRow(PlanungsdatenbankLayout.Labels.ParameterSet);
+            int unitRow = sheet.LabelRow(PlanungsdatenbankLayout.Labels.Unit);
             int idRow = sheet.LabelRow(
                 PlanungsdatenbankLayout.Labels.ParameterId,
                 PlanungsdatenbankLayout.Labels.ParameterIdTypo);
 
-            List<string> duplicateHeaders;
-            Dictionary<string, int> columns = sheet.HeaderColumns(nameRow, out duplicateHeaders);
-            foreach (string duplicate in duplicateHeaders)
-            {
-                result.Problems.Add(PlanungsdatenbankLayout.Sheets.Objects +
-                    " has more than one \"" + duplicate + "\" column; only the first was read.");
-            }
+            List<KeyValuePair<string, int>> headers = sheet.HeaderColumns(nameRow);
+            HashSet<string> duplicates = SheetGrid.DuplicateHeaders(headers);
 
-            int bnColumn, bunColumn;
-            if (!columns.TryGetValue(PlanungsdatenbankLayout.Headers.Bauteilnummer, out bnColumn))
-            {
-                throw new InvalidDataException(PlanungsdatenbankLayout.Sheets.Objects +
-                    " has no \"" + PlanungsdatenbankLayout.Headers.Bauteilnummer + "\" column.");
-            }
-            if (!columns.TryGetValue(PlanungsdatenbankLayout.Headers.Bauteilunternummer, out bunColumn))
-            {
-                throw new InvalidDataException(PlanungsdatenbankLayout.Sheets.Objects +
-                    " has no \"" + PlanungsdatenbankLayout.Headers.Bauteilunternummer + "\" column.");
-            }
+            var prepared = new List<Column>();
+            var unknownTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var unknownGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            // Definitions. The two key columns are identity, not parameters to push into Revit.
-            foreach (KeyValuePair<string, int> column in columns)
+            foreach (KeyValuePair<string, int> header in headers)
             {
-                if (column.Value == bnColumn || column.Value == bunColumn) continue;
+                if (identityColumns.Contains(header.Value)) continue;
 
-                string group = sheet.Text(groupRow, column.Value);
-                string type = sheet.Text(typeRow, column.Value);
+                string parameterSet = setRow > 0 ? sheet.Text(setRow, header.Value) : string.Empty;
+                string group = sheet.Text(groupRow, header.Value);
+
+                // A name reused across Parametersets is qualified on both sides, so neither is
+                // dropped and neither silently wins.
+                string name = duplicates.Contains(header.Key)
+                    ? QualifiedName(header.Key, parameterSet)
+                    : header.Key;
+
+                // Parameterset is not always enough: Materialdatenbank has two "Kategorie"
+                // columns both in the "Material" set, told apart only by their Parametergruppe
+                // (Kunststoff and Boden). Fall back to including the group for those.
+                if (definitions.ContainsKey(name) && group.Length > 0)
+                {
+                    name = QualifiedName(header.Key, parameterSet + " / " + group.Trim());
+                }
+
+                if (definitions.ContainsKey(name))
+                {
+                    result.Problems.Add(sheetName + ": two columns both resolve to the parameter name \"" +
+                        name + "\", so the later one was skipped. They share a Parameterset and a " +
+                        "Parametergruppe, so only renaming one in the workbook can separate them.");
+                    continue;
+                }
+
+                string type = sheet.Text(typeRow, header.Value);
+                string unit = unitRow > 0 ? sheet.Text(unitRow, header.Value) : string.Empty;
+
                 result.DataTypesSeen.Add(type.Length == 0 ? "(blank)" : type);
                 result.ParameterGroupsSeen.Add(group.Length == 0 ? "(blank)" : group);
+                if (!ParamMetaData.IsKnownDatatype(type)) unknownTypes.Add(type.Length == 0 ? "(blank)" : type);
+                if (!ParamMetaData.IsKnownGroup(group)) unknownGroups.Add(group.Length == 0 ? "(blank)" : group);
 
-                var meta = new ParamMetaData(column.Key, group, type);
-                meta.Target = ParamMetaData.ParamTarget.FamilyElement;
+                var meta = new ParamMetaData(name, group, type);
+                meta.Target = target;
+                meta.Unit = unit;
 
                 // Revit's parameter Description. The old format carries a prefix row for this;
-                // this workbook has none, so the stable Parameter-ID is used instead. It is a
-                // real identifier rather than the random placeholder the old reader falls back to.
-                if (idRow > 0) meta.Description = sheet.Text(idRow, column.Value);
+                // this workbook has none, so the stable Parameter-ID is used instead - a real
+                // identifier rather than the random placeholder the old reader falls back to.
+                if (idRow > 0) meta.Description = sheet.Text(idRow, header.Value);
 
-                result.ParameterDefinitions[column.Key] = meta;
+                // Material family, e.g. Beton or Metall. The old format states this in a
+                // dedicated per-column row; here the Parametergruppe row does the same job.
+                if (target == ParamMetaData.ParamTarget.Material) meta.MaterialType = group;
+
+                definitions[name] = meta;
+                prepared.Add(new Column { Name = name, Index = header.Value });
             }
+
+            if (duplicates.Count > 0)
+            {
+                var list = new List<string>(duplicates);
+                result.Notes.Add(sheetName + ": qualified " + duplicates.Count +
+                    " reused column name(s) with their Parameterset - " + string.Join(", ", list.ToArray()) + ".");
+            }
+
+            // An unmapped datatype is the dangerous one: the parameter would be created as text
+            // and the run would still report success.
+            if (unknownTypes.Count > 0)
+            {
+                var list = new List<string>(unknownTypes);
+                result.Problems.Add(sheetName + ": datatype(s) not recognised and treated as text - " +
+                    string.Join(", ", list.ToArray()) + ".");
+            }
+            if (unknownGroups.Count > 0)
+            {
+                var list = new List<string>(unknownGroups);
+                result.Notes.Add(sheetName + ": parameter group(s) not recognised, placed under General - " +
+                    string.Join(", ", list.ToArray()) + ".");
+            }
+
+            return prepared;
+        }
+
+        // --- Objektdatenbank ------------------------------------------------------------------
+
+        private static void ReadObjects(
+            XLWorkbook workbook,
+            PlanungsdatenbankParseResult result,
+            Dictionary<string, string> materialIdByFamilyKey)
+        {
+            SheetGrid sheet = SheetGrid.Open(workbook, PlanungsdatenbankLayout.Sheets.Objects);
+            int nameRow = sheet.RequireLabelRow(PlanungsdatenbankLayout.Labels.ParameterName);
+
+            int bnColumn = FindColumn(sheet, nameRow, PlanungsdatenbankLayout.Headers.Bauteilnummer);
+            int bunColumn = FindColumn(sheet, nameRow, PlanungsdatenbankLayout.Headers.Bauteilunternummer);
+
+            // Optional: without it, families still read fine and simply get no material assigned.
+            int materialIdColumn = TryFindColumn(sheet, nameRow, PlanungsdatenbankLayout.Headers.MaterialId);
+
+            // The key columns identify a row; they are not parameters to push into Revit.
+            var identity = new HashSet<int>();
+            identity.Add(bnColumn);
+            identity.Add(bunColumn);
+
+            List<Column> columns = PrepareColumns(
+                sheet, PlanungsdatenbankLayout.Sheets.Objects, identity,
+                ParamMetaData.ParamTarget.FamilyElement, result.ParameterDefinitions, result);
 
             // Values.
             int firstDataRow = sheet.FirstDataRow();
@@ -208,19 +422,25 @@ namespace Revit.Addin._2026.Services.Planungsdatenbank
                 }
 
                 var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-                foreach (KeyValuePair<string, int> column in columns)
+                foreach (Column column in columns)
                 {
-                    if (column.Value == bnColumn || column.Value == bunColumn) continue;
-
-                    string raw = sheet.Text(row, column.Value);
+                    string raw = sheet.Text(row, column.Index);
                     // Absent rather than blank: a skipped cell must never be written over
                     // whatever the modeller already put in Revit.
                     if (PlanungsdatenbankLayout.IsSkipped(raw)) continue;
-                    values[column.Key] = raw;
+                    values[column.Name] = raw;
                 }
 
                 result.FamilyData[key] = values;
                 rowsRead++;
+
+                // [ET] here means an Einbauteil, which has no material - skipped like any marker.
+                if (materialIdColumn > 0)
+                {
+                    string materialId = sheet.Text(row, materialIdColumn);
+                    if (!PlanungsdatenbankLayout.IsSkipped(materialId))
+                        materialIdByFamilyKey[key] = materialId;
+                }
             }
 
             result.Notes.Add(PlanungsdatenbankLayout.Sheets.Objects + ": " + rowsRead + " rows, " +
@@ -242,48 +462,14 @@ namespace Revit.Addin._2026.Services.Planungsdatenbank
             SheetGrid sheet = SheetGrid.Open(workbook, PlanungsdatenbankLayout.Sheets.Materials);
 
             int nameRow = sheet.RequireLabelRow(PlanungsdatenbankLayout.Labels.ParameterName);
-            int groupRow = sheet.RequireLabelRow(PlanungsdatenbankLayout.Labels.ParameterGroup);
-            int typeRow = sheet.RequireLabelRow(PlanungsdatenbankLayout.Labels.DataType);
-            int idRow = sheet.LabelRow(
-                PlanungsdatenbankLayout.Labels.ParameterId,
-                PlanungsdatenbankLayout.Labels.ParameterIdTypo);
+            int idColumn = FindColumn(sheet, nameRow, PlanungsdatenbankLayout.Headers.MaterialId);
 
-            List<string> duplicateHeaders;
-            Dictionary<string, int> columns = sheet.HeaderColumns(nameRow, out duplicateHeaders);
-            foreach (string duplicate in duplicateHeaders)
-            {
-                result.Problems.Add(PlanungsdatenbankLayout.Sheets.Materials +
-                    " has more than one \"" + duplicate + "\" column; only the first was read.");
-            }
+            var identity = new HashSet<int>();
+            identity.Add(idColumn);
 
-            int idColumn;
-            if (!columns.TryGetValue(PlanungsdatenbankLayout.Headers.MaterialId, out idColumn))
-            {
-                throw new InvalidDataException(PlanungsdatenbankLayout.Sheets.Materials +
-                    " has no \"" + PlanungsdatenbankLayout.Headers.MaterialId + "\" column.");
-            }
-
-            foreach (KeyValuePair<string, int> column in columns)
-            {
-                if (column.Value == idColumn) continue;
-
-                string group = sheet.Text(groupRow, column.Value);
-                string type = sheet.Text(typeRow, column.Value);
-                result.DataTypesSeen.Add(type.Length == 0 ? "(blank)" : type);
-                result.ParameterGroupsSeen.Add(group.Length == 0 ? "(blank)" : group);
-
-                var meta = new ParamMetaData(column.Key, group, type);
-                meta.Target = ParamMetaData.ParamTarget.Material;
-
-                // The old format carries material type in a dedicated per-column row. Here the
-                // Parametergruppe row does that job: a column in group "Beton" belongs to
-                // concrete materials, "Metall" to metals, and so on.
-                meta.MaterialType = group;
-
-                if (idRow > 0) meta.Description = sheet.Text(idRow, column.Value);
-
-                result.MaterialParameterDefinitions[column.Key] = meta;
-            }
+            List<Column> columns = PrepareColumns(
+                sheet, PlanungsdatenbankLayout.Sheets.Materials, identity,
+                ParamMetaData.ParamTarget.Material, result.MaterialParameterDefinitions, result);
 
             int firstDataRow = sheet.FirstDataRow();
             if (firstDataRow <= 0)
@@ -307,16 +493,14 @@ namespace Revit.Addin._2026.Services.Planungsdatenbank
                 }
 
                 var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-                foreach (KeyValuePair<string, int> column in columns)
+                foreach (Column column in columns)
                 {
-                    if (column.Value == idColumn) continue;
-
-                    string raw = sheet.Text(row, column.Value);
+                    string raw = sheet.Text(row, column.Index);
                     if (PlanungsdatenbankLayout.IsSkipped(raw)) continue;
-                    values[column.Key] = raw;
+                    values[column.Name] = raw;
 
-                    if (string.Equals(column.Key, PlanungsdatenbankLayout.Headers.SurfacePattern, StringComparison.OrdinalIgnoreCase) ||
-                        string.Equals(column.Key, PlanungsdatenbankLayout.Headers.CutPattern, StringComparison.OrdinalIgnoreCase))
+                    if (string.Equals(column.Name, PlanungsdatenbankLayout.Headers.SurfacePattern, StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(column.Name, PlanungsdatenbankLayout.Headers.CutPattern, StringComparison.OrdinalIgnoreCase))
                     {
                         patternsSeen++;
                     }
@@ -324,16 +508,105 @@ namespace Revit.Addin._2026.Services.Planungsdatenbank
 
                 result.MaterialData[materialId] = values;
                 rowsRead++;
+
+                // The material to create in Revit. It is named by Materialname, as the old format
+                // named materials from its name column; Material-ID stays the join key between
+                // the sheets. Rows without a name or group cannot become a material and are
+                // reported rather than created half-specified.
+                string name = Value(values, PlanungsdatenbankLayout.Headers.MaterialName);
+                string type = Value(values, PlanungsdatenbankLayout.Headers.MaterialGroup);
+                if (name.Length == 0)
+                {
+                    result.Problems.Add("Row " + row + ": material \"" + materialId +
+                        "\" has no " + PlanungsdatenbankLayout.Headers.MaterialName + ", so it cannot be created in Revit.");
+                    continue;
+                }
+
+                string existingId;
+                if (NameOwner(result.MaterialNamesById, name, out existingId))
+                {
+                    result.Problems.Add("Row " + row + ": materials \"" + existingId + "\" and \"" + materialId +
+                        "\" share the name \"" + name + "\". Revit materials are named by Materialname, so only the first was kept.");
+                    continue;
+                }
+
+                result.MaterialNamesById[materialId] = name;
+                if (type.Length == 0)
+                {
+                    // Matches the old reader, which only created materials it had a type for.
+                    result.Notes.Add("Material \"" + name + "\" has no " + PlanungsdatenbankLayout.Headers.MaterialGroup +
+                        "; its parameters are read, but it is not created as a Revit material.");
+                    continue;
+                }
+
+                result.Materials.Add(new PlanungsdatenbankMaterial
+                {
+                    MaterialId = materialId,
+                    Name = name,
+                    Type = type,
+                    // Never null - MaterialsDto calls Trim() on these unguarded.
+                    SurfacePattern = Value(values, PlanungsdatenbankLayout.Headers.SurfacePattern),
+                    CutPattern = Value(values, PlanungsdatenbankLayout.Headers.CutPattern)
+                });
             }
 
             result.Notes.Add(PlanungsdatenbankLayout.Sheets.Materials + ": " + rowsRead + " materials, " +
-                result.MaterialParameterDefinitions.Count + " parameters.");
+                result.MaterialParameterDefinitions.Count + " parameters, " + result.Materials.Count + " to create in Revit.");
 
             // Patterns are read by label from the start, so this is reporting, not a gate. When
             // the office fills those columns in, the values simply start arriving.
             result.Notes.Add("Fill patterns (" + PlanungsdatenbankLayout.Headers.SurfacePattern + " / " +
                 PlanungsdatenbankLayout.Headers.CutPattern + "): " + patternsSeen +
                 " values present across " + rowsRead + " materials.");
+        }
+
+        /// <summary>
+        /// Turns each Bauteil's Material-ID into the Materialname its Revit material carries.
+        /// An ID with no matching material is reported - it means the two sheets disagree, and
+        /// assigning nothing silently would hide that.
+        /// </summary>
+        private static void ResolveElementMaterials(
+            Dictionary<string, string> materialIdByFamilyKey,
+            PlanungsdatenbankParseResult result)
+        {
+            int resolved = 0;
+            foreach (KeyValuePair<string, string> entry in materialIdByFamilyKey)
+            {
+                string name;
+                if (result.MaterialNamesById.TryGetValue(entry.Value, out name))
+                {
+                    result.ElementMaterial[entry.Key] = name;
+                    resolved++;
+                }
+                else
+                {
+                    result.Problems.Add("Bauteil " + entry.Key + " refers to " + PlanungsdatenbankLayout.Headers.MaterialId +
+                        " \"" + entry.Value + "\", which is not in " + PlanungsdatenbankLayout.Sheets.Materials + ".");
+                }
+            }
+            if (materialIdByFamilyKey.Count > 0)
+                result.Notes.Add("Material assignment: " + resolved + " of " + materialIdByFamilyKey.Count + " Bauteile resolved to a material.");
+        }
+
+        private static string Value(Dictionary<string, string> values, string key)
+        {
+            string v;
+            return values.TryGetValue(key, out v) && v != null ? v.Trim() : string.Empty;
+        }
+
+        /// <summary>True when another Material-ID already owns this name; returns that ID.</summary>
+        private static bool NameOwner(Dictionary<string, string> namesById, string name, out string ownerId)
+        {
+            foreach (KeyValuePair<string, string> entry in namesById)
+            {
+                if (string.Equals(entry.Value, name, StringComparison.OrdinalIgnoreCase))
+                {
+                    ownerId = entry.Key;
+                    return true;
+                }
+            }
+            ownerId = null;
+            return false;
         }
     }
 }

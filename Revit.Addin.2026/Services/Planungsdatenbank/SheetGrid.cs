@@ -81,10 +81,25 @@ namespace Revit.Addin._2026.Services.Planungsdatenbank
         }
 
         /// <summary>Trimmed text of a cell. Never null.</summary>
+        /// <remarks>
+        /// Numeric cells are formatted with the invariant culture. <c>GetString()</c> uses the
+        /// current culture, so on a German-locale machine - which is every machine in this office -
+        /// a thickness of 0.5 would come back as "0,5", and every later
+        /// <c>double.Parse(..., InvariantCulture)</c> would fail on it.
+        /// </remarks>
         internal string Text(int row, int column)
         {
             if (row < 1 || column < 1) return string.Empty;
-            string raw = _sheet.Cell(row, column).GetString();
+
+            IXLCell cell = _sheet.Cell(row, column);
+            if (cell.DataType == XLDataType.Number)
+            {
+                double number;
+                if (cell.TryGetValue(out number))
+                    return number.ToString("R", CultureInfo.InvariantCulture);
+            }
+
+            string raw = cell.GetString();
             return raw == null ? string.Empty : raw.Trim();
         }
 
@@ -123,29 +138,45 @@ namespace Revit.Addin._2026.Services.Planungsdatenbank
         }
 
         /// <summary>
-        /// Column numbers of the parameter columns, keyed by the header text in
-        /// <paramref name="headerRow"/>. Later duplicates of a header are ignored, and the
-        /// duplicate names are reported so a workbook that repeats a column is visible rather
-        /// than quietly half-read.
+        /// Every parameter column in <paramref name="headerRow"/>, in column order, header text
+        /// paired with column number.
+        /// <para>
+        /// Duplicated header names are kept, not collapsed: this workbook reuses short names
+        /// across Parametersets, and the caller is the one that can disambiguate them. Dropping
+        /// them here would silently lose a column.
+        /// </para>
         /// </summary>
-        internal Dictionary<string, int> HeaderColumns(int headerRow, out List<string> duplicates)
+        internal List<KeyValuePair<string, int>> HeaderColumns(int headerRow)
         {
-            var columns = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-            duplicates = new List<string>();
-
+            var columns = new List<KeyValuePair<string, int>>();
             for (int col = PlanungsdatenbankLayout.FirstDataColumn; col <= LastColumn; col++)
             {
                 string header = Text(headerRow, col);
                 if (header.Length == 0) continue;
-
-                if (columns.ContainsKey(header))
-                {
-                    if (!duplicates.Contains(header)) duplicates.Add(header);
-                    continue;
-                }
-                columns.Add(header, col);
+                columns.Add(new KeyValuePair<string, int>(header, col));
             }
             return columns;
+        }
+
+        /// <summary>
+        /// Header names that appear more than once in <paramref name="columns"/>, compared
+        /// case-insensitively.
+        /// </summary>
+        internal static HashSet<string> DuplicateHeaders(List<KeyValuePair<string, int>> columns)
+        {
+            var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            foreach (KeyValuePair<string, int> column in columns)
+            {
+                int n;
+                counts[column.Key] = counts.TryGetValue(column.Key, out n) ? n + 1 : 1;
+            }
+
+            var duplicates = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (KeyValuePair<string, int> entry in counts)
+            {
+                if (entry.Value > 1) duplicates.Add(entry.Key);
+            }
+            return duplicates;
         }
 
         /// <summary>

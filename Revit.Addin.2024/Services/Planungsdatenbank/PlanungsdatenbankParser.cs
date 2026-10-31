@@ -54,8 +54,28 @@ namespace Revit.Addin._2024.Services.Planungsdatenbank
         /// <summary>Distinct <c>Parametergruppe</c> values seen.</summary>
         internal HashSet<string> ParameterGroupsSeen { get; private set; }
 
+        /// <summary>
+        /// One entry per material to create in Revit, in sheet order. Plain records rather than
+        /// <c>MaterialsDto</c>, whose constructor throws on bad input - converting happens when
+        /// the result is loaded, where a bad row can be reported instead of aborting the read.
+        /// </summary>
+        internal List<PlanungsdatenbankMaterial> Materials { get; private set; }
+
+        /// <summary>Materialname for each Material-ID - the join between the two sheets.</summary>
+        internal Dictionary<string, string> MaterialNamesById { get; private set; }
+
+        /// <summary>
+        /// Which material each Bauteil gets: <see cref="PlanungsdatenbankParser.FamilyKey(int,int)"/>
+        /// to Materialname. Resolved from the Bauteil's Material-ID, because Revit materials are
+        /// named by Materialname - the same convention the old format followed.
+        /// </summary>
+        internal Dictionary<string, string> ElementMaterial { get; private set; }
+
         internal PlanungsdatenbankParseResult()
         {
+            Materials = new List<PlanungsdatenbankMaterial>();
+            MaterialNamesById = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            ElementMaterial = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             ParameterDefinitions = new Dictionary<string, ParamMetaData>(StringComparer.OrdinalIgnoreCase);
             MaterialParameterDefinitions = new Dictionary<string, ParamMetaData>(StringComparer.OrdinalIgnoreCase);
             FamilyData = new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
@@ -66,6 +86,25 @@ namespace Revit.Addin._2024.Services.Planungsdatenbank
             DataTypesSeen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             ParameterGroupsSeen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         }
+    }
+
+    /// <summary>A material as the workbook describes it, before it becomes a Revit material.</summary>
+    internal sealed class PlanungsdatenbankMaterial
+    {
+        internal string MaterialId;
+        internal string Name;
+
+        /// <summary>
+        /// The Materialgruppe - Beton, Metall, Kunststoff, Boden, Erdbau, Sonstiges. Material
+        /// creation maps exactly these words to a Revit material class already.
+        /// </summary>
+        internal string Type;
+
+        /// <summary>Never null: empty when the workbook has no pattern yet.</summary>
+        internal string SurfacePattern = string.Empty;
+
+        /// <summary>Never null: empty when the workbook has no pattern yet.</summary>
+        internal string CutPattern = string.Empty;
     }
 
     /// <summary>
@@ -91,6 +130,35 @@ namespace Revit.Addin._2024.Services.Planungsdatenbank
         {
             return bauteilnummer.ToString(System.Globalization.CultureInfo.InvariantCulture) + "-" +
                    bauteilunternummer.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        /// <summary>
+        /// Reads a data key back into its parts. Accepts both shapes in use:
+        /// <list type="bullet">
+        /// <item><c>"1101"</c> - the Material-Bauteilliste, Bauteilnummer only; <paramref name="hasSubNumber"/> is false.</item>
+        /// <item><c>"1101-1"</c> - this format, built by <see cref="FamilyKey"/>; <paramref name="hasSubNumber"/> is true.</item>
+        /// </list>
+        /// So a consumer can handle whichever workbook is loaded without being told which, and an
+        /// old-format key keeps meaning exactly what it always did.
+        /// </summary>
+        internal static bool TryParseFamilyKey(string key, out int bauteilnummer, out bool hasSubNumber, out int bauteilunternummer)
+        {
+            bauteilnummer = 0;
+            bauteilunternummer = 0;
+            hasSubNumber = false;
+            if (string.IsNullOrWhiteSpace(key)) return false;
+
+            string trimmed = key.Trim();
+            int dash = trimmed.IndexOf('-');
+            if (dash < 0)
+                return int.TryParse(trimmed, System.Globalization.NumberStyles.Integer,
+                    System.Globalization.CultureInfo.InvariantCulture, out bauteilnummer);
+
+            hasSubNumber = true;
+            return int.TryParse(trimmed.Substring(0, dash), System.Globalization.NumberStyles.Integer,
+                       System.Globalization.CultureInfo.InvariantCulture, out bauteilnummer)
+                && int.TryParse(trimmed.Substring(dash + 1), System.Globalization.NumberStyles.Integer,
+                       System.Globalization.CultureInfo.InvariantCulture, out bauteilunternummer);
         }
 
         /// <summary>
@@ -125,11 +193,17 @@ namespace Revit.Addin._2024.Services.Planungsdatenbank
 
             var result = new PlanungsdatenbankParseResult();
 
+            // Families are read before materials but refer to them by Material-ID, so the IDs are
+            // collected here and resolved to names once both sheets are in.
+            var materialIdByFamilyKey = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
             using (var workbook = new XLWorkbook(path))
             {
-                ReadObjects(workbook, result);
+                ReadObjects(workbook, result, materialIdByFamilyKey);
                 ReadMaterials(workbook, result);
             }
+
+            ResolveElementMaterials(materialIdByFamilyKey, result);
 
             if (result.ParameterDefinitions.Count == 0)
                 result.Problems.Add("No family parameters were found in " + PlanungsdatenbankLayout.Sheets.Objects + ".");
@@ -163,6 +237,17 @@ namespace Revit.Addin._2024.Services.Planungsdatenbank
                     return candidate.Value;
             }
             throw new InvalidDataException("Sheet \"" + sheet.SheetName + "\" has no \"" + header + "\" column.");
+        }
+
+        /// <summary>As <see cref="FindColumn"/>, for a column the read can do without: 0 when absent.</summary>
+        private static int TryFindColumn(SheetGrid sheet, int headerRow, string header)
+        {
+            foreach (KeyValuePair<string, int> candidate in sheet.HeaderColumns(headerRow))
+            {
+                if (string.Equals(candidate.Key, header, StringComparison.OrdinalIgnoreCase))
+                    return candidate.Value;
+            }
+            return 0;
         }
 
         /// <summary>
@@ -278,13 +363,19 @@ namespace Revit.Addin._2024.Services.Planungsdatenbank
 
         // --- Objektdatenbank ------------------------------------------------------------------
 
-        private static void ReadObjects(XLWorkbook workbook, PlanungsdatenbankParseResult result)
+        private static void ReadObjects(
+            XLWorkbook workbook,
+            PlanungsdatenbankParseResult result,
+            Dictionary<string, string> materialIdByFamilyKey)
         {
             SheetGrid sheet = SheetGrid.Open(workbook, PlanungsdatenbankLayout.Sheets.Objects);
             int nameRow = sheet.RequireLabelRow(PlanungsdatenbankLayout.Labels.ParameterName);
 
             int bnColumn = FindColumn(sheet, nameRow, PlanungsdatenbankLayout.Headers.Bauteilnummer);
             int bunColumn = FindColumn(sheet, nameRow, PlanungsdatenbankLayout.Headers.Bauteilunternummer);
+
+            // Optional: without it, families still read fine and simply get no material assigned.
+            int materialIdColumn = TryFindColumn(sheet, nameRow, PlanungsdatenbankLayout.Headers.MaterialId);
 
             // The key columns identify a row; they are not parameters to push into Revit.
             var identity = new HashSet<int>();
@@ -342,6 +433,14 @@ namespace Revit.Addin._2024.Services.Planungsdatenbank
 
                 result.FamilyData[key] = values;
                 rowsRead++;
+
+                // [ET] here means an Einbauteil, which has no material - skipped like any marker.
+                if (materialIdColumn > 0)
+                {
+                    string materialId = sheet.Text(row, materialIdColumn);
+                    if (!PlanungsdatenbankLayout.IsSkipped(materialId))
+                        materialIdByFamilyKey[key] = materialId;
+                }
             }
 
             result.Notes.Add(PlanungsdatenbankLayout.Sheets.Objects + ": " + rowsRead + " rows, " +
@@ -409,16 +508,105 @@ namespace Revit.Addin._2024.Services.Planungsdatenbank
 
                 result.MaterialData[materialId] = values;
                 rowsRead++;
+
+                // The material to create in Revit. It is named by Materialname, as the old format
+                // named materials from its name column; Material-ID stays the join key between
+                // the sheets. Rows without a name or group cannot become a material and are
+                // reported rather than created half-specified.
+                string name = Value(values, PlanungsdatenbankLayout.Headers.MaterialName);
+                string type = Value(values, PlanungsdatenbankLayout.Headers.MaterialGroup);
+                if (name.Length == 0)
+                {
+                    result.Problems.Add("Row " + row + ": material \"" + materialId +
+                        "\" has no " + PlanungsdatenbankLayout.Headers.MaterialName + ", so it cannot be created in Revit.");
+                    continue;
+                }
+
+                string existingId;
+                if (NameOwner(result.MaterialNamesById, name, out existingId))
+                {
+                    result.Problems.Add("Row " + row + ": materials \"" + existingId + "\" and \"" + materialId +
+                        "\" share the name \"" + name + "\". Revit materials are named by Materialname, so only the first was kept.");
+                    continue;
+                }
+
+                result.MaterialNamesById[materialId] = name;
+                if (type.Length == 0)
+                {
+                    // Matches the old reader, which only created materials it had a type for.
+                    result.Notes.Add("Material \"" + name + "\" has no " + PlanungsdatenbankLayout.Headers.MaterialGroup +
+                        "; its parameters are read, but it is not created as a Revit material.");
+                    continue;
+                }
+
+                result.Materials.Add(new PlanungsdatenbankMaterial
+                {
+                    MaterialId = materialId,
+                    Name = name,
+                    Type = type,
+                    // Never null - MaterialsDto calls Trim() on these unguarded.
+                    SurfacePattern = Value(values, PlanungsdatenbankLayout.Headers.SurfacePattern),
+                    CutPattern = Value(values, PlanungsdatenbankLayout.Headers.CutPattern)
+                });
             }
 
             result.Notes.Add(PlanungsdatenbankLayout.Sheets.Materials + ": " + rowsRead + " materials, " +
-                result.MaterialParameterDefinitions.Count + " parameters.");
+                result.MaterialParameterDefinitions.Count + " parameters, " + result.Materials.Count + " to create in Revit.");
 
             // Patterns are read by label from the start, so this is reporting, not a gate. When
             // the office fills those columns in, the values simply start arriving.
             result.Notes.Add("Fill patterns (" + PlanungsdatenbankLayout.Headers.SurfacePattern + " / " +
                 PlanungsdatenbankLayout.Headers.CutPattern + "): " + patternsSeen +
                 " values present across " + rowsRead + " materials.");
+        }
+
+        /// <summary>
+        /// Turns each Bauteil's Material-ID into the Materialname its Revit material carries.
+        /// An ID with no matching material is reported - it means the two sheets disagree, and
+        /// assigning nothing silently would hide that.
+        /// </summary>
+        private static void ResolveElementMaterials(
+            Dictionary<string, string> materialIdByFamilyKey,
+            PlanungsdatenbankParseResult result)
+        {
+            int resolved = 0;
+            foreach (KeyValuePair<string, string> entry in materialIdByFamilyKey)
+            {
+                string name;
+                if (result.MaterialNamesById.TryGetValue(entry.Value, out name))
+                {
+                    result.ElementMaterial[entry.Key] = name;
+                    resolved++;
+                }
+                else
+                {
+                    result.Problems.Add("Bauteil " + entry.Key + " refers to " + PlanungsdatenbankLayout.Headers.MaterialId +
+                        " \"" + entry.Value + "\", which is not in " + PlanungsdatenbankLayout.Sheets.Materials + ".");
+                }
+            }
+            if (materialIdByFamilyKey.Count > 0)
+                result.Notes.Add("Material assignment: " + resolved + " of " + materialIdByFamilyKey.Count + " Bauteile resolved to a material.");
+        }
+
+        private static string Value(Dictionary<string, string> values, string key)
+        {
+            string v;
+            return values.TryGetValue(key, out v) && v != null ? v.Trim() : string.Empty;
+        }
+
+        /// <summary>True when another Material-ID already owns this name; returns that ID.</summary>
+        private static bool NameOwner(Dictionary<string, string> namesById, string name, out string ownerId)
+        {
+            foreach (KeyValuePair<string, string> entry in namesById)
+            {
+                if (string.Equals(entry.Value, name, StringComparison.OrdinalIgnoreCase))
+                {
+                    ownerId = entry.Key;
+                    return true;
+                }
+            }
+            ownerId = null;
+            return false;
         }
     }
 }
