@@ -17,16 +17,21 @@ namespace Revit.Addin._2024.UI
         private readonly Button btnCancel;
 
         public SpecificSelection SpecificSelection { get; set; }
-        public List<int> SelectedBauteilnummern { get; set; } = new List<int>();
+        /// <summary>The keys offered for selection, already in display order.</summary>
+        public List<string> SelectableKeys { get; set; } = new List<string>();
+
+        /// <summary>What a key is called: "Bauteilnummer" or "Bauteil-ID", depending on the loaded workbook.</summary>
+        public string KeyLabel { get; private set; }
 
         public Action OnRemoveClicked { get; set; }
         public Action OnAutoAddClicked { get; set; }
         public Action OnAddExcelClicked { get; set; }
         public Action OnCleanUpClicked { get; set; }
 
-        public AutoParameterUI(List<int> selectedBauteilnummern)
+        public AutoParameterUI(List<string> selectableKeys, string keyLabel = "Bauteilnummer")
         {
-            SelectedBauteilnummern = selectedBauteilnummern ?? new List<int>();
+            SelectableKeys = selectableKeys ?? new List<string>();
+            KeyLabel = string.IsNullOrWhiteSpace(keyLabel) ? "Bauteilnummer" : keyLabel;
 
             AutoScaleMode = AutoScaleMode.Dpi;
             this.Font = new System.Drawing.Font("Segoe UI", 9f);
@@ -78,7 +83,11 @@ namespace Revit.Addin._2024.UI
 
             var excelHint = new Label
             {
-                Text = "Load data source before updating parameters.",
+                // Once data is loaded, say what connects it to the model - the modellers need
+                // to know whether elements are matched by Bauteilnummer or by Bauteil-ID.
+                Text = SelectableKeys.Count == 0
+                    ? "Load data source before updating parameters."
+                    : $"{SelectableKeys.Count} Excel rows loaded, matched by {KeyLabel}.",
                 Dock = DockStyle.Fill,
                 AutoSize = false,
                 AutoEllipsis = true,
@@ -182,13 +191,13 @@ namespace Revit.Addin._2024.UI
 
             btnAutoAdd.Click += (s, e) =>
             {
-                var selectionDialog = new SpecificSelection(SelectedBauteilnummern);
+                var selectionDialog = new SpecificSelection(SelectableKeys, KeyLabel);
                 if (selectionDialog.ShowDialog(this) != DialogResult.OK)
                     return;
 
                 SpecificSelection = selectionDialog;
 
-                if (selectionDialog.AddAll || selectionDialog.SelectedBauteilnummern.Any())
+                if (selectionDialog.AddAll || selectionDialog.SelectedKeys.Any())
                     OnAutoAddClicked?.Invoke();
 
                 DialogResult = DialogResult.OK;
@@ -208,15 +217,21 @@ namespace Revit.Addin._2024.UI
 
 public class SpecificSelection : Form
 {
-    private readonly Dictionary<int, CheckBox> checkboxMap = new Dictionary<int, CheckBox>();
-    public List<int> SelectedBauteilnummern { get; private set; } = new List<int>();
+    // Insertion-ordered list rather than a dictionary walk, so the order the caller sorted
+    // into (natural order: BT-201-01 before BT-1101-01) is the order shown and returned.
+    private readonly List<KeyValuePair<string, CheckBox>> checkboxes = new List<KeyValuePair<string, CheckBox>>();
+    public List<string> SelectedKeys { get; private set; } = new List<string>();
     public bool AddAll { get; private set; } = false;
 
-    public SpecificSelection(IEnumerable<int> bauteilnummern)
+    /// <param name="keys">Keys to offer, in display order; duplicates are shown once.</param>
+    /// <param name="keyLabel">What a key is called - "Bauteilnummer" or "Bauteil-ID".</param>
+    public SpecificSelection(IEnumerable<string> keys, string keyLabel = "Bauteilnummer")
     {
+        if (string.IsNullOrWhiteSpace(keyLabel)) keyLabel = "Bauteilnummer";
+
         AutoScaleMode = AutoScaleMode.Dpi;
         this.Font = new System.Drawing.Font("Segoe UI", 9f);
-        Text = "Bauteilnummer Selection";
+        Text = $"{keyLabel} Selection";
         FormBorderStyle = FormBorderStyle.FixedDialog;
         StartPosition = FormStartPosition.CenterParent;
         MaximizeBox = false;
@@ -240,7 +255,7 @@ public class SpecificSelection : Form
 
         var header = new Label
         {
-            Text = "Select one or more Bauteilnummer values:",
+            Text = $"Select one or more {keyLabel} values:",
             AutoSize = true,
             Font = new Font("Segoe UI", 10f, FontStyle.Bold),
             Margin = new Padding(0, 0, 0, 8)
@@ -256,21 +271,23 @@ public class SpecificSelection : Form
             Padding = new Padding(6)
         };
 
-        foreach (var num in (bauteilnummern ?? Enumerable.Empty<int>()).Distinct().OrderBy(n => n))
+        foreach (var key in (keys ?? Enumerable.Empty<string>())
+                     .Where(k => !string.IsNullOrWhiteSpace(k))
+                     .Distinct(StringComparer.OrdinalIgnoreCase))
         {
             var cb = new CheckBox
             {
-                Text = $"Bauteilnummer {num}",
-                Tag = num,
+                Text = $"{keyLabel} {key}",
+                Tag = key,
                 AutoSize = true
             };
-            checkboxMap[num] = cb;
+            checkboxes.Add(new KeyValuePair<string, CheckBox>(key, cb));
             checkboxPanel.Controls.Add(cb);
         }
 
         var listGroup = new GroupBox
         {
-            Text = "Bauteilnummer List",
+            Text = $"{keyLabel} List",
             Dock = DockStyle.Fill,
             Font = new Font("Segoe UI", 9f, FontStyle.Bold),
             Padding = new Padding(10),
@@ -292,10 +309,10 @@ public class SpecificSelection : Form
         tools.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
 
         var btnSelectAll = new Button { Text = "Select All", AutoSize = true, UseVisualStyleBackColor = true };
-        btnSelectAll.Click += (s, e) => { foreach (var cb in checkboxMap.Values) cb.Checked = true; };
+        btnSelectAll.Click += (s, e) => { foreach (var p in checkboxes) p.Value.Checked = true; };
 
         var btnClearAll = new Button { Text = "Clear All", AutoSize = true, UseVisualStyleBackColor = true, Margin = new Padding(6, 0, 0, 0) };
-        btnClearAll.Click += (s, e) => { foreach (var cb in checkboxMap.Values) cb.Checked = false; };
+        btnClearAll.Click += (s, e) => { foreach (var p in checkboxes) p.Value.Checked = false; };
 
         tools.Controls.Add(btnSelectAll, 0, 0);
         tools.Controls.Add(btnClearAll, 1, 0);
@@ -327,7 +344,7 @@ public class SpecificSelection : Form
         btnAddAll.Click += (s, e) =>
         {
             AddAll = true;
-            SelectedBauteilnummern = checkboxMap.Keys.ToList();
+            SelectedKeys = checkboxes.Select(p => p.Key).ToList();
             Close();
         };
 
@@ -342,7 +359,7 @@ public class SpecificSelection : Form
         btnUseSelection.Click += (s, e) =>
         {
             AddAll = false;
-            SelectedBauteilnummern = checkboxMap.Where(p => p.Value.Checked).Select(p => p.Key).ToList();
+            SelectedKeys = checkboxes.Where(p => p.Value.Checked).Select(p => p.Key).ToList();
             Close();
         };
 

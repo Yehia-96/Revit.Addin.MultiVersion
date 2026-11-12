@@ -62,8 +62,9 @@ namespace Revit.Addin._2024.Services.Planungsdatenbank
         /// <summary>Column headers read from the <c>Parametername</c> row.</summary>
         internal static class Headers
         {
-            // Family identity. Bauteilnummer + Bauteilunternummer together are the unique key;
-            // Bauteilnummer alone is not, because one Bauteil can have several sub-elements.
+            // Family identity. Bauteil_ID (e.g. BT-1101-01) is the unique key and the connection
+            // to Revit, where the modellers enter it on every element. Bauteilnummer and
+            // Bauteilunternummer are read only to keep them out of the parameter list.
             internal const string Bauteilnummer = "Bauteilnummer";
             internal const string Bauteilunternummer = "Bauteilunternummer";
             internal const string BauteilId = "Bauteil_ID";

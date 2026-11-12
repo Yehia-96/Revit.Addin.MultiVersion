@@ -24,7 +24,7 @@ namespace Revit.Addin._2024.Services.Planungsdatenbank
         internal Dictionary<string, ParamMetaData> MaterialParameterDefinitions { get; private set; }
 
         /// <summary>
-        /// Family values: key is <see cref="PlanungsdatenbankParser.FamilyKey(int,int)"/>, value is
+        /// Family values: key is the row's Bauteil_ID (see <see cref="ElementKey"/>), value is
         /// parameter name to value. Only cells carrying a real value are present - skipped cells
         /// are absent rather than empty, so a caller cannot accidentally write a blank over
         /// something the modeller set.
@@ -65,7 +65,7 @@ namespace Revit.Addin._2024.Services.Planungsdatenbank
         internal Dictionary<string, string> MaterialNamesById { get; private set; }
 
         /// <summary>
-        /// Which material each Bauteil gets: <see cref="PlanungsdatenbankParser.FamilyKey(int,int)"/>
+        /// Which material each Bauteil gets: Bauteil_ID
         /// to Materialname. Resolved from the Bauteil's Material-ID, because Revit materials are
         /// named by Materialname - the same convention the old format followed.
         /// </summary>
@@ -117,50 +117,6 @@ namespace Revit.Addin._2024.Services.Planungsdatenbank
     /// </summary>
     internal static class PlanungsdatenbankParser
     {
-        /// <summary>
-        /// The family key, built from the pair that actually identifies a row.
-        /// <para>
-        /// Bauteilnummer alone is not unique - one Bauteil can have several sub-elements - so
-        /// using it alone would let the last row read silently win. Both the reader and whatever
-        /// matches Revit elements must build this key the same way, which is why it lives here
-        /// as one function rather than being formatted at each call site.
-        /// </para>
-        /// </summary>
-        internal static string FamilyKey(int bauteilnummer, int bauteilunternummer)
-        {
-            return bauteilnummer.ToString(System.Globalization.CultureInfo.InvariantCulture) + "-" +
-                   bauteilunternummer.ToString(System.Globalization.CultureInfo.InvariantCulture);
-        }
-
-        /// <summary>
-        /// Reads a data key back into its parts. Accepts both shapes in use:
-        /// <list type="bullet">
-        /// <item><c>"1101"</c> - the Material-Bauteilliste, Bauteilnummer only; <paramref name="hasSubNumber"/> is false.</item>
-        /// <item><c>"1101-1"</c> - this format, built by <see cref="FamilyKey"/>; <paramref name="hasSubNumber"/> is true.</item>
-        /// </list>
-        /// So a consumer can handle whichever workbook is loaded without being told which, and an
-        /// old-format key keeps meaning exactly what it always did.
-        /// </summary>
-        internal static bool TryParseFamilyKey(string key, out int bauteilnummer, out bool hasSubNumber, out int bauteilunternummer)
-        {
-            bauteilnummer = 0;
-            bauteilunternummer = 0;
-            hasSubNumber = false;
-            if (string.IsNullOrWhiteSpace(key)) return false;
-
-            string trimmed = key.Trim();
-            int dash = trimmed.IndexOf('-');
-            if (dash < 0)
-                return int.TryParse(trimmed, System.Globalization.NumberStyles.Integer,
-                    System.Globalization.CultureInfo.InvariantCulture, out bauteilnummer);
-
-            hasSubNumber = true;
-            return int.TryParse(trimmed.Substring(0, dash), System.Globalization.NumberStyles.Integer,
-                       System.Globalization.CultureInfo.InvariantCulture, out bauteilnummer)
-                && int.TryParse(trimmed.Substring(dash + 1), System.Globalization.NumberStyles.Integer,
-                       System.Globalization.CultureInfo.InvariantCulture, out bauteilunternummer);
-        }
-
         /// <summary>
         /// Qualifies a column name with the Parameterset it belongs to, for the columns whose
         /// short name is not unique within a sheet.
@@ -237,6 +193,16 @@ namespace Revit.Addin._2024.Services.Planungsdatenbank
                     return candidate.Value;
             }
             throw new InvalidDataException("Sheet \"" + sheet.SheetName + "\" has no \"" + header + "\" column.");
+        }
+
+        /// <summary>True when any parameter column of the row holds something.</summary>
+        private static bool RowHasAnyValue(SheetGrid sheet, int row, List<Column> columns)
+        {
+            foreach (Column column in columns)
+            {
+                if (sheet.Text(row, column.Index).Length > 0) return true;
+            }
+            return false;
         }
 
         /// <summary>As <see cref="FindColumn"/>, for a column the read can do without: 0 when absent.</summary>
@@ -371,16 +337,22 @@ namespace Revit.Addin._2024.Services.Planungsdatenbank
             SheetGrid sheet = SheetGrid.Open(workbook, PlanungsdatenbankLayout.Sheets.Objects);
             int nameRow = sheet.RequireLabelRow(PlanungsdatenbankLayout.Labels.ParameterName);
 
-            int bnColumn = FindColumn(sheet, nameRow, PlanungsdatenbankLayout.Headers.Bauteilnummer);
-            int bunColumn = FindColumn(sheet, nameRow, PlanungsdatenbankLayout.Headers.Bauteilunternummer);
+            // Bauteil_ID is the connection: the modellers enter the same value on the element in
+            // Revit, and that is what the element is matched by. See ElementKey.
+            int idColumn = FindColumn(sheet, nameRow, PlanungsdatenbankLayout.Headers.BauteilId);
 
             // Optional: without it, families still read fine and simply get no material assigned.
             int materialIdColumn = TryFindColumn(sheet, nameRow, PlanungsdatenbankLayout.Headers.MaterialId);
 
-            // The key columns identify a row; they are not parameters to push into Revit.
+            // Identity columns are not parameters to push into Revit. Bauteil_ID is typed in by
+            // hand and must not be overwritten; Bauteilnummer and Bauteilunternummer stay out as
+            // they always were - families carry Bauteilnummer as their own integer parameter.
             var identity = new HashSet<int>();
-            identity.Add(bnColumn);
-            identity.Add(bunColumn);
+            identity.Add(idColumn);
+            int bnColumn = TryFindColumn(sheet, nameRow, PlanungsdatenbankLayout.Headers.Bauteilnummer);
+            int bunColumn = TryFindColumn(sheet, nameRow, PlanungsdatenbankLayout.Headers.Bauteilunternummer);
+            if (bnColumn > 0) identity.Add(bnColumn);
+            if (bunColumn > 0) identity.Add(bunColumn);
 
             List<Column> columns = PrepareColumns(
                 sheet, PlanungsdatenbankLayout.Sheets.Objects, identity,
@@ -397,27 +369,36 @@ namespace Revit.Addin._2024.Services.Planungsdatenbank
             int rowsRead = 0, rowsSkipped = 0;
             for (int row = firstDataRow; row <= sheet.LastRow; row++)
             {
-                string bnText = sheet.Text(row, bnColumn);
-                string bunText = sheet.Text(row, bunColumn);
-                if (bnText.Length == 0 && bunText.Length == 0) continue;
-
-                int bn, bun;
-                if (!SheetGrid.TryInt(bnText, out bn))
+                string idText = sheet.Text(row, idColumn);
+                if (idText.Length == 0)
                 {
-                    rowsSkipped++;
-                    result.Problems.Add("Row " + row + ": \"" + PlanungsdatenbankLayout.Headers.Bauteilnummer +
-                        "\" is \"" + bnText + "\", which is not a whole number. Row skipped.");
+                    // A row with nothing in it is just the end of the data. A row with values
+                    // but no Bauteil_ID cannot be connected to anything - say so.
+                    if (RowHasAnyValue(sheet, row, columns))
+                    {
+                        rowsSkipped++;
+                        result.Problems.Add("Row " + row + ": no " + PlanungsdatenbankLayout.Headers.BauteilId +
+                            ", so it cannot be matched to an element. Row skipped.");
+                    }
                     continue;
                 }
-                // A missing sub-number is normal and means 0, not an error.
-                if (!SheetGrid.TryInt(bunText, out bun)) bun = 0;
 
-                string key = FamilyKey(bn, bun);
+                string key = PlanungsdatenbankLayout.IsSkipped(idText)
+                    ? null
+                    : ElementKey.Normalise(idText, ExcelFormat.Planungsdatenbank);
+                if (key == null)
+                {
+                    rowsSkipped++;
+                    result.Problems.Add("Row " + row + ": " + PlanungsdatenbankLayout.Headers.BauteilId +
+                        " is \"" + idText + "\", which is a placeholder, not an ID. Row skipped.");
+                    continue;
+                }
+
                 if (result.FamilyData.ContainsKey(key))
                 {
-                    result.Problems.Add("Row " + row + ": " + PlanungsdatenbankLayout.Headers.Bauteilnummer +
-                        " " + bn + " / " + PlanungsdatenbankLayout.Headers.Bauteilunternummer + " " + bun +
-                        " appears more than once. Only the first was kept.");
+                    rowsSkipped++;
+                    result.Problems.Add("Row " + row + ": " + PlanungsdatenbankLayout.Headers.BauteilId +
+                        " " + key + " appears more than once. Only the first was kept.");
                     continue;
                 }
 

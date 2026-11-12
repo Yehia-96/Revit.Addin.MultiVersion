@@ -6,8 +6,11 @@ using ClosedXML.Excel;
 
 namespace Revit.Addin._2027.Services.Planungsdatenbank
 {
-    /// <summary>Which workbook layout a file uses.</summary>
-    internal enum ExcelFormat
+    /// <summary>
+    /// Which workbook layout a file uses. Public because the public element applier takes it to
+    /// decide how elements are matched.
+    /// </summary>
+    public enum ExcelFormat
     {
         /// <summary>Could not be determined - the caller should say so rather than guess.</summary>
         Unknown = 0,

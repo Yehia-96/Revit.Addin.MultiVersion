@@ -23,21 +23,14 @@ namespace Revit.Addin._2026.Services.Planungsdatenbank
     /// </summary>
     internal static class WorkbookLoader
     {
-        /// <summary>Format of the workbook currently loaded. <see cref="ExcelFormat.Unknown"/> until something loads.</summary>
+        /// <summary>
+        /// Format of the workbook currently loaded. <see cref="ExcelFormat.Unknown"/> until something
+        /// loads. Also decides how elements are matched - pass it to <see cref="ElementKey"/>.
+        /// </summary>
         internal static ExcelFormat LoadedFormat { get; private set; }
 
         /// <summary>Path of the workbook currently loaded, or null.</summary>
         internal static string LoadedPath { get; private set; }
-
-        /// <summary>
-        /// True when data is keyed on Bauteilnummer + Bauteilunternummer rather than Bauteilnummer
-        /// alone. Callers pass this to <c>AddParametersToElements</c>, so the matcher always uses
-        /// the scheme the loaded data was built with.
-        /// </summary>
-        internal static bool KeysIncludeSubNumber
-        {
-            get { return LoadedFormat == ExcelFormat.Planungsdatenbank; }
-        }
 
         /// <summary>Problems from the last load. Always empty for the old format, which reports nothing.</summary>
         internal static List<string> Problems { get; private set; }

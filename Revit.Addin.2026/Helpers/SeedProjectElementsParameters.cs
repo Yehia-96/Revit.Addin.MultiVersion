@@ -1,6 +1,7 @@
 ﻿using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using Revit.Addin._2026.Services;
+using Revit.Addin._2026.Services.Planungsdatenbank;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -14,58 +15,31 @@ namespace Revit.Addin._2026.Helpers
     {
         private static readonly HashSet<string> WarnedInPlaceFamilies = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         /// <summary>
-        /// Builds the key used to look an element up in the incoming data.
-        /// <para>
-        /// The Material-Bauteilliste keys on Bauteilnummer alone. The Planungsdatenbank splits
-        /// identity into Bauteilnummer plus Bauteilunternummer, because one Bauteil can have
-        /// several sub-elements - keying on the number alone there would let the last row read
-        /// silently win. Which scheme applies is decided by the caller, not guessed here.
-        /// </para>
-        /// <para>
-        /// The paired key is built by <see cref="Services.Planungsdatenbank.PlanungsdatenbankParser.FamilyKey"/>,
-        /// the same function the reader uses, so the two sides cannot drift apart.
-        /// </para>
-        /// </summary>
-        private static string DataKey(Element element, bool includeSubNumber)
-        {
-            Parameter bnParam = element.LookupParameter("Bauteilnummer");
-            if (bnParam == null) return null;
-            int bn = bnParam.AsInteger();
-
-            if (!includeSubNumber)
-                return bn.ToString(System.Globalization.CultureInfo.InvariantCulture);
-
-            // A family that predates the sub-number carries no such parameter. Treat that as 0
-            // rather than refusing the element, which matches a blank Bauteilunternummer cell.
-            Parameter bunParam = element.LookupParameter("Bauteilunternummer");
-            int bun = bunParam == null ? 0 : bunParam.AsInteger();
-            return Services.Planungsdatenbank.PlanungsdatenbankParser.FamilyKey(bn, bun);
-        }
-
-        /// <summary>
         /// Ensures required shared instance parameters exist in families, then populates instance values.
         /// Rule: Write value if parameter is EMPTY OR DIFFERENT from incoming value.
         /// </summary>
-        /// <param name="keyIncludesSubNumber">
-        /// False keys <paramref name="familyData"/> on Bauteilnummer alone, which is what the
-        /// Material-Bauteilliste format needs and what has always happened. True also reads
-        /// Bauteilunternummer and keys on the pair, for the Planungsdatenbank format. Defaulted
-        /// so every existing call keeps its exact behaviour.
+        /// <param name="selectedKeys">
+        /// The rows to apply, as keys of <paramref name="familyData"/>: Bauteilnummern for the
+        /// Material-Bauteilliste, Bauteil-IDs for the Planungsdatenbank.
+        /// </param>
+        /// <param name="keyFormat">
+        /// Which identifier connects an element to its row - see <see cref="ElementKey"/>. Defaults
+        /// to the Material-Bauteilliste, matching on Bauteilnummer as this always has.
         /// </param>
         public static Tuple<int, int> AddParametersToElements(
             Document projectDoc,
             Dictionary<string, ParamMetaData> parameterMeta,
             Dictionary<string, Dictionary<string, string>> familyData,
             RevitApp app,
-            List<int> selectedBauteilnummer,
+            List<string> selectedKeys,
             string sharedParameterFilePath,
-            bool keyIncludesSubNumber = false)
+            ExcelFormat keyFormat = ExcelFormat.Bauteilliste)
         {
             if (projectDoc == null) throw new ArgumentNullException(nameof(projectDoc));
             if (parameterMeta == null) throw new ArgumentNullException(nameof(parameterMeta));
             if (familyData == null) throw new ArgumentNullException(nameof(familyData));
             if (app == null) throw new ArgumentNullException(nameof(app));
-            if (selectedBauteilnummer == null) throw new ArgumentNullException(nameof(selectedBauteilnummer));
+            if (selectedKeys == null) throw new ArgumentNullException(nameof(selectedKeys));
             if (string.IsNullOrWhiteSpace(sharedParameterFilePath)) throw new ArgumentException("Shared parameter file path is empty.", nameof(sharedParameterFilePath));
 
             // Open shared parameter file
@@ -84,14 +58,16 @@ namespace Revit.Addin._2026.Helpers
             int parametersAdded = 0;
             int valuesWritten = 0;
 
-            // Collect relevant elements (selected Bauteilnummer only)
-            var selectedSet = new HashSet<int>(selectedBauteilnummer);
+            // Collect relevant elements (selected keys only), read the same way the data was keyed
+            var selectedSet = new HashSet<string>(
+                selectedKeys.Select(k => ElementKey.Normalise(k, keyFormat)).Where(k => k != null),
+                ElementKey.KeyComparer);
             List<Element> matchingElements = new FilteredElementCollector(projectDoc)
                 .WhereElementIsNotElementType()
                 .Where(elem =>
                 {
-                    Parameter bnParam = elem.LookupParameter("Bauteilnummer");
-                    return bnParam != null && bnParam.HasValue && selectedSet.Contains(bnParam.AsInteger());
+                    string key = ElementKey.Read(elem, keyFormat);
+                    return key != null && selectedSet.Contains(key);
                 })
                 .ToList();
 
@@ -114,7 +90,7 @@ namespace Revit.Addin._2026.Helpers
 
             foreach (FamilyInstance fi in familyInstances)
             {
-                string bnKey = DataKey(fi, keyIncludesSubNumber);
+                string bnKey = ElementKey.Read(fi, keyFormat);
                 if (bnKey == null) continue;
 
                 if (!familyData.TryGetValue(bnKey, out var expectedParams))
@@ -173,7 +149,7 @@ namespace Revit.Addin._2026.Helpers
 
             foreach (Element elem in otherElements)
             {
-                string bnKey = DataKey(elem, keyIncludesSubNumber);
+                string bnKey = ElementKey.Read(elem, keyFormat);
                 if (bnKey == null) continue;
 
                 if (!familyData.TryGetValue(bnKey, out var expectedParams))
@@ -224,7 +200,7 @@ namespace Revit.Addin._2026.Helpers
 
             foreach (FamilyInstance fi in familyInstances)
             {
-                string bnKey = DataKey(fi, keyIncludesSubNumber);
+                string bnKey = ElementKey.Read(fi, keyFormat);
                 if (bnKey == null) continue;
 
                 if (!familyData.TryGetValue(bnKey, out var expectedParams))
@@ -258,7 +234,7 @@ namespace Revit.Addin._2026.Helpers
 
             foreach (Element elem in otherElements)
             {
-                string bnKey = DataKey(elem, keyIncludesSubNumber);
+                string bnKey = ElementKey.Read(elem, keyFormat);
                 if (bnKey == null) continue;
 
                 if (!familyData.TryGetValue(bnKey, out var expectedParams))

@@ -438,6 +438,7 @@
     <Compile Include="Services\FamilyUpdate\IFamilyFileStep.cs" />
     <Compile Include="Services\FamilyUpdate\Steps\UpgradeFamilyVersionStep.cs" />
     <Compile Include="Services\ExcelParseResult.cs" />
+    <Compile Include="Services\Planungsdatenbank\ElementKey.cs" />
     <Compile Include="Services\Planungsdatenbank\WorkbookLoader.cs" />
     <Compile Include="Services\Planungsdatenbank\PlanungsdatenbankLayout.cs" />
     <Compile Include="Services\Planungsdatenbank\SheetGrid.cs" />

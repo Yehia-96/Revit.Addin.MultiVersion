@@ -40,16 +40,23 @@ namespace Revit.Addin._2024.Services
         {
             var report = new ImportReport();
             var materialDict = FetchMaterials(doc); // Dictionary<string, Material>
-            const string BAUTEILNUMMER = "Bauteilnummer";
 
             if (doc == null || materialDict == null || materialDict.Count == 0)
                 return report;
 
-            var allInstances = new FilteredElementCollector(doc)
+            // Keys are Bauteilnummern for the Material-Bauteilliste and Bauteil-IDs for the
+            // Planungsdatenbank. Each element is read once, the same way the parameter applier
+            // reads it, and grouped by its key.
+            var keyFormat = Planungsdatenbank.WorkbookLoader.LoadedFormat;
+            string keyLabel = Planungsdatenbank.ElementKey.Label(keyFormat);
+            var instancesByKey = new FilteredElementCollector(doc)
                 .WhereElementIsNotElementType()
                 .OfClass(typeof(FamilyInstance))
                 .Cast<FamilyInstance>()
-                .ToList();
+                .Select(fi => new { Instance = fi, Key = Planungsdatenbank.ElementKey.Read(fi, keyFormat) })
+                .Where(x => x.Key != null)
+                .GroupBy(x => x.Key, x => x.Instance, Planungsdatenbank.ElementKey.KeyComparer)
+                .ToDictionary(g => g.Key, g => g.ToList(), Planungsdatenbank.ElementKey.KeyComparer);
 
             using (Transaction t = new Transaction(doc, "Assign materials to elements"))
             {
@@ -57,43 +64,27 @@ namespace Revit.Addin._2024.Services
 
                 foreach (var kvp in materialDict)
                 {
-                    // Keys come in two shapes: "1101" from the Material-Bauteilliste, and
-                    // "1101-1" (Bauteilnummer + Bauteilunternummer) from the Planungsdatenbank.
-                    // int.Parse would throw on the second, so both go through the one parser
-                    // that also builds them. A plain key matches exactly as it always did.
-                    int btNum, subNum;
-                    bool hasSubNumber;
-                    if (!Planungsdatenbank.PlanungsdatenbankParser.TryParseFamilyKey(kvp.Key, out btNum, out hasSubNumber, out subNum))
+                    string key = Planungsdatenbank.ElementKey.Normalise(kvp.Key, keyFormat);
+                    if (key == null)
                     {
-                        report.AddWarn($"'{kvp.Key}' is not a Bauteilnummer; skipped.");
+                        report.AddWarn($"'{kvp.Key}' is not a {keyLabel}; skipped.");
                         continue;
                     }
                     Material mat = kvp.Value;
 
                     if (mat == null)
                     {
-                        report.AddWarn($"No material found in document for Bauteilnummer '{kvp.Key}'.");
+                        report.AddWarn($"No material found in document for {keyLabel} '{kvp.Key}'.");
                         continue;
                     }
 
-                    var elements = allInstances
-                        .Where(fi =>
-                        {
-                            var p = fi.LookupParameter(BAUTEILNUMMER);
-                            var value = p?.AsInteger();
-                            if (!(value.HasValue && value.Value == btNum)) return false;
-                            if (!hasSubNumber) return true;
-
-                            // A family without the sub-number parameter reads as 0, matching a
-                            // blank Bauteilunternummer cell - the same rule the parameter applier uses.
-                            var sub = fi.LookupParameter("Bauteilunternummer");
-                            return (sub == null ? 0 : sub.AsInteger()) == subNum;
-                        })
-                        .ToList();
+                    List<FamilyInstance> elements;
+                    if (!instancesByKey.TryGetValue(key, out elements))
+                        elements = new List<FamilyInstance>();
 
                     if (elements.Count == 0)
                     {
-                        report.AddWarn($"No elements found with Bauteilnummer '{kvp.Key}' for material '{mat.Name}'.");
+                        report.AddWarn($"No elements found with {keyLabel} '{kvp.Key}' for material '{mat.Name}'.");
                         continue;
                     }
 
@@ -122,11 +113,11 @@ namespace Revit.Addin._2024.Services
                             }
 
                             matParam.Set(mat.Id);
-                            report.AddInfo($"Assigned material '{mat.Name}' to element ID {element.Id} with Bauteilnummer '{kvp.Key}'.");
+                            report.AddInfo($"Assigned material '{mat.Name}' to element ID {element.Id} with {keyLabel} '{kvp.Key}'.");
                         }
                         catch (Exception ex)
                         {
-                            report.AddError($"Error assigning material '{mat.Name}' to element ID {element.Id} with Bauteilnummer '{btNum}': {ex.Message}");
+                            report.AddError($"Error assigning material '{mat.Name}' to element ID {element.Id} with {keyLabel} '{key}': {ex.Message}");
                         }
                     }
                 }

@@ -87,27 +87,28 @@ namespace Revit.Addin._2024.Commands
                     _firstRun = false;
                 }
 
-                // The menu's selection list is by Bauteilnummer. Planungsdatenbank keys carry the
-                // sub-number too ("1101-1"), so read the number out of either shape; several
-                // sub-elements of one Bauteil show as that Bauteil once.
-                var selectedBauteilnummer = new List<int>();
-                var seen = new HashSet<int>();
+                // The menu's selection list is by whatever connects the loaded workbook to the
+                // model: Bauteilnummer for the Material-Bauteilliste, Bauteil-ID for the
+                // Planungsdatenbank. Keys are normalised the way elements are read (ElementKey).
+                ExcelFormat keyFormat = WorkbookLoader.LoadedFormat;
+                var selectableKeys = new List<string>();
+                var seen = new HashSet<string>(ElementKey.KeyComparer);
 
-                foreach (var key in ExcelParser.FamilyData.Keys)
+                foreach (var raw in ExcelParser.FamilyData.Keys)
                 {
-                    int bn, sub;
-                    bool hasSub;
-                    if (PlanungsdatenbankParser.TryParseFamilyKey(key, out bn, out hasSub, out sub))
+                    string key = ElementKey.Normalise(raw, keyFormat);
+                    if (key != null)
                     {
-                        if (seen.Add(bn)) selectedBauteilnummer.Add(bn);
+                        if (seen.Add(key)) selectableKeys.Add(key);
                     }
                     else
                         System.Diagnostics.Debug.WriteLine(
-                            $"[WARN] Non-numeric Bauteilnummer key in FamilyData: '{key}'");
+                            $"[WARN] Unusable {ElementKey.Label(keyFormat)} key in FamilyData: '{raw}'");
                 }
+                selectableKeys.Sort(ElementKey.NaturalOrder);
 
                 // Create the UI object to show the main menu dialog
-                AutoParameterUI ui = new AutoParameterUI(selectedBauteilnummer);
+                AutoParameterUI ui = new AutoParameterUI(selectableKeys, ElementKey.Label(keyFormat));
                 // Flag to track if any work was done
                 bool didWork = false;
                 // Assign the event handlers for the UI buttons - these will be called when the user interacts with the dialog
@@ -147,11 +148,17 @@ namespace Revit.Addin._2024.Commands
                         ExcelParser.ParameterDefinitions,
                         ExcelParser.FamilyData,
                         app,
-                        ui.SpecificSelection.SelectedBauteilnummern,
+                        ui.SpecificSelection.SelectedKeys,
                         _sharedParamPath,
-                        WorkbookLoader.KeysIncludeSubNumber);
+                        keyFormat);
 
-                    TaskDialog.Show("Info", count.Item1 == 0 && count.Item2 == 0 ? "No matching elements found." : $"{count.Item1} parameters applied.\n{count.Item2} values applied");
+                    // With the Planungsdatenbank nothing matches until the modellers have entered
+                    // the Bauteil_ID on the elements, so say where the connection comes from.
+                    string noMatch = keyFormat == ExcelFormat.Planungsdatenbank
+                        ? "No matching elements found.\n\nElements are matched by their \"" + ElementKey.BauteilIdParameter +
+                          "\" parameter, which must hold the same ID as the Excel row (e.g. BT-1101-01)."
+                        : "No matching elements found.";
+                    TaskDialog.Show("Info", count.Item1 == 0 && count.Item2 == 0 ? noMatch : $"{count.Item1} parameters applied.\n{count.Item2} values applied");
                     didWork = count.Item1 > 0 || count.Item2 > 0;
                 };
 
@@ -173,7 +180,7 @@ namespace Revit.Addin._2024.Commands
                     TaskDialog.Show("Info", "UP");
                 };
                 ui.ShowDialog();
-                selectedBauteilnummer.Clear();
+                selectableKeys.Clear();
 
 
                 return didWork ? Result.Succeeded : Result.Cancelled;
