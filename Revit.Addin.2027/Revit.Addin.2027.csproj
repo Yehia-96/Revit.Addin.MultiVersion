@@ -24,6 +24,15 @@
          NuGet cache awareness. Package refs with ExcludeAssets="runtime"
          (like Revit_All_Main_Versions_API_x64) are still excluded. -->
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <!-- Builds for 64-bit Windows only, so packages with per-platform files put the Windows ones
+         straight into the add-in folder. This matters for Microsoft.Data.SqlClient: without it the
+         folder itself gets SqlClient's platform-neutral placeholder, which throws "not supported on
+         this platform", and the real Windows build and its native Microsoft.Data.SqlClient.SNI.dll
+         sit in runtimes\, which only a host that reads our deps.json finds. Flat files also survive
+         "Check for Updates", which copies only the top-level *.dll. Still framework-dependent:
+         Revit supplies .NET. -->
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)'=='Debug'">
@@ -40,10 +49,10 @@
 
   <ItemGroup>
     <None Remove="Icons\ModernIcons\32\AddMaterialParametersRE.png" />
+    <None Remove="Icons\ModernIcons\32\DatabaseIcon.png" />
     <None Remove="Icons\ModernIcons\32\FamilyFileUpdate.png" />
     <None Remove="Icons\ModernIcons\32\HideElementsIcon.png" />
     <None Remove="Icons\ModernIcons\32\ParameterAutomationIcon.png" />
-    <None Remove="Icons\ModernIcons\32\PopulateDbIcon.png" />
     <None Remove="Icons\ModernIcons\32\Tables_Icon.png" />
     <None Remove="Icons\ModernIcons\32\Update_plugin.png" />
   </ItemGroup>
@@ -115,6 +124,11 @@
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
   </ItemGroup>
 
+  <!-- Revit-free code for the MH database link (connection file, queries), shared with tests -->
+  <ItemGroup>
+    <ProjectReference Include="..\MH.RevitTools.Database\MH.RevitTools.Database.csproj" />
+  </ItemGroup>
+
   <!-- WPF resources: embedded into the assembly for pack://application URIs.
        SDK-style projects don't auto-glob PNGs as <Resource>, so every icon must
        be declared explicitly (mirrors the old .NET Framework csproj). -->
@@ -125,6 +139,9 @@
     <Resource Include="Icons\ModernIcons\32\AddMaterialParametersRE.png">
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </Resource>
+    <Resource Include="Icons\ModernIcons\32\DatabaseIcon.png">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Resource>
     <Resource Include="Icons\ModernIcons\32\FamilyFileUpdate.png">
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </Resource>
@@ -132,9 +149,6 @@
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </Resource>
     <Resource Include="Icons\ModernIcons\32\ParameterAutomationIcon.png">
-      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
-    </Resource>
-    <Resource Include="Icons\ModernIcons\32\PopulateDbIcon.png">
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </Resource>
     <Resource Include="Icons\ModernIcons\32\Tables_Icon.png">

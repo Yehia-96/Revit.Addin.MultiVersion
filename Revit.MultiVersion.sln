@@ -9,6 +9,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Revit.Addin.2026", "Revit.A
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Revit.Addin.2027", "Revit.Addin.2027\Revit.Addin.2027.csproj", "{619041BD-54D3-41C6-94F8-5C01C9F43D76}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MH.RevitTools.Database", "MH.RevitTools.Database\MH.RevitTools.Database.csproj", "{3C96F166-2FA5-4CC6-A03A-5518607A08BD}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MH.RevitTools.Database.Tests", "MH.RevitTools.Database.Tests\MH.RevitTools.Database.Tests.csproj", "{BE807F5E-F356-42F4-9A4F-7E377CA71531}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -64,6 +68,30 @@ Global
 		{619041BD-54D3-41C6-94F8-5C01C9F43D76}.Release2027|Any CPU.Build.0 = Release|Any CPU
 		{619041BD-54D3-41C6-94F8-5C01C9F43D76}.ReleaseAll|Any CPU.ActiveCfg = Release|Any CPU
 		{619041BD-54D3-41C6-94F8-5C01C9F43D76}.ReleaseAll|Any CPU.Build.0 = Release|Any CPU
+		{3C96F166-2FA5-4CC6-A03A-5518607A08BD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3C96F166-2FA5-4CC6-A03A-5518607A08BD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3C96F166-2FA5-4CC6-A03A-5518607A08BD}.Debug2022|Any CPU.ActiveCfg = Debug|Any CPU
+		{3C96F166-2FA5-4CC6-A03A-5518607A08BD}.Debug2023|Any CPU.ActiveCfg = Debug|Any CPU
+		{3C96F166-2FA5-4CC6-A03A-5518607A08BD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3C96F166-2FA5-4CC6-A03A-5518607A08BD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3C96F166-2FA5-4CC6-A03A-5518607A08BD}.Release2022|Any CPU.ActiveCfg = Release|Any CPU
+		{3C96F166-2FA5-4CC6-A03A-5518607A08BD}.Release2023|Any CPU.ActiveCfg = Release|Any CPU
+		{3C96F166-2FA5-4CC6-A03A-5518607A08BD}.Release2026|Any CPU.ActiveCfg = Release|Any CPU
+		{3C96F166-2FA5-4CC6-A03A-5518607A08BD}.Release2027|Any CPU.ActiveCfg = Release|Any CPU
+		{3C96F166-2FA5-4CC6-A03A-5518607A08BD}.Release2027|Any CPU.Build.0 = Release|Any CPU
+		{3C96F166-2FA5-4CC6-A03A-5518607A08BD}.ReleaseAll|Any CPU.ActiveCfg = Release|Any CPU
+		{3C96F166-2FA5-4CC6-A03A-5518607A08BD}.ReleaseAll|Any CPU.Build.0 = Release|Any CPU
+		{BE807F5E-F356-42F4-9A4F-7E377CA71531}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BE807F5E-F356-42F4-9A4F-7E377CA71531}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BE807F5E-F356-42F4-9A4F-7E377CA71531}.Debug2022|Any CPU.ActiveCfg = Debug|Any CPU
+		{BE807F5E-F356-42F4-9A4F-7E377CA71531}.Debug2023|Any CPU.ActiveCfg = Debug|Any CPU
+		{BE807F5E-F356-42F4-9A4F-7E377CA71531}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BE807F5E-F356-42F4-9A4F-7E377CA71531}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BE807F5E-F356-42F4-9A4F-7E377CA71531}.Release2022|Any CPU.ActiveCfg = Release|Any CPU
+		{BE807F5E-F356-42F4-9A4F-7E377CA71531}.Release2023|Any CPU.ActiveCfg = Release|Any CPU
+		{BE807F5E-F356-42F4-9A4F-7E377CA71531}.Release2026|Any CPU.ActiveCfg = Release|Any CPU
+		{BE807F5E-F356-42F4-9A4F-7E377CA71531}.Release2027|Any CPU.ActiveCfg = Release|Any CPU
+		{BE807F5E-F356-42F4-9A4F-7E377CA71531}.ReleaseAll|Any CPU.ActiveCfg = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The Revit-free half of the MH database link: the connection file, the queries, and later the
+       change check and the cache of the last pull. No Revit API here, so it builds and is tested
+       without Revit. net10.0 is what Revit.Addin.2027 uses; net48 keeps it usable from 2024 later
+       and holds the code to the repo's C# 7.3 floor. -->
+  <PropertyGroup>
+    <TargetFrameworks>net48;net10.0</TargetFrameworks>
+    <LangVersion>7.3</LangVersion>
+    <RootNamespace>MH.RevitTools.Database</RootNamespace>
+    <AssemblyName>MH.RevitTools.Database</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="5.2.2" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="MH.RevitTools.Database.Tests" />
+  </ItemGroup>
+
+</Project>

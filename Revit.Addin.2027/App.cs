@@ -26,6 +26,7 @@ namespace Revit.Addin._2027
 
             // ---------------------------------------------------------------
             // Ribbon setup. Panels are grouped by functionality:
+            //   • Database             — the live link from the MH database
             //   • Parameter Automation — seed parameter data into the model
             //   • Tabellen             — generate output tables
             //   • Functionality        — model utilities + plugin maintenance
@@ -34,12 +35,28 @@ namespace Revit.Addin._2027
 
             try { application.CreateRibbonTab(tabName); } catch { }
 
+            var panelDatabase = application.CreateRibbonPanel(tabName, "Database");
             var panelParameters = application.CreateRibbonPanel(tabName, "Parameter Automation");
             var panelTables = application.CreateRibbonPanel(tabName, "Tabellen");
             var panelFunctionality = application.CreateRibbonPanel(tabName, "Functionality");
 
             string assemblyPath = Assembly.GetExecutingAssembly().Location;
             string assemblyName = Assembly.GetExecutingAssembly().GetName().Name;
+
+            // ---- Database -------------------------------------------------
+            // For now one button that checks the connection; later it opens the MH Database pane.
+            var btnTestConnection = new PushButtonData(
+                "TestDatabaseConnection",
+                "Test\nconnection",
+                assemblyPath,
+                "Revit.Addin._2027.Commands.TestConnectionCommand")
+            {
+                ToolTip = "Checks that Revit can reach the MH database with this PC's connection file.",
+                AvailabilityClassName = "Revit.Addin._2027.Commands.AvailableWithoutModel",
+                Image = LoadIcon(assemblyName, 32, "DatabaseIcon.png"),
+                LargeImage = LoadIcon(assemblyName, 32, "DatabaseIcon.png"),
+            };
+            panelDatabase.AddItem(btnTestConnection);
 
             // ---- Parameter Automation -------------------------------------
             var btnAddParams = new PushButtonData(
@@ -67,18 +84,6 @@ namespace Revit.Addin._2027
                 LargeImage = LoadIcon(assemblyName, 32, "AddMaterialParametersRE.png"),
             };
             panelParameters.AddItem(btnMaterial);
-
-            var btnPopulateDb = new PushButtonData(
-                "PopulateDB",
-                "Populate DB\nParameters",
-                assemblyPath,
-                "Revit.Addin._2027.Commands.PopulateFromDbCommand")
-            {
-                ToolTip = "Füllt Elementparameter aus der MH-Datenbank (Auswahl nach Projekt).",
-                Image = LoadIcon(assemblyName, 32, "PopulateDbIcon.png"),
-                LargeImage = LoadIcon(assemblyName, 32, "PopulateDbIcon.png"),
-            };
-            panelParameters.AddItem(btnPopulateDb);
 
             // ---- Tabellen -------------------------------------------------
             var btnTable = new PushButtonData(
