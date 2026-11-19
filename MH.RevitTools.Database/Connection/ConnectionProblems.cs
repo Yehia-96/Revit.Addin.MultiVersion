@@ -51,6 +51,9 @@ namespace MH.RevitTools.Database.Connection
                 case 4060:
                     return "The database \"" + settings.Database + "\" doesn't exist on " + settings.Server
                         + ", or the login can't open it.";
+                case 207:    // invalid column name
+                case 208:    // invalid object name
+                    return "The database's revit views are missing or don't match this add-in (" + FirstLine(message) + ").";
                 case -1:     // generic network error
                 case 2:      // server not found or not accessible
                 case 26:     // error locating server/instance

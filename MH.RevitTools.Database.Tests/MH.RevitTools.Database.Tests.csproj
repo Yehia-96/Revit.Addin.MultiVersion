@@ -20,4 +20,9 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <!-- SQL scripts the LocalDB tests run in their throwaway databases -->
+  <ItemGroup>
+    <None Update="Link\*.sql" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

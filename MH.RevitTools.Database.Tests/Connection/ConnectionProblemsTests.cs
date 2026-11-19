@@ -130,6 +130,17 @@ public sealed class ConnectionProblemsTests
         Assert.StartsWith("The server's certificate isn't trusted", text);
     }
 
+    [Theory]
+    [InlineData(208, "Invalid object name 'revit.Projects'.")]
+    [InlineData(207, "Invalid column name 'RevitName'.")]
+    public void SqlError_MissingViewOrColumn_SaysTheViewsDontMatch(int number, string message)
+    {
+        string text = ConnectionProblems.DescribeSqlError(number, message, SqlLogin, 5);
+
+        Assert.Contains(message.TrimEnd('.'), text);
+        Assert.Contains("revit views are missing or don't match", text);
+    }
+
     [Fact]
     public void SqlError_Unknown_QuotesTheServer()
     {

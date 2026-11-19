@@ -1,7 +1,10 @@
 # Database link: MH database → Revit 2027
 
-**Status (2026-11-19):** step 1 is done: Yehia walked it and Test connection connected in Revit 2027.
-Step 2 starts when Yehia says go. Nothing committed.
+**Status (2026-11-19):** step 1 is done and committed on the branch `database-link` (pushed; master is
+untouched). Step 2 is built and committed there too: the add-in reads `revit` views, whose ready SQL
+(`RevitViews.sql`) builds the IDs like Studio and takes the change stamp from the history. Yehia is
+passing "Needs from the database" to the database session; step 3 starts once the views exist in dev
+MH_Database.
 
 The live link from the MH database into Revit, inside the "Parameter Tools" add-in (MH.RevitTools),
 in `Revit.Addin.2027` only. It only reads from the database. This file holds the plan, the status, and
@@ -39,6 +42,17 @@ after it are listed next.
   carries Bauteil_IDs yet. Yehia adds a few before step 6.
 - **Test packages approved:** xunit 2.9.2, xunit.runner.visualstudio 2.8.2, Microsoft.NET.Test.Sdk
   17.11.1 (the same as Database.Data.Tests).
+- **Testing against the local MH_Database is fine** (Yehia, with step 2). The tests only read it.
+- **The link work lives on the branch `database-link`** until Yehia merges it. Master stays releasable.
+- **`revit` views after all** (Yehia, step 2). He first ruled them out, then asked for them on my
+  recommendation, so that Studio can change its tables without breaking Revit and the shared login sees
+  only what Revit needs. The add-in team (this session) writes the view SQL (`RevitViews.sql`, tested
+  here); the database session puts it into MH_Database through a Studio migration.
+- **Bauteil-ID and Material-ID are built at lookup** the way Studio builds them, never read from a
+  stored copy (Yehia, step 2).
+- **Studio's change history (AuditLogs) drives the change check** and says who changed a value and when
+  (Yehia suggested it in step 2).
+- **Duplicate Bauteil-IDs stay as they are** until Yehia gives the fix (a new Bauteilunternummer).
 
 ## The connection file
 
@@ -70,7 +84,9 @@ On Yehia's PC for development (LocalDB, Windows sign-in, no password):
 ```
 
 - `encrypt` and `trustServerCertificate` are whatever CADSQL needs, the same as Studio uses (asked for
-  under "Needs from the database").
+  under "Needs from the database"). `"trustServerCertificate": true` means the server's certificate
+  isn't checked, which puts the shared password at risk on the network. A certificate the PCs trust
+  avoids that.
 - This file doesn't hold anyone's own settings:
   - how often to check and auto-apply: `%APPDATA%\MH\RevitTools\settings.json`
   - the last pull: `%LOCALAPPDATA%\MH\RevitTools\`
@@ -80,7 +96,7 @@ On Yehia's PC for development (LocalDB, Windows sign-in, no password):
 
 - **`MH.RevitTools.Database`** (new, no Revit). It holds:
   - the connection file
-  - the `revit` queries and the change check
+  - the reads of the `revit` views and the change check
   - the cache of the last pull
   - the project-number rule
   - the Studio password hashing
@@ -88,8 +104,11 @@ On Yehia's PC for development (LocalDB, Windows sign-in, no password):
   It targets net48 and net10.0, so 2024 and 2028 only need to add a reference. It uses only packages
   already in the repo (Microsoft.Data.SqlClient 5.2.2, Newtonsoft.Json 13.0.3). All database access
   goes through one interface, with the real SQL version and a fake.
-- **`MH.RevitTools.Database.Tests`** (new): xUnit. The query tests create their own throwaway LocalDB
-  database and drop it afterwards, never MH_Database.
+- **`MH.RevitTools.Database.Tests`** (new): xUnit. It also holds the views' SQL, `Link/RevitViews.sql`,
+  the one copy that's handed over. The query tests build those views in throwaway LocalDB databases of
+  their own, dropped afterwards:
+  - over stand-in tables with known rows (`Category=LocalDB`);
+  - over dev MH_Database through synonyms (`Category=LocalMhDatabase`). These only read it.
 - **`Revit.Addin.2027`**: the Database panel, the pane and the dialogs (WPF, in the mockup's look). It
   turns database rows into the same `PlanungsdatenbankParseResult` the Excel reader produces, and applies
   values through an ExternalEvent.
@@ -155,8 +174,31 @@ after Yehia has walked it.
 
 ### 2. The contract and the data layer
 - "Needs from the database" (below) is finished, so the database session can start on it.
-- The SQL version of the interface is written against that contract and tested against a throwaway
-  LocalDB database that mimics the views. Revit uses the fake until the real views exist.
+- The data layer reads the `revit` views. Their SQL is written and tested here, and handed over as
+  `RevitViews.sql`.
+- **Built on 2026-11-19, in three rounds:** draft views, then direct queries (Yehia's first answer), then
+  views again (his final choice).
+  - `RevitViews.sql`:
+    - builds Bauteil-IDs and Material-IDs like Studio;
+    - maps RevitCategory to Revit's category names;
+    - takes the change stamp (history row count plus newest id) and who/when from AuditLogs, never
+      its Changes column.
+  - `ILinkDatabase` in `MH.RevitTools.Database`:
+    - `SqlLinkDatabase` reads only the views.
+    - Each project is read in one batch, with the stamp read first and last. If the stamp moved, or SQL
+      Server picked the read as a deadlock victim, it reads again (up to 3 times).
+    - `FakeLinkDatabase` is an in-memory version for tests of what comes next.
+  - 106 tests pass:
+    - the views over stand-in tables, and over 1761 Ulm in the local MH_Database;
+    - the views as a user who has only the `revit` grant;
+    - the script run twice.
+  - Three reviews (C#, security, then the table version). Their points are in:
+    - the views: commit-order-safe stamp, index-friendly history lookup, empty codes as in Studio, UTC
+      times;
+    - the request: the schema-only grant, the certificate, the sign-in lockout, and auditing material
+      categories and groups.
+- Revit reads the views from step 3 on, once they exist in dev MH_Database. Until the dictionary has
+  them, the GUIDs are empty and Revit shows the plain names.
 - **Walk:** read "Needs from the database" and pass it on. Nothing to click in Revit.
 
 ### 3. Link the model to its project
@@ -169,7 +211,8 @@ after Yehia has walked it.
 - Lists the database's parameters for the model's categories as Ready, Missing or Other GUID. "Add
   missing" binds them to the categories from the master shared parameter file. Families aren't reloaded
   and values aren't touched.
-- Until Studio exports the real master file, a small test file that matches the fake stands in.
+- Until Studio exports the real master file, a small test file that matches dev MH_Database's
+  dictionary stands in.
 - **Walk:** Check parameters shows 3 missing → Add → they appear on a Generic Model with their plain
   names.
 
@@ -181,7 +224,8 @@ after Yehia has walked it.
   the pane shows when it was taken.
 - **Walk:**
   1. Open the linked model: the pane says "Up to date · checked 14:32".
-  2. Change a value in the fake: within a minute it shows "1 change from the database".
+  2. Change a value of project 1761 in Studio: within a minute it shows "1 change from the database",
+     with your name and the time.
   3. Rename the connection file: it shows "Not reachable · last answer 14:32".
 
   Revit stays responsive the whole time.
@@ -198,8 +242,7 @@ after Yehia has walked it.
 ### 7. Excel and database give the same result (the acceptance)
 - A temporary **Compare with Excel** button. It loads Planungsdatenbank.xlsx and project 1761 from the
   database and lists every difference: objects, parameters, values after unit conversion, and materials.
-- It needs the real views with 1761's data in dev MH_Database, so it waits for the database session. It
-  can move earlier as soon as they exist.
+- It reads 1761 through the views, so it can move earlier as soon as they exist in dev MH_Database.
 - **Walk:** Compare → pick Planungsdatenbank.xlsx → "Identical", or the list of differences.
 
 ### 8. Sign in with your Studio account
@@ -239,8 +282,8 @@ mockup (https://claude.ai/artifact/BUxmo897HJTFcEt43wpcen) stays as it was.
 - **Check parameters, "Replace…" on Other GUID:** Revit can't change a parameter's GUID. Replacing
   means deleting the old parameter, and that deletes its values in every element. With fresh GUIDs and
   no existing models, I'd show "Other GUID" without a Replace button for now.
-- **Who and when on each change** ("M. Keller · 14:28"): shown only if the database provides it (asked
-  for below).
+- **Who and when on each change** ("M. Keller · 14:28"): from Studio's change history, as the history
+  names the person.
 - **Docking:** the pane opens on the right the first time. After that Revit remembers where the user put
   it. Revit only allows a pane to be registered at startup, so the Database button shows and hides it.
 - **Master shared parameter file:** Revit only opens the shared parameter file set in its options. The
@@ -249,53 +292,141 @@ mockup (https://claude.ai/artifact/BUxmo897HJTFcEt43wpcen) stays as it was.
 
 ## Needs from the database
 
-*Draft. It's final after step 2. Yehia passes it to the database session.*
+*Final version, 2026-11-19: `revit` views, with their SQL written and tested by the add-in session.
+Yehia passes this to the database session.*
 
-**Role and login**
-- A database role (name is your call, e.g. `revit_reader`) with SELECT on schema `revit`, EXECUTE on
-  the two sign-in procedures below, and nothing else. In particular, no access to `dbo.Users`.
-- One SQL login for the add-in, a member of that role. Please use CHECK_EXPIRATION OFF: if this
-  password expired, the link would stop on every PC at once. The password goes only into the connection
-  file.
-- Tell me what Studio uses for Encrypt / TrustServerCertificate on CADSQL. SqlClient 5 encrypts by
-  default.
+**What the link needs, in order**
+1. **Now: the `revit` views.** The SQL is ready in the add-in repo (branch `database-link`):
+   `MH.RevitTools.Database.Tests/Link/RevitViews.sql`. Run it in MH_Database, for example from a Studio
+   migration.
+   - GO isn't T-SQL: give each batch between the GO lines its own `migrationBuilder.Sql` call.
+   - It's safe to run again: the schema is created only if missing, and `CREATE OR ALTER` keeps grants.
+   - The migration's Down drops the seven views, then the schema.
+   - The add-in's tests run this same script on stand-in tables and on dev MH_Database. One test also
+     runs it as a user who has only the `revit` grant, so it works on today's tables and with that
+     grant.
+2. **Now, for step 4 (Check parameters):** a GUID and a Revit name for each parameter in the dictionary.
+   - Then replace the two placeholder lines in `revit.Parameters` with the real columns.
+   - The Revit name is the plain name, with a suffix where plain names clash on one category.
+   - Studio writes the master shared parameter file from them, in one go (to a temporary file, then
+     rename), so the add-in never reads half a file. Tell me its path on the share.
+3. **Later, step 8:** the two sign-in procedures (below).
+4. **Later, step 9:** the read-only login (below).
 
-**Views in schema `revit`**
+Step 3 (linking a model to its project) needs only `revit.Projects`. It can start once the views exist
+in dev MH_Database.
+
+**The views.** The add-in reads exactly these columns, by name. Their order doesn't matter and extra
+columns are ignored. Keep the views in step with Studio: when a migration changes a table they read,
+update the view in the same migration. The add-in only notices if a view's own columns change.
+
+A migration that renames or drops a column a view reads still succeeds, and only Revit would find out,
+on every PC. Add a Studio test that selects from each view after migrating, so it fails in Studio
+first. Making the views SCHEMABINDING would do the same job more bluntly.
 
 | View | One row is | Columns |
 |---|---|---|
-| `revit.Projects` | one project | ProjectId int (stable; saved in the model), ProjectNumber int, ProjectSubNumber int, Name nvarchar |
-| `revit.Parameters` | one dictionary parameter that can go to Revit | ParameterId int, Guid uniqueidentifier (the master file's GUID), RevitName nvarchar (settled, with suffix), SetCode, GroupCode, Name (the lookup key, e.g. BAU / GEO / Dicke), DataType nvarchar (String/Integer/Double/Boolean/Date/Url/Coordinates), Unit nvarchar (spelled like the Excel's Einheit: m, cm, mm, m2, m3, grad, or empty), Target (Object or Material) |
-| `revit.ParameterCategories` | one parameter on one Revit category | ParameterId int, Category nvarchar as Revit's BuiltInCategory name (OST_GenericModel, OST_Materials…), so it doesn't depend on Revit's language. If the dictionary only knows "element"/"material", tell me and we'll agree on a fixed list. |
-| `revit.ObjectValues` | one value of one parameter on one object (Bauteil) in one project | ProjectId int, BauteilId nvarchar (e.g. BT-1101-01), ParameterId int, Value nvarchar, ChangedAt datetime2 (optional), ChangedBy nvarchar display name (optional) |
-| `revit.Materials` | one material in one project | ProjectId int, MaterialId nvarchar (e.g. MB-1761-01-BET-0011), MaterialName, MaterialGroup, SurfacePatternId, CutPatternId |
-| `revit.MaterialValues` | one value of one parameter on one material | ProjectId int, MaterialId nvarchar, ParameterId int, Value nvarchar, ChangedAt, ChangedBy (optional) |
-| `revit.ProjectStamps` | one project | ProjectId int, Stamp binary(8) or bigint |
+| `revit.Projects` | one project | ProjectId, ProjectNumber, ProjectSubNumber, Name |
+| `revit.Parameters` | one dictionary parameter that goes to Revit (one that has a RevitCategory) | ParameterId, Guid (NULL until the dictionary has it), RevitName, SetCode, GroupCode, Name, DataType, Unit (NULL for none), Target (Object or Material) |
+| `revit.ParameterCategories` | one parameter on one Revit category | ParameterId, Category (Revit's BuiltInCategory name, e.g. OST_GenericModel) |
+| `revit.ObjectValues` | one value on one object of a project | ProjectId, BauteilId, ParameterId, Value, ChangedAtUtc, ChangedBy |
+| `revit.Materials` | one material of a project | ProjectId, MaterialId, MaterialName, MaterialGroupCode, MaterialGroup, SurfacePattern, CutPattern |
+| `revit.MaterialValues` | one value on one material | ProjectId, MaterialId, ParameterId, Value, ChangedAtUtc, ChangedBy |
+| `revit.ProjectStamps` | one project | ProjectId, Stamp (bigint) |
 
-- **Values:**
-  - Numbers use the invariant format with a dot ("0.3"), no thousands separator, in the parameter's Unit.
-  - Placeholders ([Modeller], [ET], -, TBT) come through as stored. The add-in skips them and lists
-    them under "Not applied".
-  - Tell me how booleans and dates are written, so they match the Excel.
-- **Objects without a Bauteil_ID** can't match anything in Revit. Leave them out of `ObjectValues`.
-- **The stamp** has to change whenever anything the add-in reads for that project changes. That
-  includes deletions and dictionary changes (names, GUIDs, units, categories). A MAX over rowversions
-  alone misses deletions. The add-in reads only this view every minute.
+**What the views do.** The script explains each one in comments.
+- **They build the IDs the way Studio does** (`BauteilIds.Format`, `MaterialIds.Format`):
+  - BT-1101-01 comes from the object's catalog entry. Objects without all three parts are left out:
+    Studio shows no ID for them, and today that's Schlitzrinne in 1761. The Bauteil_ID copies stored on
+    project objects aren't used.
+  - MB-1761-01-BET-0031 comes from the material, its category, group and project. A project's own
+    materials only: the global MP products belong to no project.
+- **RevitCategory becomes Revit's category name:** "Allgemeines Modell" → OST_GenericModel, "Material" →
+  OST_Materials. When the dictionary gets a new Revit category, add a line to
+  `revit.ParameterCategories`. Until then its parameters come through without a category, and the
+  add-in reports them.
+- **The change stamp and who/when come from AuditLogs:**
+  - The stamp counts the history rows, plus the newest id, leaving out logins and settings. Counting
+    catches a change that commits late with a lower id, which the newest id alone would miss. It's one
+    stamp for all projects; it only tells the add-in when to read again.
+  - Who/when is the newest history row for that value.
+  - Never the Changes column: for user rows it holds password hashes (4 rows today).
+- Objects point at their material through material parameters such as IDE-KAT-Material-ID, so an
+  object's values include those references.
 
-**Sign-in procedures (Studio accounts; the stored hash never leaves the server)**
-- `revit.GetSignInSalt(@Username)` returns the user's salt, base64 as stored. For an unknown or
-  inactive user it returns a made-up but stable salt, so the answer doesn't give away who exists.
+**Please confirm**
+- Every change Studio saves to the tables above writes its AuditLogs row in the same transaction. A
+  change saved without a history row would go unnoticed until something else changes.
+- That includes MaterialCategories and MaterialGroups. Today the history has no rows for either, so
+  renaming a material category or group code (which changes Material-IDs) wouldn't be noticed until
+  something else changed.
+- The history keys keep their shape ("13|69|61", "123|140").
+
+**Bauteil-IDs must be unique within a project.** Yehia knows the 1761 case (the Bauteilunternummer is
+the fix) and will say when it's done; until then it stays as it is. Built from the catalog, 1761 has no
+duplicate today, because Schlitzrinne has no catalog numbers yet.
+
+**Values:**
+- Numbers use the invariant format with a dot ("0.3"), no thousands separator, in the parameter's
+  Unit. Today's are like "56".
+- Placeholders ([Modeller], [ET], -, TBT) come through as stored. The add-in skips them and lists them
+  under "Not applied".
+- No Boolean or Date values are stored yet. Tell me how they will be written, so they match the Excel.
+
+**The read-only login (step 9, for the office)**
+- A role (name your call, e.g. `revit_reader`) with rights on schema `revit` only:
+  `GRANT SELECT, EXECUTE ON SCHEMA::revit TO revit_reader`. That covers the views and the sign-in
+  procedures.
+- Nothing on dbo. The views read the tables through ownership chaining, because the script creates
+  schema `revit` owned by dbo. Don't give the schema another owner: the tempting fix, a grant on dbo,
+  would expose Users and the history.
+- For the same reason: the role isn't in db_datareader (or any role with rights on dbo), and public and
+  guest hold nothing on dbo.
+- Check it once the role exists, as a user with only that grant:
+
+  ```sql
+  CREATE USER revit_check WITHOUT LOGIN;
+  GRANT SELECT, EXECUTE ON SCHEMA::revit TO revit_check;
+  EXECUTE AS USER = N'revit_check';
+  SELECT COUNT_BIG(*) FROM revit.ObjectValues;  -- works
+  SELECT COUNT_BIG(*) FROM dbo.Users;           -- must fail: permission denied
+  REVERT;
+  DROP USER revit_check;
+  ```
+- One SQL login in that role, with CONNECT on MH_Database and nothing else on the server. Use
+  CHECK_EXPIRATION OFF: if this password expired, the link would stop on every PC at once. The password
+  goes only into the connection file.
+- The login is shared, so whoever holds the connection file can read every project, through the views
+  only. That's accepted.
+- Tell me what Studio uses for Encrypt and TrustServerCertificate on CADSQL. If the PCs don't trust
+  CADSQL's certificate, the file needs `"trustServerCertificate": true`. Then the certificate isn't
+  checked, and someone on the office network could pose as the server and catch the shared password.
+  Better: give CADSQL a certificate the PCs trust (an internal CA is enough), so the file can say false.
+
+**If AuditLogs grows large:** the views find the newest row per value through the existing index
+IX_AuditLogs_EntityName_EntityKey. The stamp counts the whole history every minute, which is quick at
+today's size. Tell me if the history gets trimmed or grows very large.
+
+**Sign-in procedures (step 8; Studio accounts; the stored hash never leaves the server).** Put them in
+schema `revit`, so the schema grant covers them.
+- `revit.GetSignInSalt(@Username)` returns the user's salt, base64 as stored. For an unknown or inactive
+  user it returns a made-up but stable salt, so the answer doesn't give away who exists. Make that salt
+  an HMAC of the name with a secret kept on the server; a plain hash of the name can be checked by
+  anyone. Keep the secret where the `revit` role can't read it, e.g. in a dbo table that only the
+  procedure reads, under its owner's rights.
 - `revit.CheckSignIn(@Username, @Hash)` returns one row (IsValid bit, DisplayName, Role) for an active
   user whose hash matches.
+- `CheckSignIn` slows down after failed attempts: an increasing delay per user, and at most a short lock
+  that lifts on its own. Never a permanent lock: the login is shared, so anyone holding the connection
+  file could otherwise lock every Studio user out, TheAdmin included. Log the attempts. Without any
+  limit, a password could be guessed at leisure from any PC.
+- That attempt count is the only thing in the link that writes, and it does so under the procedure
+  owner's rights. Everything else only reads.
+- No dynamic SQL in either procedure.
 - The add-in computes `@Hash` exactly like Studio's `PasswordHashService`: PBKDF2, SHA-512, 100,000
   rounds, 32-byte salt, base64. If Studio ever changes this, Revit's sign-in has to change in the same
   release. Please note that in REVIT_LINK.md.
 - Both procedures run with their owner's rights, so the role needs no rights on `dbo.Users`.
-
-**Master shared parameter file**
-- Its UNC path on the share.
-- Studio should write it in one go (to a temporary file, then rename), so the add-in never reads half a
-  file.
 
 ## Questions
 
@@ -319,3 +450,44 @@ Still open:
   fix for SqlClient's files. Reviewed, fixes applied, deployed with a Debug build.
 - **2026-11-19, walk:** Yehia walked step 1. Test connection connected in Revit 2027, so SqlClient loads and
   connects inside Revit. Step 1 is done.
+- **2026-11-19, step 2:** Step 1 committed (ed6c17b) on the new branch `database-link` and pushed. Step 2
+  built: the contract settled against MH_Database's real tables, `ILinkDatabase` with its SQL and fake
+  versions, and tests, some reading 1761 through draft views. C# and security reviews: the stamp
+  proposal was wrong (commit order), now fixed in the contract and the draft. The security points went
+  into the contract, and the smaller code points were fixed. No change to Revit.Addin.2027, so nothing to
+  deploy. Waiting for Yehia to pass the contract on.
+- **2026-11-19, step 2 reworked:** Yehia answered:
+  - no `revit` views, ever: query the tables;
+  - build Bauteil-ID and Material-ID at lookup;
+  - leave the duplicate Bauteil-ID until his fix;
+  - use the change history.
+
+  The reader now queries the tables, builds both IDs like Studio's `BauteilIds`/`MaterialIds`, and takes
+  the stamp (row count and newest id) and who/when from AuditLogs, never its Changes column, which holds
+  password hashes for user rows. The draft views are gone. "Needs from the database" rewritten: needed
+  now are the GUID and Revit name per parameter, plus the master file.
+  - The review of the rework found no blocker. Fixed:
+    - "who changed it" now seeks the history's index per value instead of grouping the whole history;
+    - change times come back marked as UTC;
+    - a Material-ID with an empty code is built the way Studio builds it.
+  - Added to "Please confirm": material category and group changes are audited, since none are today.
+  - 104 tests pass, the real-data ones straight against the local MH_Database.
+- **2026-11-19, views after all:** Yehia asked whether views would be better; I recommended them (Studio
+  can change its tables without breaking Revit; the shared login sees only what Revit needs), and he
+  chose them.
+  - The direct queries became `RevitViews.sql`, the ready script for the database session.
+  - The reader reads only the views again, and the category mapping moved into a view.
+  - The tests run the script on stand-in tables, and over dev MH_Database through synonyms in a
+    throwaway database. No `revit` object was created in MH_Database itself.
+  - "Needs from the database" rewritten as a views request with a single schema grant.
+  - 104 tests pass.
+  - The security review of the script found nothing critical or high. Applied:
+    - the script is safe to run again (schema only if missing, `CREATE OR ALTER`), with migration
+      notes;
+    - a test proves that a user with only the `revit` grant reads every view and is refused on the
+      tables;
+    - the request asks for a Studio test over the views, no db_datareader or public rights on dbo, a
+      self-lifting sign-in lock, and the HMAC secret out of the role's reach.
+  - 106 tests pass. MH_Database still has no `revit` objects.
+- **2026-11-19, step 2 committed** on `database-link` and pushed. Yehia passes "Needs from the database"
+  and `RevitViews.sql` to the database session.
