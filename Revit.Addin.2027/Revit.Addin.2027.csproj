@@ -52,6 +52,7 @@
     <None Remove="Icons\ModernIcons\32\DatabaseIcon.png" />
     <None Remove="Icons\ModernIcons\32\FamilyFileUpdate.png" />
     <None Remove="Icons\ModernIcons\32\HideElementsIcon.png" />
+    <None Remove="Icons\ModernIcons\32\LinkProjectIcon.png" />
     <None Remove="Icons\ModernIcons\32\ParameterAutomationIcon.png" />
     <None Remove="Icons\ModernIcons\32\Tables_Icon.png" />
     <None Remove="Icons\ModernIcons\32\Update_plugin.png" />
@@ -146,6 +147,9 @@
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </Resource>
     <Resource Include="Icons\ModernIcons\32\HideElementsIcon.png">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Resource>
+    <Resource Include="Icons\ModernIcons\32\LinkProjectIcon.png">
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </Resource>
     <Resource Include="Icons\ModernIcons\32\ParameterAutomationIcon.png">

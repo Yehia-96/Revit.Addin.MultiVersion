@@ -44,7 +44,8 @@ namespace Revit.Addin._2027
             string assemblyName = Assembly.GetExecutingAssembly().GetName().Name;
 
             // ---- Database -------------------------------------------------
-            // For now one button that checks the connection; later it opens the MH Database pane.
+            // Test connection checks this PC's connection file; Link project links the open model to its
+            // project. Later the MH Database pane takes them over.
             var btnTestConnection = new PushButtonData(
                 "TestDatabaseConnection",
                 "Test\nconnection",
@@ -57,6 +58,19 @@ namespace Revit.Addin._2027
                 LargeImage = LoadIcon(assemblyName, 32, "DatabaseIcon.png"),
             };
             panelDatabase.AddItem(btnTestConnection);
+
+            var btnLinkProject = new PushButtonData(
+                "LinkDatabaseProject",
+                "Link\nproject",
+                assemblyPath,
+                "Revit.Addin._2027.Commands.LinkProjectCommand")
+            {
+                ToolTip = "Links this model to its project in the MH database. The link is saved in the model.",
+                AvailabilityClassName = "Revit.Addin._2027.Commands.AvailableInProject",
+                Image = LoadIcon(assemblyName, 32, "LinkProjectIcon.png"),
+                LargeImage = LoadIcon(assemblyName, 32, "LinkProjectIcon.png"),
+            };
+            panelDatabase.AddItem(btnLinkProject);
 
             // ---- Parameter Automation -------------------------------------
             var btnAddParams = new PushButtonData(

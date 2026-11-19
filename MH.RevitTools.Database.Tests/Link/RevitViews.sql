@@ -1,19 +1,17 @@
--- The revit views that the Revit add-in (MH.RevitTools, database link) reads, and nothing else.
+-- The revit views that the Revit add-in (MH.RevitTools, database link) reads: the add-in tests' copy.
 --
--- For the database session: run this in MH_Database, e.g. from a Studio migration. GO isn't T-SQL:
--- give each batch between the GO lines its own migrationBuilder.Sql call. It's safe to run again: the
--- schema is created only if missing, and CREATE OR ALTER replaces a view while keeping its grants. The
--- migration's Down drops the seven views, then the schema. Keep schema revit owned by dbo, so the views
--- can read dbo's tables while the add-in's role only gets rights on schema revit.
+-- Since 2026-11-19 the views live in Studio's migration AddRevitLink (ProjectsApp, Database.Data,
+-- AddRevitLink.ViewBatches), which is their one source. This copy lets the add-in's tests build the
+-- same views on stand-in tables with known rows (Link/StandInTables.sql). When the migration changes a
+-- view, change it here the same way. The tests over dev MH_Database read the real views instead.
 --
 -- The add-in reads exactly the columns below, by name; extra columns are ignored. The views:
 --   - build Bauteil-IDs and Material-IDs the way Studio's BauteilIds.Format and MaterialIds.Format do;
 --   - take the change stamp and "who changed it, when" from AuditLogs, never its Changes column;
 --   - map the dictionary's RevitCategory to Revit's BuiltInCategory names.
--- Two placeholders in revit.Parameters wait for the dictionary: Guid and RevitName.
---
--- The add-in's tests run this same script on stand-in tables and on dev MH_Database
--- (MH.RevitTools.Database.Tests/Link), so a change here is tested before it's handed over.
+-- It's safe to run again: the schema is created only if missing, and CREATE OR ALTER replaces a view.
+-- Schema revit is owned by dbo, so the views read dbo's tables while the add-in's role only gets rights
+-- on schema revit.
 IF SCHEMA_ID(N'revit') IS NULL
     EXEC (N'CREATE SCHEMA revit AUTHORIZATION dbo');
 GO
@@ -21,11 +19,13 @@ CREATE OR ALTER VIEW revit.Projects AS
 SELECT ProjectId, ProjectNumber, ProjectSubNumber, Name
 FROM dbo.Projects;
 GO
--- The dictionary's parameters that go to Revit: those with a RevitCategory.
+-- The dictionary's parameters that go to Revit: those with a RevitCategory. Guid is the parameter's
+-- GUID in the master shared parameter file. RevitName is the name Revit shows, which Studio settles
+-- (suffixed where plain names clash on one category); until it has, the plain name.
 CREATE OR ALTER VIEW revit.Parameters AS
 SELECT p.ParameterId,
-       CAST(NULL AS uniqueidentifier) AS Guid,   -- placeholder: the parameter's GUID in the master file
-       p.Name AS RevitName,                       -- placeholder: the name Revit shows, suffixed where names clash
+       p.SharedParameterGuid AS Guid,
+       COALESCE(NULLIF(LTRIM(RTRIM(p.RevitName)), N''), p.Name) AS RevitName,
        s.Code AS SetCode,
        g.Code AS GroupCode,
        p.Name,

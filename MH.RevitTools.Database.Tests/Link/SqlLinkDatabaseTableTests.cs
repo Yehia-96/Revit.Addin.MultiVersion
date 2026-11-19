@@ -57,8 +57,7 @@ public sealed class SqlLinkDatabaseTableTests : IClassFixture<StandInDatabaseFix
         Assert.Equal(LinkTarget.Object, wall.Target);
 
         LinkParameter dicke = data.Parameters.Single(p => p.ParameterId == 61);
-        Assert.Equal(Guid.Empty, dicke.Guid);
-        Assert.Equal("Dicke", dicke.RevitName);
+        Assert.Equal(new Guid("3f1c2a6e-8b4d-4c1e-9a7f-61d1c4e0a061"), dicke.Guid);
         Assert.Equal("BAU", dicke.SetCode);
         Assert.Equal("GEO", dicke.GroupCode);
         Assert.Equal("Double", dicke.DataType);
@@ -70,6 +69,16 @@ public sealed class SqlLinkDatabaseTableTests : IClassFixture<StandInDatabaseFix
         Assert.Null(bezeichnung.Unit);
         Assert.Equal(LinkTarget.Material, bezeichnung.Target);
         Assert.Equal(new[] { "OST_Materials" }, bezeichnung.Categories);
+    }
+
+    [Fact]
+    public void GetProjectData_GivesTheRevitName_OrThePlainNameUntilStudioHasSetOne()
+    {
+        LinkProjectData data = _database.GetProjectData(13);
+
+        Assert.Equal("Dicke", data.Parameters.Single(p => p.ParameterId == 61).RevitName);
+        Assert.Equal("Bezeichnung (Material)", data.Parameters.Single(p => p.ParameterId == 140).RevitName);
+        Assert.Equal("Wandstärke", data.Parameters.Single(p => p.ParameterId == 8).RevitName);
     }
 
     [Fact]

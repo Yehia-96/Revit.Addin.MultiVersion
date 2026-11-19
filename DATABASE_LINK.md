@@ -1,10 +1,11 @@
 # Database link: MH database → Revit 2027
 
-**Status (2026-11-19):** step 1 is done and committed on the branch `database-link` (pushed; master is
-untouched). Step 2 is built and committed there too: the add-in reads `revit` views, whose ready SQL
-(`RevitViews.sql`) builds the IDs like Studio and takes the change stamp from the history. Yehia is
-passing "Needs from the database" to the database session; step 3 starts once the views exist in dev
-MH_Database.
+**Status (2026-11-19):** steps 1 and 2 are done and committed on the branch `database-link` (pushed;
+master is untouched). The add-in reads `revit` views, which build the IDs like Studio and take the
+change stamp from the history. The database session has built its side: the views, each parameter's
+GUID and Revit name, and the master shared parameter file. The views are in dev MH_Database. Its
+answers are under "What the database session built". Step 3 (link the model to its project) is done:
+Yehia walked it on 2026-11-20. It isn't committed yet.
 
 The live link from the MH database into Revit, inside the "Parameter Tools" add-in (MH.RevitTools),
 in `Revit.Addin.2027` only. It only reads from the database. This file holds the plan, the status, and
@@ -98,17 +99,18 @@ On Yehia's PC for development (LocalDB, Windows sign-in, no password):
   - the connection file
   - the reads of the `revit` views and the change check
   - the cache of the last pull
-  - the project-number rule
+  - the project-number rule and what the Link dialog says (`Linking`)
   - the Studio password hashing
 
   It targets net48 and net10.0, so 2024 and 2028 only need to add a reference. It uses only packages
   already in the repo (Microsoft.Data.SqlClient 5.2.2, Newtonsoft.Json 13.0.3). All database access
   goes through one interface, with the real SQL version and a fake.
-- **`MH.RevitTools.Database.Tests`** (new): xUnit. It also holds the views' SQL, `Link/RevitViews.sql`,
-  the one copy that's handed over. The query tests build those views in throwaway LocalDB databases of
-  their own, dropped afterwards:
-  - over stand-in tables with known rows (`Category=LocalDB`);
-  - over dev MH_Database through synonyms (`Category=LocalMhDatabase`). These only read it.
+- **`MH.RevitTools.Database.Tests`** (new): xUnit. It also holds the views' SQL as handed over,
+  `Link/RevitViews.sql`. Studio's migration is now the one source of the views, and this copy follows it
+  for the tests. The query tests run:
+  - over stand-in tables with known rows, in throwaway LocalDB databases of their own, dropped
+    afterwards (`Category=LocalDB`);
+  - over the real views in dev MH_Database (`Category=LocalMhDatabase`). These only read it.
 - **`Revit.Addin.2027`**: the Database panel, the pane and the dialogs (WPF, in the mockup's look). It
   turns database rows into the same `PlanungsdatenbankParseResult` the Excel reader produces, and applies
   values through an ExternalEvent.
@@ -202,17 +204,33 @@ after Yehia has walked it.
 - **Walk:** read "Needs from the database" and pass it on. Nothing to click in Revit.
 
 ### 3. Link the model to its project
-- The dialog from the mockup, with the suggestion from the Project Number (rule above). The link is
-  saved in the model (Extensible Storage on Project Information).
-- **Walk:** open a test model whose Project Number is 1761-01 → Database → Link → "1761-01 Ulm" is
-  suggested → Link. Save, close and reopen the model: it's still linked.
+- Database → **Link project** opens the dialog from the mockup. It reads the projects in the
+  background and suggests one from the Project Number (rule above).
+- Link saves the project in the model: an Extensible Storage entity on Project Information (schema
+  `MH_ProjectLink`). Any add-in can read it; only ours can change it.
+  - The entity keeps the project's id, its number, sub-number and name, who linked it and when.
+  - So the dialog can tell when the id has come to mean another project and asks again. That happens
+    with another database, where the ids differ, or after a renumbering in Studio.
+- The button is greyed out without a project model, and in the family editor. In a workshared model,
+  the add-in borrows Project Information first. If someone else is editing it, or the model is behind
+  central, a plain message says so instead of linking.
+- A copy made with Save As keeps the link, like everything else in Project Information. Link the copy
+  again if it belongs to another project.
+- **Walk:**
+  1. Open a test model whose Project Number is 1761-01 → Database → Link project. The dialog says
+     "Suggested from Project Information: Project Number 1761-01 matches 1761-01 Ulm", with Ulm picked.
+  2. Click "Link to 1761-01 Ulm". You get "Linked to 1761-01 Ulm. Save the model to keep the link."
+  3. Save, close and reopen the model, then Link project again. It says "… is linked to 1761-01 Ulm.
+     Linked by (your Revit user name), (time)", and the button says "Already linked".
+  4. Optional, on a model that isn't linked: with the Project Number 1761, Ulm is suggested too, as dev
+     has only one 1761. With no Project Number, the dialog asks you to pick.
 
 ### 4. Check parameters
 - Lists the database's parameters for the model's categories as Ready, Missing or Other GUID. "Add
   missing" binds them to the categories from the master shared parameter file. Families aren't reloaded
   and values aren't touched.
-- Until Studio exports the real master file, a small test file that matches dev MH_Database's
-  dictionary stands in.
+- The definitions must come from the connected database: each database has its own GUIDs (see "What
+  the database session built"). Where the add-in gets them is still open (see "Questions").
 - **Walk:** Check parameters shows 3 missing → Add → they appear on a Generic Model with their plain
   names.
 
@@ -222,6 +240,8 @@ after Yehia has walked it.
 - The check runs in the background every minute and reads only the change stamp. When the stamp moves,
   it reads the project's rows again. It never touches the model. The last pull is cached per user, and
   the pane shows when it was taken.
+- The first check in each Revit session reads everything, whatever the stamp says: a Studio migration
+  can change data without moving the stamp.
 - **Walk:**
   1. Open the linked model: the pane says "Up to date · checked 14:32".
   2. Change a value of project 1761 in Studio: within a minute it shows "1 change from the database",
@@ -287,13 +307,47 @@ mockup (https://claude.ai/artifact/BUxmo897HJTFcEt43wpcen) stays as it was.
 - **Docking:** the pane opens on the right the first time. After that Revit remembers where the user put
   it. Revit only allows a pane to be registered at startup, so the Database button shows and hides it.
 - **Master shared parameter file:** Revit only opens the shared parameter file set in its options. The
-  add-in switches to the master file for a moment, then puts the user's own setting back.
+  add-in switches Revit to a local file for a moment, then puts the user's own setting back. Never to
+  Studio's file itself: holding that open would block Studio's next write.
 - **Fonts:** Segoe UI, which is what Revit uses, instead of Inter.
+
+## What the database session built (2026-11-19)
+
+Its side of the contract, with every detail, is `REVIT_LINK.md` in
+`C:\Yehia\Database_parameters\VisualStudio\Database_Creator\ProjectsApp\Database.Data\`. In short:
+
+- **The views** are in dev MH_Database, from the Studio migration `20261119183135_AddRevitLink`. The
+  office gets them with the next Studio release.
+  - They are `RevitViews.sql` with two lines changed: `revit.Parameters` now reads each parameter's GUID
+    and Revit name from `dbo.Parameters` (`SharedParameterGuid`, and `RevitName`, which falls back to
+    the plain name until Studio has set one).
+  - The migration is now the one source of the views. The tests' copy here follows it (brought in line
+    with step 3).
+  - Checked here on 2026-11-19: the seven views have exactly the columns the add-in reads, and all 117
+    parameters have their own GUID.
+- **The master shared parameter file.** Studio writes it a few seconds after any dictionary change, and
+  once after each sign-in. There's one file per database:
+  - dev MH_Database (LocalDB): `%LOCALAPPDATA%\MH Database Studio\Development share\PLDB\01.Datenbank\MH_Parameter.txt`
+    on the PC where Studio runs. It appears the next time Studio starts on dev.
+  - the office database: `\\CADSQL.mh-frlg.local\PLDB\01.Datenbank\MH_Parameter.txt`. Not written yet;
+    that comes with the release.
+  - A path typed into Studio's settings (Administration → Settings → Revit) wins over both.
+  - **Keep the pairs together.** Each database makes its own GUIDs, the office's at the release's first
+    start. A model set up from the dev file won't match the office database, so a test model set up on
+    dev stays a dev model.
+- **The change stamp.** Studio saves the history row right after the change, so the stamp never moves
+  before the change can be read. A migration changes data without history rows, though, and then the
+  stamp stays put; hence the full read at the start of each Revit session (step 5). If a history row
+  fails to save, Studio tells the user, and the stamp waits for the next change.
+- **Material categories and groups** are in the history like everything else, so renaming a code moves
+  the stamp. The history keys keep their shape, and a Studio test fails if they change.
+- **Values:** Boolean is stored as `true`/`false`, Date as `yyyy-MM-dd`, numbers invariant with a dot.
+  Placeholders come through as stored, so the add-in keeps skipping all four.
 
 ## Needs from the database
 
-*Final version, 2026-11-19: `revit` views, with their SQL written and tested by the add-in session.
-Yehia passes this to the database session.*
+*Final version, 2026-11-19. Items 1 and 2 are built and the questions are answered (see "What the
+database session built"). Items 3 and 4 come later.*
 
 **What the link needs, in order**
 1. **Now: the `revit` views.** The SQL is ready in the add-in repo (branch `database-link`):
@@ -438,6 +492,12 @@ Answered by Yehia on 2026-11-19 (recorded above):
 
 Still open:
 - The read-only login's name. It comes with the database session's login script.
+- Where the add-in gets the parameter definitions (step 4). The database session asks whether to read
+  the master file's path from the database; no view carries it today. Two ways:
+  - the connection file names the master file next to the server, so each PC pairs a database with its
+    own file, and the add-in checks the file's GUIDs against the database;
+  - or no file at all: `revit.Parameters` already has each parameter's GUID, Revit name and type, so
+    the add-in makes the definitions itself and can't pick the wrong file. I lean this way.
 
 ## Status log
 
@@ -491,3 +551,29 @@ Still open:
   - 106 tests pass. MH_Database still has no `revit` objects.
 - **2026-11-19, step 2 committed** on `database-link` and pushed. Yehia passes "Needs from the database"
   and `RevitViews.sql` to the database session.
+- **2026-11-19, the database side is built.** The database session built the views, each parameter's
+  GUID and Revit name, and the master file, and answered in `REVIT_LINK.md` (summed up under "What the
+  database session built").
+  - Checked here: the views in dev MH_Database have exactly the columns the add-in reads.
+  - It also sent word that on dev the master file is now a local file, not the office one. Nothing here
+    pointed at the office file.
+  - Step 3 is next.
+- **2026-11-19, step 3 built:** Database → Link project, the dialog from the mockup, and the link saved in
+  the model (details under step 3).
+  - The rule and everything the dialog says sit in the library (`Linking`), under tests. The Revit side
+    only draws the dialog and saves the link.
+  - The dialog was drawn off screen in six states and matches the mockup.
+  - The tests' copy of the views now matches Studio's migration (GUID and Revit name). The tests over dev
+    MH_Database read its real views instead of synonyms.
+  - A C# review found nothing critical. Fixed:
+    - a fault while showing the projects stays in the dialog instead of reaching Revit;
+    - workshared models borrow Project Information before saving, with a plain message when they can't;
+    - "1761 - Ulm" now reads as 1761 without a sub-number, and digits after another separator, as in
+      "1761.01", mean no suggestion rather than a wrong one;
+    - a search keeps projects that hold every word, so "1761 ulm" finds Ulm.
+  - 187 tests pass. Deployed with a Debug build into both Revit 2027 add-in folders, with Revit closed.
+- **2026-11-20, walk:** Yehia walked step 3: the model linked, and it's good. Step 3 is done.
+  - Revit's Home screen hung on its Recent list that night. That wasn't the add-in: the PC's DNS failed
+    for Autodesk's settings server, so Revit's online settings never came. Models → Open … still works.
+  - The Link project button gets the mockup's link icon (the one in the dialog's header).
+  - Yehia asked about the signed-in person shown in the mockup's ribbon: that comes with step 8.

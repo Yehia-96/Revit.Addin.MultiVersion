@@ -1,21 +1,23 @@
+using System;
 using System.Linq;
 using System.Text.RegularExpressions;
+using MH.RevitTools.Database.Connection;
 using MH.RevitTools.Database.Link;
 
 namespace MH.RevitTools.Database.Tests.Link;
 
 /// <summary>
-/// The revit views (RevitViews.sql) and the reader over the local dev MH_Database, which they only read.
-/// Depends on the dev data for project 1761 Ulm: objects with Bauteil-IDs, materials, and Studio's
-/// history of both.
+/// The reader over the real revit views in the local dev MH_Database, which Studio's migration
+/// AddRevitLink made. Only reads. Depends on the dev data for project 1761 Ulm: objects with
+/// Bauteil-IDs, materials, and Studio's history of both.
 /// </summary>
 [Trait("Category", "LocalMhDatabase")]
-public sealed class SqlLinkDatabaseLocalMhTests : IClassFixture<LocalMhViewsFixture>
+public sealed class SqlLinkDatabaseLocalMhTests
 {
-    private readonly SqlLinkDatabase Database;
+    private static readonly ConnectionSettings LocalMhDatabase =
+        new(@"(localdb)\MSSQLLocalDB", "MH_Database", true, null, null, true, false);
 
-    public SqlLinkDatabaseLocalMhTests(LocalMhViewsFixture fixture) =>
-        Database = new SqlLinkDatabase(fixture.Database.Settings);
+    private readonly SqlLinkDatabase Database = new(LocalMhDatabase);
 
     private LinkProject Ulm => Database.GetProjects().Single(p => p.Number == 1761 && p.SubNumber == 1);
 
@@ -32,6 +34,27 @@ public sealed class SqlLinkDatabaseLocalMhTests : IClassFixture<LocalMhViewsFixt
 
         Assert.Equal(stamp, Database.GetStamp(Ulm.ProjectId));
         Assert.Equal(stamp, Database.GetProjectData(Ulm.ProjectId).Stamp);
+    }
+
+    [Fact]
+    public void Parameters_HaveTheirOwnGuid_AndARevitNameNoOtherHasOnTheirCategory()
+    {
+        LinkProjectData data = Database.GetProjectData(Ulm.ProjectId);
+
+        Assert.All(data.Parameters, p =>
+        {
+            Assert.NotEqual(Guid.Empty, p.Guid);
+            Assert.False(string.IsNullOrWhiteSpace(p.RevitName), "Parameter " + p.ParameterId + " has no Revit name.");
+        });
+        Assert.Equal(data.Parameters.Count, data.Parameters.Select(p => p.Guid).Distinct().Count());
+
+        // Revit can't tell two parameters apart on one category if they share a name.
+        var clashes = data.Parameters
+            .SelectMany(p => p.Categories.Select(category => (category, name: p.RevitName.ToUpperInvariant())))
+            .GroupBy(pair => pair)
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key);
+        Assert.Empty(clashes);
     }
 
     [Fact]

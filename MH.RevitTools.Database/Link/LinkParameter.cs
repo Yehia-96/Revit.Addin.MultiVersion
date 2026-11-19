@@ -37,12 +37,15 @@ namespace MH.RevitTools.Database.Link
 
         public int ParameterId { get; }
 
-        /// <summary>The GUID in the master shared parameter file. Empty until the dictionary stores GUIDs.</summary>
+        /// <summary>
+        /// The GUID in the master shared parameter file. Studio gives every parameter one, and each
+        /// database its own; empty only if a view returns none.
+        /// </summary>
         public Guid Guid { get; }
 
         /// <summary>
-        /// The name Revit shows, e.g. "Dicke", with a suffix only where plain names clash. The plain
-        /// dictionary name until the dictionary stores Revit names.
+        /// The name Revit shows, e.g. "Dicke", with a suffix only where plain names clash on one category,
+        /// e.g. "Beschreibung (Bauteilinformation)". The plain name until Studio has settled one.
         /// </summary>
         public string RevitName { get; }
 

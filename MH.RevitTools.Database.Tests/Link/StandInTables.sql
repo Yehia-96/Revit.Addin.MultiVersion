@@ -11,7 +11,8 @@ CREATE TABLE dbo.ParameterSets (ParameterSetId int NOT NULL PRIMARY KEY, Code nv
 CREATE TABLE dbo.ParameterGroups (ParameterGroupId int NOT NULL PRIMARY KEY, Code nvarchar(3) NOT NULL);
 CREATE TABLE dbo.Parameters (
     ParameterId int NOT NULL PRIMARY KEY, Name nvarchar(200) NOT NULL, DataType nvarchar(max) NOT NULL,
-    Unit nvarchar(max) NOT NULL, ParameterSetId int NULL, ParameterGroupId int NULL, RevitCategory nvarchar(50) NULL);
+    Unit nvarchar(max) NOT NULL, ParameterSetId int NULL, ParameterGroupId int NULL, RevitCategory nvarchar(50) NULL,
+    SharedParameterGuid uniqueidentifier NOT NULL, RevitName nvarchar(250) NULL);
 CREATE TABLE dbo.ProjectObjectParameters (
     ProjectId int NOT NULL, ObjectEntityId int NOT NULL, ParameterId int NOT NULL, Value nvarchar(2000) NOT NULL);
 CREATE TABLE dbo.MaterialCategories (
@@ -42,10 +43,14 @@ INSERT dbo.Objects VALUES
 INSERT dbo.ParameterSets VALUES (1, N'BAU'), (2, N'MAT');
 INSERT dbo.ParameterGroups VALUES (1, N'GEO'), (2, N'BES');
 INSERT dbo.Parameters VALUES
-    (61, N'Dicke', N'Double', N'm', 1, 1, N'Allgemeines Modell'),
-    (140, N'Bezeichnung', N'String', N'', 2, 2, N'Material'),
-    (8, N'Wandstärke', N'Double', N'cm', 1, 1, N'Wand'),  -- a Revit category the views don't map yet
-    (7, N'Interne Notiz', N'String', N'', 1, 2, NULL);     -- not for Revit
+    (61, N'Dicke', N'Double', N'm', 1, 1, N'Allgemeines Modell',
+        '3f1c2a6e-8b4d-4c1e-9a7f-61d1c4e0a061', NULL),                     -- no Revit name yet: the plain name
+    (140, N'Bezeichnung', N'String', N'', 2, 2, N'Material',
+        '0c5e9b7a-2d3f-4a8b-b1c6-140d2e3f4a5b', N'Bezeichnung (Material)'), -- a suffixed Revit name
+    (8, N'Wandstärke', N'Double', N'cm', 1, 1, N'Wand',                     -- a Revit category the views don't map yet
+        '8a0b1c2d-3e4f-4a5b-8c6d-008e9f0a1b2c', N'  '),                     -- a blank Revit name counts as none
+    (7, N'Interne Notiz', N'String', N'', 1, 2, NULL,                       -- not for Revit
+        '7d6c5b4a-3f2e-4d1c-8b0a-007f6e5d4c3b', NULL);
 INSERT dbo.ProjectObjectParameters VALUES
     (13, 69, 61, N'0.3'),
     (13, 392, 61, N'[Modeller]'),

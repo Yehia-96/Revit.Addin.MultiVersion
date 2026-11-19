@@ -95,14 +95,3 @@ public sealed class StandInDatabaseFixture : IDisposable
 
     public void Dispose() => Database.Dispose();
 }
-
-/// <summary>
-/// The revit views over the local dev MH_Database: synonyms in a throwaway database point at its tables,
-/// and the views read through them. Nothing is written to MH_Database.
-/// </summary>
-public sealed class LocalMhViewsFixture : IDisposable
-{
-    public ThrowawayDatabase Database { get; } = new("MhDatabaseSynonyms.sql", "RevitViews.sql");
-
-    public void Dispose() => Database.Dispose();
-}
