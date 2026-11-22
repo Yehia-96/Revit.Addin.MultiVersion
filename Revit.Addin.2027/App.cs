@@ -6,11 +6,13 @@ using Autodesk.Revit.UI.Events;
 using MH.RevitTools.Database.Linking;
 using Revit.Addin._2027.Commands;
 using Revit.Addin._2027.DatabaseLink;
+using Revit.Addin._2027.DatabaseLink.Pane;
 using Revit.Addin._2027.Updaters;
 using System;
 using System.Diagnostics;
 using System.Reflection;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 
 namespace Revit.Addin._2027
 {
@@ -47,14 +49,14 @@ namespace Revit.Addin._2027
 
             // ---- Database -------------------------------------------------
             // Laid out like the mockup: the big Database button, then three rows: Apply changes, Check
-            // parameters, and the signed-in person. Until the MH Database pane comes (step 5), Database
-            // opens the Link dialog; it shows the active model's project number, and a green dot once the
-            // model is linked. Apply changes (step 6) and Sign in (step 8) stay greyed out until they're
-            // built. Test connection sits in the panel's slide-out, under the panel's arrow.
+            // parameters, and the signed-in person. Database shows and hides the MH Database pane; it shows
+            // the active model's project number, and a dot with what the pane's check found. Apply changes
+            // (step 6) and Sign in (step 8) stay greyed out until they're built. Test connection sits in the
+            // panel's slide-out, under the panel's arrow.
             PushButton database = AddDatabasePanel(panelDatabase, assemblyPath, assemblyName);
-            _databaseButton = new DatabaseButton(database,
-                LoadIcon(assemblyName, 16, "DatabaseLinkedIcon.png"), LoadIcon(assemblyName, 32, "DatabaseLinkedIcon.png"));
+            _databaseButton = new DatabaseButton(database);
             _databaseButton.Hook(application);
+            StartDatabasePane(application);
 
             // ---- Parameter Automation -------------------------------------
             var btnAddParams = new PushButtonData(
@@ -148,10 +150,36 @@ namespace Revit.Addin._2027
         // Keeps the big Database button showing the active model's link.
         private DatabaseButton _databaseButton;
 
+        // Runs the MH Database pane: the check, the comparison and what the pane shows.
+        private LinkMonitor _linkMonitor;
+
+        // The MH Database pane (step 5). A pane that can't start must not take the tab down with it: the
+        // Database button then says why.
+        private void StartDatabasePane(UIControlledApplication application)
+        {
+            try
+            {
+                _linkMonitor = new LinkMonitor(_databaseButton, Dispatcher.CurrentDispatcher);
+                _linkMonitor.Hook(application);
+                DatabasePane.Register(application, new PaneView { DataContext = _linkMonitor.View });
+            }
+            catch (Exception ex)
+            {
+                Trace.WriteLine("[Parameter Tools] The MH Database pane didn't start: " + ex);
+                DatabasePane.StartProblem = ex.Message;
+                if (_linkMonitor != null)
+                {
+                    _linkMonitor.Unhook(application);
+                    _linkMonitor.Dispose();
+                    _linkMonitor = null;
+                }
+            }
+        }
+
         /// <returns>The big Database button, whose text and icon follow the active model's link.</returns>
         private static PushButton AddDatabasePanel(RibbonPanel panel, string assemblyPath, string assemblyName)
         {
-            var database = (PushButton)panel.AddItem(new PushButtonData("DatabaseLink", DatabaseButtonFace.NoModel.Text, assemblyPath, Commands + "LinkProjectCommand")
+            var database = (PushButton)panel.AddItem(new PushButtonData("DatabaseLink", DatabaseButtonFace.NoModel.Text, assemblyPath, Commands + "DatabasePaneCommand")
             {
                 ToolTip = DatabaseButtonFace.NoModel.ToolTip,
                 AvailabilityClassName = Commands + "AvailableInProject",
@@ -215,6 +243,11 @@ namespace Revit.Addin._2027
 
         public Result OnShutdown(UIControlledApplication application)
         {
+            if (_linkMonitor != null)
+            {
+                _linkMonitor.Unhook(application);
+                _linkMonitor.Dispose();
+            }
             _databaseButton?.Unhook(application);
             application.DialogBoxShowing -= Application_DialogBoxShowing; // Unsubscribe from the dialog box showing event
             return Result.Succeeded;

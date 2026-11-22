@@ -5,44 +5,52 @@ using Autodesk.Revit.UI.Events;
 using MH.RevitTools.Database.Linking;
 using System;
 using System.Diagnostics;
-using System.Windows.Media;
 
 namespace Revit.Addin._2027.DatabaseLink
 {
     /// <summary>
     /// Keeps the ribbon's big Database button showing the active model's link (<see cref="DatabaseButtonFace"/>):
-    /// the project's number and the icon with the green dot once it's linked (Yehia, 2026-11-22). It follows
-    /// the active view from model to model, and every change of the link: Link project, Undo and Redo, and
-    /// what synchronizing with central brings. It reads only the link saved in the model, never the database.
+    /// the project's number, and a dot on the icon with what the MH Database pane's last check found (green up
+    /// to date, blue with the number of changes, red not reachable). It follows the active view from model to
+    /// model, and every change of the link: Link project, Undo and Redo, and what synchronizing with central
+    /// brings. It tells the pane which model is active (<see cref="ModelShown"/>), and the pane tells it what
+    /// the check found (<see cref="ShowCondition"/>). It reads only the link saved in the model.
     /// </summary>
     internal sealed class DatabaseButton
     {
         private static DatabaseButton _current;
 
         private readonly PushButton _button;
-        private readonly ImageSource _image;
-        private readonly ImageSource _largeImage;
-        private readonly ImageSource _linkedImage;
-        private readonly ImageSource _linkedLargeImage;
+        private readonly ButtonIcons _icons;
         private readonly ElementFilter _projectInformation = new ElementCategoryFilter(BuiltInCategory.OST_ProjectInformation);
 
         private UIControlledApplication _application;
         private DatabaseButtonFace _face = DatabaseButtonFace.NoModel;
         private Document _shown;
+        private ModelLink _link;
+        private LinkCondition _condition = LinkCondition.Checking;
+        private int _changes;
         private int? _shownClosingId;
         private bool _waitingForIdle;
 
         /// <param name="button">The big Database button, as added with its plain icons.</param>
-        /// <param name="linkedImage">The small icon with the green dot.</param>
-        /// <param name="linkedLargeImage">The large icon with the green dot.</param>
-        public DatabaseButton(PushButton button, ImageSource linkedImage, ImageSource linkedLargeImage)
+        public DatabaseButton(PushButton button)
         {
             _button = button ?? throw new ArgumentNullException(nameof(button));
-            _image = button.Image;
-            _largeImage = button.LargeImage;
-            _linkedImage = linkedImage ?? _image;
-            _linkedLargeImage = linkedLargeImage ?? _largeImage;
+            _icons = new ButtonIcons(button.Image, button.LargeImage);
         }
+
+        /// <summary>
+        /// The active project model, or another one's link, is shown now: the model (null without a project
+        /// model) and its link (null when it isn't linked). Raised on Revit's main thread, in API context.
+        /// </summary>
+        public event Action<Document, ModelLink> ModelShown;
+
+        /// <summary>The project model whose link the button shows; null when none.</summary>
+        public Document Shown => _shown != null && _shown.IsValidObject ? _shown : null;
+
+        /// <summary>Its link; null when it isn't linked.</summary>
+        public ModelLink Link => Shown == null ? null : _link;
 
         /// <summary>Shows the model's link right away, e.g. after Link project saved it.</summary>
         public static void Refresh(Document document)
@@ -77,6 +85,21 @@ namespace Revit.Addin._2027.DatabaseLink
                 _current = null;
             _projectInformation.Dispose();
         }
+
+        /// <summary>
+        /// What the pane's last check found for that model and link. Ignored when the button shows another
+        /// one by now: the pane's word can arrive after a switch. Call in API context.
+        /// </summary>
+        public void ShowCondition(Document document, ModelLink link, LinkCondition condition, int changes) =>
+            Safely(() =>
+            {
+                // A model closed since then is no longer valid; asking it anything more would throw.
+                if (document == null || !document.IsValidObject || !IsShown(document) || !SameLink(link, _link))
+                    return;
+                _condition = condition;
+                _changes = changes;
+                Put(FaceNow());
+            }, "showing the check");
 
         // Another model's view, or another view of the same model: show that model's link.
         private void OnViewActivated(object sender, ViewActivatedEventArgs e) =>
@@ -152,14 +175,31 @@ namespace Revit.Addin._2027.DatabaseLink
                 Show(document);
         }
 
-        // Shows the model's link; null shows that no project model is active.
+        // Shows the model's link; null shows that no project model is active. Another model or another link
+        // starts again from "checking", and the pane hears of it.
         private void Show(Document document)
         {
             bool isProject = document != null && document.IsValidObject && !document.IsFamilyDocument;
-            _shown = isProject ? document : null;
+            Document shown = isProject ? document : null;
+            ModelLink link = isProject ? ProjectLinkStorage.Read(document) : null;
+            bool sameModel = shown == null ? Shown == null : IsShown(shown);
+            bool same = sameModel && SameLink(link, _link);
+
+            _shown = shown;
+            _link = link;
             _shownClosingId = null;
-            Put(isProject ? DatabaseButtonFace.For(ProjectLinkStorage.Read(document), TimeZoneInfo.Local) : DatabaseButtonFace.NoModel);
+            if (!same)
+            {
+                _condition = LinkCondition.Checking;
+                _changes = 0;
+            }
+            Put(FaceNow());
+            if (!same)
+                ModelShown?.Invoke(shown, link);
         }
+
+        private DatabaseButtonFace FaceNow() =>
+            Shown == null ? DatabaseButtonFace.NoModel : DatabaseButtonFace.For(_link, TimeZoneInfo.Local, _condition, _changes);
 
         private void Put(DatabaseButtonFace face)
         {
@@ -167,13 +207,22 @@ namespace Revit.Addin._2027.DatabaseLink
                 return;
             _button.ItemText = face.Text;
             _button.ToolTip = face.ToolTip;
-            _button.Image = face.IsLinked ? _linkedImage : _image;
-            _button.LargeImage = face.IsLinked ? _linkedLargeImage : _largeImage;
+            _button.Image = _icons.Small(face.Dot);
+            _button.LargeImage = _icons.Large(face.Dot, face.Changes);
             _face = face;
         }
 
         private bool IsShown(Document document) =>
             document != null && _shown != null && _shown.IsValidObject && _shown.Equals(document);
+
+        private static bool SameLink(ModelLink a, ModelLink b)
+        {
+            if (a == null || b == null)
+                return a == null && b == null;
+            return a.ProjectId == b.ProjectId && a.Number == b.Number && a.SubNumber == b.SubNumber
+                && string.Equals(a.Name, b.Name, StringComparison.Ordinal) && a.LinkedAtUtc == b.LinkedAtUtc
+                && string.Equals(a.LinkedBy, b.LinkedBy, StringComparison.Ordinal);
+        }
 
         // An event handler must never throw into Revit. When the link can't be read, the button makes no
         // claim: it goes back to plain "Database".
@@ -188,10 +237,12 @@ namespace Revit.Addin._2027.DatabaseLink
                 // Trace, not Debug: release builds keep it, and DebugView shows it.
                 Trace.WriteLine("[Parameter Tools] The Database button failed " + when + ": " + ex);
                 _shown = null;
+                _link = null;
                 _shownClosingId = null;
                 try
                 {
                     Put(DatabaseButtonFace.NoModel);
+                    ModelShown?.Invoke(null, null);
                 }
                 catch (Exception again)
                 {

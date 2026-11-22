@@ -33,11 +33,14 @@ namespace Revit.Addin._2027.Commands
 
         private static readonly TimeSpan OldCopy = TimeSpan.FromDays(1);
 
-        public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
+        public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements) =>
+            Run(commandData.Application, ref message);
+
+        /// <summary>The whole command, for the MH Database pane's buttons too. Call in API context.</summary>
+        public static Result Run(UIApplication application, ref string message)
         {
             try
             {
-                UIApplication application = commandData.Application;
                 Document document = application.ActiveUIDocument?.Document;
                 if (document == null || document.IsFamilyDocument)
                 {

@@ -11,8 +11,9 @@ request it gained Replace for Other GUID parameters, and the Database panel now 
 project's number with a green dot (walked, works), and Replace also takes parameters that schedules or
 view filters use, after a second warning. In his model Revit would delete other elements with every
 parameter, so Replace now lists those elements, says where each one is and can show them in a 3D view of
-their own, and deletes them only after he confirms. Yehia tried it: "everything is good". Committed and
-pushed with this note.
+their own, and deletes them only after he confirms. Yehia tried it: "everything is good" (da37289,
+pushed). **Step 5 (the MH Database pane and the change check) is built, deployed and committed. Yehia
+walked its first item on 2026-11-23 ("Perfect"); the rest of the walk is next.**
 
 The live link from the MH database into Revit, inside the "Parameter Tools" add-in (MH.RevitTools),
 in `Revit.Addin.2027` only. It only reads from the database. This file holds the plan, the status, and
@@ -220,9 +221,9 @@ after Yehia has walked it.
 - **Walk:** read "Needs from the database" and pass it on. Nothing to click in Revit.
 
 ### 3. Link the model to its project
-- The big **Database** button opens the dialog from the mockup (until 2026-11-22 it was a Link project
-  button; from step 5 the pane offers it). It reads the projects in the
-  background and suggests one from the Project Number (rule above).
+- The MH Database pane's **Link the model…** and **Change project…** open the dialog from the mockup
+  (until step 5 the big Database button did, and before 2026-11-22 a Link project button). It reads the
+  projects in the background and suggests one from the Project Number (rule above).
 - Link saves the project in the model: an Extensible Storage entity on Project Information (schema
   `MH_ProjectLink`). Any add-in can read it; only ours can change it.
   - The entity keeps the project's id, its number, sub-number and name, who linked it and when.
@@ -234,9 +235,10 @@ after Yehia has walked it.
 - A copy made with Save As keeps the link, like everything else in Project Information. Link the copy
   again if it belongs to another project.
 - **The big Database button shows the active model's link** (Yehia, 2026-11-22): "Database" over the
-  project's number (1761-01) and a green dot on the icon once the model is linked; "Database" over "Link
-  model" while it isn't; plain "Database" without a project model. The tooltip names the project, who
-  linked it and when. The button follows the active view from model to model, Link project, Undo and
+  project's number (1761-01) once the model is linked, with a dot on the icon (since step 5 it shows the
+  pane's state; until then it was green as soon as the model was linked); "Database" over "Link model"
+  while it isn't; plain "Database" without a project model. The tooltip names the project, who linked it
+  and when. The button follows the active view from model to model, Link project, Undo and
   Redo, and what Synchronize with Central or Reload Latest brings. It reads only the model, never the
   database.
 - **Walk:**
@@ -312,18 +314,68 @@ after Yehia has walked it.
      goes. Delete … and replace: they go, the parameters are replaced, and Ctrl+Z brings it all back.
 
 ### 5. The pane and the change check (no apply yet)
-- The docked "MH Database" pane, with these states: up to date, n changes, not reachable, not set up,
-  not signed in.
-- The check runs in the background every minute and reads only the change stamp. When the stamp moves,
-  it reads the project's rows again. It never touches the model. The last pull is cached per user, and
-  the pane shows when it was taken.
-- The first check in each Revit session reads everything, whatever the stamp says: a Studio migration
-  can change data without moving the stamp.
-- **Walk:**
-  1. Open the linked model: the pane says "Up to date · checked 14:32".
-  2. Change a value of project 1761 in Studio: within a minute it shows "1 change from the database",
-     with your name and the time.
-  3. Rename the connection file: it shows "Not reachable · last answer 14:32".
+- The docked **"MH Database" pane**, laid out like the mockup. The big Database button shows and hides
+  it; the first time it docks on the right, then Revit remembers where it was put. Revit only takes
+  panes while it starts, so it's registered then.
+- **"Changes" means: database values the model doesn't have yet.** The pane compares the model with
+  the database, as the mockup's "The model matches the database" says: each element meets its object by
+  Bauteil_ID (read like the Excel route reads it, any case), each material its database material by name
+  (Revit materials carry the Materialname), and each parameter is found by its GUID. Placeholders
+  ([Modeller], [ET], -, TBT, empty) and the Bauteil_ID itself are never changes. Numbers are compared in
+  Revit's units, converted from the database's unit as the Excel route converts them, so 0.3 m and 300 mm
+  match. One change is one parameter of one object, however many elements carry its Bauteil_ID.
+- What it shows:
+  - The header: a dot and "Connected", "Not reachable", "Project not found", "Not set up" or "Not
+    linked"; the database ("CADSQL · MH_Database · read-only"); "Checked 14:32 · every minute" or
+    "Last answer 11:05 · tries again every minute"; a Check now button.
+  - **This model**: the project, "Change project…" (the Link dialog), who linked it and when, and three
+    counts that select their elements when clicked: elements linked, without Bauteil_ID, ID not in the
+    project (counted on the categories the database's object parameters go on).
+  - **Up to date** ("The model matches the database. Last change there: today 14:31 · S. Brandt."), or
+    **N changes from the database**: one card per object (Bauteil_ID, name from Bauteil and Teilelement,
+    "12 elements") or material, each value as "model value → database value" with who changed it and
+    when, from Studio's history; "Show in model" selects the object's elements and zooms to them. The
+    most recently changed come first. Up to 300 values are listed, then "… and N more".
+  - A note when linked elements lack some of the database's parameters ("Dicke isn't in this model.
+    Check parameters adds them…"), and when values don't fit their parameter.
+  - Not linked: the two steps, "Link the model…" and "Check parameters…". No connection file: where it's
+    expected. Not reachable: the red banner with Revit's reason and Try again; the values stay as last read.
+  - The footer: "Look for changes" every 30 seconds, minute, 5 minutes, or only when asked: each person's
+    choice, in `%APPDATA%\MH\RevitTools\settings.json`.
+- **The check** runs on a thread of its own, so Revit never waits for the database. It checks the active
+  model's project at the chosen interval, at once when another model or link becomes active, and on
+  Check now. It reads only the change stamp, and everything again when the stamp has moved. The first
+  check of a project in each Revit session reads everything, whatever the stamp says: a Studio migration
+  can change data without moving the stamp. It reads the connection file at every check, so a file put
+  right counts at the next one.
+- **A full read also checks the link**: the project with the saved id must still have the model's
+  number and sub-number. Otherwise the pane says so and shows no values ("Project not found", or "the
+  model's id means 1762-01 Neu-Ulm now"), so another project's values never show as this model's.
+- **The last pull** of each project is kept per person on the PC, in `%LOCALAPPDATA%\MH\RevitTools\Pulls`,
+  one file per database and project (never the login or password). When the database can't be reached at
+  the start of a session, the pane compares with it and says "Values from the last pull: today 09:12".
+- **The comparison** runs inside Revit when new values arrive and 1.5 seconds after the model last
+  changed (any change, Undo and Redo too). It only reads the model. A parameter is looked for on the
+  element, then on its type. A value Revit can't read or that doesn't fit is named under the changes
+  instead of stopping the list.
+- **The Database button** keeps the project number on its second line; the dot shows the state: green up
+  to date, blue with the number of changes (9+ above nine), red not reachable or project not found, grey
+  while checking or without a connection file. The dots are drawn at runtime from the plain icon, so the
+  green-dot icon files are gone.
+- Link project and Check parameters run from the pane's buttons through one external event, as Revit
+  requires for a pane. The ribbon's Check parameters stays.
+- **Walk** (the dev connection file and Studio on dev):
+  1. Open the linked test model, click the big Database button on the Parameter Tools ribbon: the pane
+     opens on the right. Type BT-1101-01 into the
+     Bauteil_ID of one Generic Model. Within a few seconds the pane lists Bodenplatte's values as changes
+     ("(empty) → B500B" and so on), as the model doesn't have them yet, and the button's dot turns blue
+     with their number.
+  2. In Studio, change one of BT-1101-01's values in project 1761 (e.g. Betonstahl Güte). Within a
+     minute (or at once with Check now) its row shows the new value, your name and the time, at the top.
+  3. Click "Show in model": the element is selected and zoomed to. Click "1 element linked": it's selected.
+  4. Rename the connection file: at the next check the pane says "Not set up"; rename it back and click
+     Check now: "Connected" again. To see "Not reachable", put a wrong server name into the file instead.
+  5. Open an unlinked model, or switch to one: the pane shows the two steps, and the button "Link model".
 
   Revit stays responsive the whole time.
 
@@ -381,14 +433,22 @@ mockup (https://claude.ai/artifact/BUxmo897HJTFcEt43wpcen) stays as it was.
   parameter's values. Back at Yehia's request (2026-11-22): it asks first and is one undo step, and it
   asks once more for parameters that schedules or view filters use (step 4).
 - **The Database panel** follows the mockup since 2026-11-22: the big Database button, then three rows
-  (Apply changes, Check parameters, Sign in). Until the pane comes (step 5), Database opens the Link
-  dialog. Apply changes (step 6) and Sign in (step 8) stay greyed out until they're built. Test
-  connection sits in the panel's slide-out (the arrow under the panel). The small icons are a lighter
-  grey than the mockup's, so they also show on Revit's dark ribbon.
+  (Apply changes, Check parameters, Sign in). Database shows and hides the pane (since step 5; before,
+  it opened the Link dialog). Apply changes (step 6) and Sign in (step 8) stay greyed out until they're
+  built. Test connection sits in the panel's slide-out (the arrow under the panel). The small icons are
+  a lighter grey than the mockup's, so they also show on Revit's dark ribbon.
 - **The Database button's second line** is the pane's state in the mockup ("3 changes", "Up to date",
-  "Link model"). Until the pane comes, a linked model shows its project number there, and the icon gets
-  a green dot in the place of the mockup's status dots (Yehia, 2026-11-22). The dot sits inside the
-  32 px icon, as Revit's icons can't reach past their edge.
+  "Link model"). Here a linked model keeps its project number there, and the dot on the icon shows the
+  state instead: green up to date, blue with the number of changes, red not reachable, grey while
+  checking (Yehia, 2026-11-22: "sounds good"). The dot sits inside the 32 px icon, as Revit's icons
+  can't reach past their edge.
+- **The pane (step 5)** leaves out what later steps bring: Apply all, Apply per object and "Not applied"
+  (step 6), the "Apply changes automatically" switch (later, phase 3), and the signed-in line and "Not
+  signed in" (step 8). An unlinked model's header says "Not linked" rather than "Connected", as nothing
+  is checked for it. The model section's line says who linked the model and when. Material changes are
+  listed too, by Material-ID and name. A value shows as Revit shows it on the left and as the database
+  holds it, with its unit, on the right ("300 mm → 0.3 m" would be a real change; equal values aren't
+  listed).
 - **Who and when on each change** ("M. Keller · 14:28"): from Studio's change history, as the history
   names the person.
 - **Docking:** the pane opens on the right the first time. After that Revit remembers where the user put
@@ -746,3 +806,32 @@ Still open:
     across the database: yes. The stamp and each value's who/when come from AuditLogs in MH_Database,
     which every PC reads. The add-in never writes to the database, so what Revit applies doesn't appear
     in Studio's history.
+- **2026-11-22, step 5 built:** Yehia wrote "commence step 6"; asked whether he meant Apply (step 6) or
+  the pane (step 5), he chose the pane. Built as described under step 5: the docked MH Database pane, the
+  check on its own thread, the last pull kept per person, and the comparison of model and database
+  ("changes" are the database's values the model doesn't have yet, as in the mockup). The Database button
+  now shows and hides the pane, and its dot shows the pane's state.
+  - The check, the kept pull, the settings, the comparison and every word the pane says sit in the
+    library (`Checking`, `Changes`) under tests. The Revit side reads the model, compares one value at a
+    time and draws the pane (`DatabaseLink\Pane`).
+  - The pane was drawn off screen in seven states (changes, up to date, not reachable with the last pull,
+    not linked, no connection file, project not found, no model) and matches the mockup. The button's
+    icons were drawn with each dot on a light and a dark ribbon.
+  - A C# review found nothing critical; it confirmed that only Revit's main thread touches Revit. Fixed:
+    - after switching to another database, a comparison of the first one's values could stay on screen:
+      data versions now never repeat;
+    - a kept pull now names the project number it was read for, is used only for that project, and goes
+      when the database no longer has the project or its id means another one;
+    - one value Revit can't read no longer stops the whole comparison: it's named under the changes, and
+      a failed comparison says so in the pane;
+    - an external event Revit turns down is asked for again a second later;
+    - the comparison remembers elements and converted values, so big models compare faster;
+    - a parameter that sits on the element's type counts, and text is compared without stray spaces.
+  - Checked, not changed: a renumbered project moves the stamp, as Studio's history records project
+    changes (dev MH_Database has 56 history rows for projects), so the next check reads everything and
+    notices it.
+  - 356 tests pass. Deployed with Revit closed; not walked, not committed.
+- **2026-11-23, walk item 1:** Yehia linked the model, typed BT-1101-01 into an element and clicked
+  Database: the pane opened on the right and listed the changes ("Perfect"). He first wondered whether
+  "click Database" meant Studio; it's the ribbon's Database button, which opens the pane. Committed and
+  pushed with this entry. Items 2 to 5 of the walk come next.

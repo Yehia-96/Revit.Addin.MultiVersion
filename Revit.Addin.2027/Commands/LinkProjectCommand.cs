@@ -13,20 +13,24 @@ using System.Windows.Interop;
 namespace Revit.Addin._2027.Commands
 {
     /// <summary>
-    /// Database → Link project. Asks which MH database project the open model is, suggesting one from
-    /// its Project Number, and saves the answer in the model (<see cref="ProjectLinkStorage"/>), so
-    /// everyone who opens it works with the same project. It only reads the database.
+    /// Link project: the MH Database pane's "Link the model…" and "Change project…". Asks which MH database
+    /// project the open model is, suggesting one from its Project Number, and saves the answer in the model
+    /// (<see cref="ProjectLinkStorage"/>), so everyone who opens it works with the same project. It only
+    /// reads the database.
     /// </summary>
     [Transaction(TransactionMode.Manual)]
     public class LinkProjectCommand : IExternalCommand
     {
         private const string Title = "Link project";
 
-        public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
+        public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements) =>
+            Run(commandData.Application, ref message);
+
+        /// <summary>The whole command, for the pane's buttons too. Call in API context.</summary>
+        public static Result Run(UIApplication application, ref string message)
         {
             try
             {
-                UIApplication application = commandData.Application;
                 Document document = application.ActiveUIDocument?.Document;
                 if (document == null || document.IsFamilyDocument)
                 {
