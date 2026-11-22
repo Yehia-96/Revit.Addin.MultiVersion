@@ -13,6 +13,9 @@ namespace MH.RevitTools.Database.Link
         /// <summary>All projects, for the dialog that links a model to its project.</summary>
         IReadOnlyList<LinkProject> GetProjects();
 
+        /// <summary>The dictionary's parameters that go to Revit, with their categories; the same for every project.</summary>
+        IReadOnlyList<LinkParameter> GetParameters();
+
         /// <summary>
         /// The project's change stamp: it moves whenever anything the link reads for that project
         /// changes. Cheap, so the change check can ask every minute. Null if there is no such project.

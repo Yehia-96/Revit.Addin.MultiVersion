@@ -48,11 +48,16 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Remove="Icons\ModernIcons\16\ApplyChangesIcon.png" />
+    <None Remove="Icons\ModernIcons\16\CheckParametersIcon.png" />
+    <None Remove="Icons\ModernIcons\16\DatabaseLinkIcon.png" />
+    <None Remove="Icons\ModernIcons\16\SignInIcon.png" />
     <None Remove="Icons\ModernIcons\32\AddMaterialParametersRE.png" />
+    <None Remove="Icons\ModernIcons\32\CheckParametersIcon.png" />
     <None Remove="Icons\ModernIcons\32\DatabaseIcon.png" />
+    <None Remove="Icons\ModernIcons\32\DatabaseLinkIcon.png" />
     <None Remove="Icons\ModernIcons\32\FamilyFileUpdate.png" />
     <None Remove="Icons\ModernIcons\32\HideElementsIcon.png" />
-    <None Remove="Icons\ModernIcons\32\LinkProjectIcon.png" />
     <None Remove="Icons\ModernIcons\32\ParameterAutomationIcon.png" />
     <None Remove="Icons\ModernIcons\32\Tables_Icon.png" />
     <None Remove="Icons\ModernIcons\32\Update_plugin.png" />
@@ -137,19 +142,34 @@
     <Resource Include="Icons\AddMaterialParametersRE.png" />
     <Resource Include="Icons\FamilyFileUpdate.png" />
     <Resource Include="Icons\HideElementsIcon.png" />
+    <Resource Include="Icons\ModernIcons\16\ApplyChangesIcon.png">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Resource>
+    <Resource Include="Icons\ModernIcons\16\CheckParametersIcon.png">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Resource>
+    <Resource Include="Icons\ModernIcons\16\DatabaseLinkIcon.png">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Resource>
+    <Resource Include="Icons\ModernIcons\16\SignInIcon.png">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Resource>
     <Resource Include="Icons\ModernIcons\32\AddMaterialParametersRE.png">
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </Resource>
+    <Resource Include="Icons\ModernIcons\32\CheckParametersIcon.png">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Resource>
     <Resource Include="Icons\ModernIcons\32\DatabaseIcon.png">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Resource>
+    <Resource Include="Icons\ModernIcons\32\DatabaseLinkIcon.png">
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </Resource>
     <Resource Include="Icons\ModernIcons\32\FamilyFileUpdate.png">
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </Resource>
     <Resource Include="Icons\ModernIcons\32\HideElementsIcon.png">
-      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
-    </Resource>
-    <Resource Include="Icons\ModernIcons\32\LinkProjectIcon.png">
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </Resource>
     <Resource Include="Icons\ModernIcons\32\ParameterAutomationIcon.png">

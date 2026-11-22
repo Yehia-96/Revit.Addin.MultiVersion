@@ -6,9 +6,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Documents;
 using System.Windows.Input;
-using System.Windows.Media;
 
 namespace Revit.Addin._2027.DatabaseLink
 {
@@ -19,15 +17,6 @@ namespace Revit.Addin._2027.DatabaseLink
     /// </summary>
     public partial class LinkProjectWindow : Window
     {
-        private static readonly Brush InfoBackground = Frozen(0xF5, 0xF9, 0xFF);
-        private static readonly Brush InfoBorder = Frozen(0xA9, 0xC5, 0xF7);
-        private static readonly Brush InfoIcon = Frozen(0x1F, 0x6F, 0xEB);
-        private static readonly Brush WarningBackground = Frozen(0xFD, 0xF3, 0xE1);
-        private static readonly Brush WarningBorder = Frozen(0xEB, 0xCB, 0x8B);
-        private static readonly Brush WarningText = Frozen(0x8F, 0x5B, 0x0A);
-        private static readonly Brush MutedText = Frozen(0x5B, 0x65, 0x78);
-        private static readonly Brush CodeText = Frozen(0x2A, 0x34, 0x47);
-
         private readonly string _modelName;
         private readonly string _projectNumber;
         private readonly ModelLink _currentLink;
@@ -54,7 +43,7 @@ namespace Revit.Addin._2027.DatabaseLink
             _currentLink = currentLink;
             _database = database;
 
-            ShowText(Subtitle, ProjectPicker.SubtitleBeforeCheck(modelName, currentLink));
+            DialogText.Show(Subtitle, ProjectPicker.SubtitleBeforeCheck(modelName, currentLink));
             ShowBanner(new[] { TextPart.Plain("Reading the projects from the MH database…") }, false);
             UpdateLinkButton();
 
@@ -107,8 +96,8 @@ namespace Revit.Addin._2027.DatabaseLink
         private void ShowProjects(IReadOnlyList<LinkProject> projects)
         {
             _picker = new ProjectPicker(_modelName, _projectNumber, _currentLink, projects, TimeZoneInfo.Local);
-            ShowText(Subtitle, _picker.Subtitle);
-            Subtitle.Foreground = _picker.SubtitleIsWarning ? WarningText : MutedText;
+            DialogText.Show(Subtitle, _picker.Subtitle);
+            Subtitle.Foreground = _picker.SubtitleIsWarning ? DialogText.WarningText : DialogText.MutedText;
             ShowBanner(_picker.Banner, _picker.BannerIsWarning);
             _pick = _picker.InitialPick;
             RefreshList();
@@ -209,37 +198,10 @@ namespace Revit.Addin._2027.DatabaseLink
         {
             List<TextPart> text = parts.ToList();
             Banner.Visibility = text.Any(p => p.Text.Length > 0) ? Visibility.Visible : Visibility.Collapsed;
-            Banner.Background = isWarning ? WarningBackground : InfoBackground;
-            Banner.BorderBrush = isWarning ? WarningBorder : InfoBorder;
-            BannerIcon.Stroke = isWarning ? WarningText : InfoIcon;
-            ShowText(BannerText, text);
-        }
-
-        private void ShowText(TextBlock target, IEnumerable<TextPart> parts)
-        {
-            target.Inlines.Clear();
-            foreach (TextPart part in parts)
-            {
-                var run = new Run(part.Text);
-                if (part.Style == TextStyle.Strong)
-                {
-                    run.FontWeight = FontWeights.SemiBold;
-                }
-                else if (part.Style == TextStyle.Code)
-                {
-                    run.FontFamily = (FontFamily)FindResource("CodeFont");
-                    run.FontSize = 12;
-                    run.Foreground = CodeText;
-                }
-                target.Inlines.Add(run);
-            }
-        }
-
-        private static Brush Frozen(byte red, byte green, byte blue)
-        {
-            var brush = new SolidColorBrush(Color.FromRgb(red, green, blue));
-            brush.Freeze();
-            return brush;
+            Banner.Background = isWarning ? DialogText.WarningBackground : DialogText.InfoBackground;
+            Banner.BorderBrush = isWarning ? DialogText.WarningBorder : DialogText.InfoBorder;
+            BannerIcon.Stroke = isWarning ? DialogText.WarningText : DialogText.InfoIcon;
+            DialogText.Show(BannerText, text);
         }
     }
 }

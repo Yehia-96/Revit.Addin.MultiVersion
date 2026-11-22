@@ -29,12 +29,17 @@ namespace MH.RevitTools.Database.Link
         private const string StampQuery =
             "SELECT Stamp FROM revit.ProjectStamps WHERE ProjectId = @ProjectId;";
 
+        private const string CategoriesQuery = "SELECT ParameterId, Category FROM revit.ParameterCategories;";
+
+        private const string ParametersQuery =
+            "SELECT ParameterId, Guid, RevitName, SetCode, GroupCode, Name, DataType, Unit, Target FROM revit.Parameters;";
+
         // One batch, so the dictionary and the project's rows come in one round trip. The stamp is read
         // first and last: if it moved, something changed half-way and the read is repeated.
         private const string ProjectDataQuery =
             StampQuery
-            + " SELECT ParameterId, Category FROM revit.ParameterCategories;"
-            + " SELECT ParameterId, Guid, RevitName, SetCode, GroupCode, Name, DataType, Unit, Target FROM revit.Parameters;"
+            + " " + CategoriesQuery
+            + " " + ParametersQuery
             + " SELECT BauteilId, ParameterId, Value, ChangedAtUtc, ChangedBy FROM revit.ObjectValues WHERE ProjectId = @ProjectId;"
             + " SELECT MaterialId, MaterialName, MaterialGroupCode, MaterialGroup, SurfacePattern, CutPattern FROM revit.Materials WHERE ProjectId = @ProjectId;"
             + " SELECT MaterialId, ParameterId, Value, ChangedAtUtc, ChangedBy FROM revit.MaterialValues WHERE ProjectId = @ProjectId;"
@@ -50,6 +55,14 @@ namespace MH.RevitTools.Database.Link
         }
 
         public IReadOnlyList<LinkProject> GetProjects() => Query(ProjectsQuery, null, ReadProjects);
+
+        public IReadOnlyList<LinkParameter> GetParameters() =>
+            Query(CategoriesQuery + " " + ParametersQuery, null, reader =>
+            {
+                Dictionary<int, List<string>> categories = ReadCategories(reader);
+                NextResult(reader);
+                return (IReadOnlyList<LinkParameter>)ReadParameters(reader, categories).AsReadOnly();
+            });
 
         public long? GetStamp(int projectId) => Query(StampQuery, projectId, ReadStamp);
 

@@ -32,6 +32,16 @@ namespace MH.RevitTools.Database.Link
 
         public IReadOnlyList<LinkProject> GetProjects() => _projects;
 
+        /// <summary>The dictionary, taken from the projects' data (the same for every project); empty without any.</summary>
+        public IReadOnlyList<LinkParameter> GetParameters()
+        {
+            lock (_gate)
+            {
+                LinkProjectData any = _data.Values.FirstOrDefault();
+                return any == null ? new LinkParameter[0] : any.Parameters;
+            }
+        }
+
         /// <summary>The project's stamp; null for an unknown project, and for a listed one without data.</summary>
         public long? GetStamp(int projectId) => GetProjectData(projectId)?.Stamp;
 

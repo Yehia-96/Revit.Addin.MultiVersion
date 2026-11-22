@@ -44,33 +44,11 @@ namespace Revit.Addin._2027
             string assemblyName = Assembly.GetExecutingAssembly().GetName().Name;
 
             // ---- Database -------------------------------------------------
-            // Test connection checks this PC's connection file; Link project links the open model to its
-            // project. Later the MH Database pane takes them over.
-            var btnTestConnection = new PushButtonData(
-                "TestDatabaseConnection",
-                "Test\nconnection",
-                assemblyPath,
-                "Revit.Addin._2027.Commands.TestConnectionCommand")
-            {
-                ToolTip = "Checks that Revit can reach the MH database with this PC's connection file.",
-                AvailabilityClassName = "Revit.Addin._2027.Commands.AvailableWithoutModel",
-                Image = LoadIcon(assemblyName, 32, "DatabaseIcon.png"),
-                LargeImage = LoadIcon(assemblyName, 32, "DatabaseIcon.png"),
-            };
-            panelDatabase.AddItem(btnTestConnection);
-
-            var btnLinkProject = new PushButtonData(
-                "LinkDatabaseProject",
-                "Link\nproject",
-                assemblyPath,
-                "Revit.Addin._2027.Commands.LinkProjectCommand")
-            {
-                ToolTip = "Links this model to its project in the MH database. The link is saved in the model.",
-                AvailabilityClassName = "Revit.Addin._2027.Commands.AvailableInProject",
-                Image = LoadIcon(assemblyName, 32, "LinkProjectIcon.png"),
-                LargeImage = LoadIcon(assemblyName, 32, "LinkProjectIcon.png"),
-            };
-            panelDatabase.AddItem(btnLinkProject);
+            // Laid out like the mockup: the big Database button, then three rows: Apply changes, Check
+            // parameters, and the signed-in person. Until the MH Database pane comes (step 5), Database
+            // opens the Link dialog. Apply changes (step 6) and Sign in (step 8) stay greyed out until
+            // they're built. Test connection sits in the panel's slide-out, under the panel's arrow.
+            AddDatabasePanel(panelDatabase, assemblyPath, assemblyName);
 
             // ---- Parameter Automation -------------------------------------
             var btnAddParams = new PushButtonData(
@@ -159,6 +137,52 @@ namespace Revit.Addin._2027
             return Result.Succeeded;
         }
 
+        private const string Commands = "Revit.Addin._2027.Commands.";
+
+        private static void AddDatabasePanel(RibbonPanel panel, string assemblyPath, string assemblyName)
+        {
+            panel.AddItem(new PushButtonData("DatabaseLink", "Database", assemblyPath, Commands + "LinkProjectCommand")
+            {
+                ToolTip = "Links this model to its project in the MH database; the link is saved in the model. "
+                          + "Later this button opens the MH Database pane.",
+                AvailabilityClassName = Commands + "AvailableInProject",
+                Image = LoadIcon(assemblyName, 16, "DatabaseLinkIcon.png"),
+                LargeImage = LoadIcon(assemblyName, 32, "DatabaseLinkIcon.png"),
+            });
+
+            var applyChanges = new PushButtonData("ApplyDatabaseChanges", "Apply changes", assemblyPath, Commands + "NotYetCommand")
+            {
+                ToolTip = "Applies the MH database's changes to this model. Comes with step 6 of the database link.",
+                AvailabilityClassName = Commands + "NotYetAvailable",
+                Image = LoadIcon(assemblyName, 16, "ApplyChangesIcon.png"),
+            };
+            var checkParameters = new PushButtonData("CheckDatabaseParameters", "Check parameters", assemblyPath, Commands + "CheckParametersCommand")
+            {
+                ToolTip = "Lists the MH database's parameters in this model, adds the missing ones from the master "
+                          + "shared parameter file, and can replace those of the same name with another GUID.",
+                AvailabilityClassName = Commands + "AvailableInProject",
+                Image = LoadIcon(assemblyName, 16, "CheckParametersIcon.png"),
+                LargeImage = LoadIcon(assemblyName, 32, "CheckParametersIcon.png"),
+            };
+            var signIn = new PushButtonData("SignInDatabase", "Sign in…", assemblyPath, Commands + "NotYetCommand")
+            {
+                ToolTip = "Signs you in with your MH Database Studio account; then it shows your name. Comes with "
+                          + "step 8 of the database link.",
+                AvailabilityClassName = Commands + "NotYetAvailable",
+                Image = LoadIcon(assemblyName, 16, "SignInIcon.png"),
+            };
+            panel.AddStackedItems(applyChanges, checkParameters, signIn);
+
+            panel.AddSlideOut();
+            panel.AddItem(new PushButtonData("TestDatabaseConnection", "Test\nconnection", assemblyPath, Commands + "TestConnectionCommand")
+            {
+                ToolTip = "Checks that Revit can reach the MH database with this PC's connection file.",
+                AvailabilityClassName = Commands + "AvailableWithoutModel",
+                Image = LoadIcon(assemblyName, 32, "DatabaseIcon.png"),
+                LargeImage = LoadIcon(assemblyName, 32, "DatabaseIcon.png"),
+            });
+        }
+
         /// <summary>
         /// Loads a ribbon icon from the embedded ModernIcons resources at the requested size
         /// (16/32/64). LargeImage uses 64 px and the small Image uses 32 px so both render
@@ -166,8 +190,17 @@ namespace Revit.Addin._2027
         /// </summary>
         private static BitmapImage LoadIcon(string assemblyName, int size, string fileName)
         {
-            return new BitmapImage(new Uri(
-                $"pack://application:,,,/{assemblyName};component/Icons/ModernIcons/{size}/{fileName}"));
+            try
+            {
+                return new BitmapImage(new Uri(
+                    $"pack://application:,,,/{assemblyName};component/Icons/ModernIcons/{size}/{fileName}"));
+            }
+            catch (System.IO.IOException ex)
+            {
+                // A missing icon must not take the whole Parameter Tools tab down: the button goes without it.
+                Debug.WriteLine("[Parameter Tools] No icon " + size + "/" + fileName + ": " + ex.Message);
+                return null;
+            }
         }
 
         public Result OnShutdown(UIControlledApplication application)

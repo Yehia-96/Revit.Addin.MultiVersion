@@ -4,8 +4,10 @@
 master is untouched). The add-in reads `revit` views, which build the IDs like Studio and take the
 change stamp from the history. The database session has built its side: the views, each parameter's
 GUID and Revit name, and the master shared parameter file. The views are in dev MH_Database. Its
-answers are under "What the database session built". Step 3 (link the model to its project) is done:
-Yehia walked it on 2026-11-20. It isn't committed yet.
+answers are under "What the database session built". Step 3 (link the model to its project) is done
+and committed (ee72e57). Step 4 (Check parameters) is done: Yehia walked it on 2026-11-22. At his
+request it gained Replace for Other GUID parameters, and the Database panel now has the mockup's layout.
+Step 5 is next.
 
 The live link from the MH database into Revit, inside the "Parameter Tools" add-in (MH.RevitTools),
 in `Revit.Addin.2027` only. It only reads from the database. This file holds the plan, the status, and
@@ -54,6 +56,9 @@ after it are listed next.
 - **Studio's change history (AuditLogs) drives the change check** and says who changed a value and when
   (Yehia suggested it in step 2).
 - **Duplicate Bauteil-IDs stay as they are** until Yehia gives the fix (a new Bauteilunternummer).
+- **Parameter definitions come from Studio's master file** (Yehia, 2026-11-20, step 4), as in the
+  mockup. The connection file names the file, so each PC pairs a database with its own file, and the
+  add-in refuses a file that holds none of the database's GUIDs.
 
 ## The connection file
 
@@ -70,7 +75,8 @@ installer; no real password is ever written here:
   "login": "<read-only login>",
   "password": "<written by the installer>",
   "encrypt": true,
-  "trustServerCertificate": true
+  "trustServerCertificate": true,
+  "masterParameterFile": "\\\\CADSQL.mh-frlg.local\\PLDB\\01.Datenbank\\MH_Parameter.txt"
 }
 ```
 
@@ -80,9 +86,14 @@ On Yehia's PC for development (LocalDB, Windows sign-in, no password):
 {
   "server": "(localdb)\\MSSQLLocalDB",
   "database": "MH_Database",
-  "windowsSignIn": true
+  "windowsSignIn": true,
+  "masterParameterFile": "%LOCALAPPDATA%\\MH Database Studio\\Development share\\PLDB\\01.Datenbank\\MH_Parameter.txt"
 }
 ```
+
+- `masterParameterFile` is the database's master shared parameter file, the one Studio writes for this
+  database. Environment variables such as `%LOCALAPPDATA%` are filled in for the user running Revit.
+  Without it, Check parameters lists but can't add.
 
 - `encrypt` and `trustServerCertificate` are whatever CADSQL needs, the same as Studio uses (asked for
   under "Needs from the database"). `"trustServerCertificate": true` means the server's certificate
@@ -204,7 +215,8 @@ after Yehia has walked it.
 - **Walk:** read "Needs from the database" and pass it on. Nothing to click in Revit.
 
 ### 3. Link the model to its project
-- Database → **Link project** opens the dialog from the mockup. It reads the projects in the
+- The big **Database** button opens the dialog from the mockup (until 2026-11-22 it was a Link project
+  button; from step 5 the pane offers it). It reads the projects in the
   background and suggests one from the Project Number (rule above).
 - Link saves the project in the model: an Extensible Storage entity on Project Information (schema
   `MH_ProjectLink`). Any add-in can read it; only ours can change it.
@@ -226,13 +238,40 @@ after Yehia has walked it.
      has only one 1761. With no Project Number, the dialog asks you to pick.
 
 ### 4. Check parameters
-- Lists the database's parameters for the model's categories as Ready, Missing or Other GUID. "Add
-  missing" binds them to the categories from the master shared parameter file. Families aren't reloaded
-  and values aren't touched.
-- The definitions must come from the connected database: each database has its own GUIDs (see "What
-  the database session built"). Where the add-in gets them is still open (see "Questions").
-- **Walk:** Check parameters shows 3 missing → Add → they appear on a Generic Model with their plain
-  names.
+- Database → **Check parameters** opens the dialog from the mockup. It lists every database parameter
+  on each of its categories (dev: 91 on Generic Models, 26 on Materials) against the model's project
+  parameters. Each one is found by its GUID:
+  - **Ready**: the model has it.
+  - **Missing**: Add can bind it.
+  - **Can't add**: the note says why, e.g. Studio hasn't written it into the master file yet.
+  - **Other GUID**: the model has a parameter of that name on that category with another GUID, or
+    one that isn't shared. The link leaves it empty unless it's replaced (below).
+- **Replace N…** (Yehia, 2026-11-22), in the red Other GUID box. Revit can't change a parameter's GUID,
+  so replacing deletes the model's parameter, with its values in every element and on every category,
+  and binds the database's in its place.
+  - It asks first, naming the parameters ("Replace them" / "Keep them"; Cancel is the default).
+  - All swaps are one undo step. Each swap is all or nothing: if the database's parameter can't be
+    bound, the old one stays, values and all.
+  - A parameter that a schedule or a view filter uses is left alone, as deleting it would drop it from
+    them; so is one that Revit would delete anything else with. The dialog names them, to be done by
+    hand.
+  - It's only offered where the database's parameter can be added, e.g. not while the master file
+    lacks it. The values come back from the database when they're applied (step 6).
+- **Add N missing parameters** binds them as instance parameters, in one undo step, from Studio's
+  master file (decided above). The add-in copies the file to `%LOCALAPPDATA%\MH\RevitTools\`, points
+  Revit at the copy for the moment it reads it, then puts the user's own setting back. A file holding
+  none of the database's GUIDs is refused, as it belongs to the other database.
+- Parameters land in the palette groups the Excel route uses, by group code: KAT and BES under Identity
+  Data, GEO under Geometry, ORT under Constraints, SPE under Data, DAR under Graphics, the material
+  groups under Materials, the rest under General. Families aren't reloaded and values aren't touched.
+- **Walk:**
+  1. Start Studio on dev once and sign in, so it writes the dev master file (it isn't there yet).
+  2. Open the linked test model → Database → Check parameters. The parameters show as Missing, apart
+     from any your model already has (Ready) or has with another GUID (Other GUID).
+  3. Click "Add N missing parameters". They turn to Added, and the button says Done.
+  4. Select a Generic Model: its Properties show the new parameters with their Revit names, e.g.
+     Bauteil_ID under Identity Data and Dicke under Geometry.
+  5. Check parameters again: everything that was Missing is Ready.
 
 ### 5. The pane and the change check (no apply yet)
 - The docked "MH Database" pane, with these states: up to date, n changes, not reachable, not set up,
@@ -282,7 +321,8 @@ after Yehia has walked it.
   could put a file there before the installer runs, or own the folder, and point Revit at another
   server. The add-in folder `Addins\2027\MH.RevitTools` has the same default (users can add files), so
   lock it the same way.
-- **Walk:** run the package on a second PC → Test connection works there.
+- **Walk:** run the package on a second PC → Test connection (in the Database panel's slide-out) works
+  there.
 
 **Later (phase 3, not now):**
 - auto-apply when Revit is idle
@@ -299,9 +339,13 @@ mockup (https://claude.ai/artifact/BUxmo897HJTFcEt43wpcen) stays as it was.
 - **Connect dialog:** it goes away, because the server, database and read-only login come from the
   connection file. A small sign-in with the Studio account replaces it, together with the per-user
   settings (how often to check, auto-apply).
-- **Check parameters, "Replace…" on Other GUID:** Revit can't change a parameter's GUID. Replacing
-  means deleting the old parameter, and that deletes its values in every element. With fresh GUIDs and
-  no existing models, I'd show "Other GUID" without a Replace button for now.
+- **Check parameters, "Replace…" on Other GUID:** left out at first, as replacing deletes the old
+  parameter's values. Back at Yehia's request (2026-11-22): it asks first and is one undo step (step 4).
+- **The Database panel** follows the mockup since 2026-11-22: the big Database button, then three rows
+  (Apply changes, Check parameters, Sign in). Until the pane comes (step 5), Database opens the Link
+  dialog. Apply changes (step 6) and Sign in (step 8) stay greyed out until they're built. Test
+  connection sits in the panel's slide-out (the arrow under the panel). The small icons are a lighter
+  grey than the mockup's, so they also show on Revit's dark ribbon.
 - **Who and when on each change** ("M. Keller · 14:28"): from Studio's change history, as the history
   names the person.
 - **Docking:** the pane opens on the right the first time. After that Revit remembers where the user put
@@ -490,14 +534,12 @@ Answered by Yehia on 2026-11-19 (recorded above):
 3. Project Number: `1761` without a sub-number, `1761-01` with one.
 4. Who may sign in: every active Studio account.
 
+Answered by Yehia on 2026-11-20:
+5. Where the parameter definitions come from (step 4): Studio's master file, named in the connection
+   file, as in the mockup.
+
 Still open:
 - The read-only login's name. It comes with the database session's login script.
-- Where the add-in gets the parameter definitions (step 4). The database session asks whether to read
-  the master file's path from the database; no view carries it today. Two ways:
-  - the connection file names the master file next to the server, so each PC pairs a database with its
-    own file, and the add-in checks the file's GUIDs against the database;
-  - or no file at all: `revit.Parameters` already has each parameter's GUID, Revit name and type, so
-    the add-in makes the definitions itself and can't pick the wrong file. I lean this way.
 
 ## Status log
 
@@ -577,3 +619,36 @@ Still open:
     for Autodesk's settings server, so Revit's online settings never came. Models → Open … still works.
   - The Link project button gets the mockup's link icon (the one in the dialog's header).
   - Yehia asked about the signed-in person shown in the mockup's ribbon: that comes with step 8.
+- **2026-11-20, step 3 committed** (ee72e57). The push failed: github.com doesn't resolve on this PC yet.
+- **2026-11-20, step 4 built:** Database → Check parameters, the dialog from the mockup, and Add from
+  Studio's master file (details under step 4).
+  - Yehia chose Studio's master file for the definitions. The connection file names it
+    (`masterParameterFile`), and the dev connection file now does.
+  - The check, the master-file reader and everything the dialog says sit in the library (`Parameters`),
+    under tests. The Revit side reads the model's bindings, binds and draws.
+  - The dialog was drawn off screen in four states and matches the mockup.
+  - A C# review found nothing critical. Fixed:
+    - Revit's own shared parameter file setting is put back safely;
+    - one refused parameter no longer stops the others;
+    - extending a binding keeps its other categories and palette group;
+    - a failed Add can be tried again;
+    - each Revit gets its own copy of the master file.
+  - 247 tests pass. Deployed with a Debug build, with Revit closed.
+  - The dev master file isn't there yet: Studio writes it the next time it starts on dev.
+- **2026-11-22, walk:** Yehia walked Check parameters (step 4): it works. Studio had written the dev master
+  file. He asked for:
+  - a button that replaces Other GUID parameters after asking: **Replace N…** (step 4);
+  - the mockup's Database panel: the big Database button with three rows under it, the last one for the
+    signed-in person.
+
+  Both are built. Replace was drawn off screen before and after, with its question checked; the panel's
+  icons were checked on a light and a dark ribbon. LinkProjectIcon.png went, as the big Database button
+  now opens the Link dialog.
+  - A C# review of Replace found nothing critical. Fixed:
+    - parameters used in schedules or view filters are left alone;
+    - a swap Revit would delete more with is refused;
+    - the stale-parameter guard compares the GUID too;
+    - the dialog can't be clicked again while Replace asks its question;
+    - an unexpected error undoes only its own swap;
+    - a missing ribbon icon can't hide the tab.
+  - 253 tests pass.

@@ -9,6 +9,8 @@ namespace MH.RevitTools.Database.Connection
     /// Reads the connection file, <c>C:\ProgramData\MH\RevitTools\database.json</c>: one per PC, for
     /// every Revit year. The installer writes it and the add-in only reads it. It names the SQL
     /// Server and how to sign in: with the read-only login, or as the Windows user on a developer PC.
+    /// It also names the database's master shared parameter file, so each PC pairs a database with
+    /// its own file.
     /// </summary>
     public static class ConnectionFile
     {
@@ -55,10 +57,17 @@ namespace MH.RevitTools.Database.Connection
             string problem;
             JObject root = ParseObject(json, out problem);
             ConnectionSettings settings = root == null ? null : ToSettings(root, out problem);
+            string masterParameterFile = null;
+            if (settings != null && !TryGetText(root, "masterParameterFile", out masterParameterFile, out problem))
+                settings = null;
             return settings == null
                 ? ConnectionFileResult.Failed(path, "The connection file " + path + " " + problem)
-                : ConnectionFileResult.Loaded(path, settings);
+                : ConnectionFileResult.Loaded(path, settings, ExpandedPath(masterParameterFile));
         }
+
+        // A path as written, with %LOCALAPPDATA% and the like filled in for the user running Revit.
+        private static string ExpandedPath(string path) =>
+            string.IsNullOrWhiteSpace(path) ? null : Environment.ExpandEnvironmentVariables(path.Trim());
 
         // The file's { } block, or null with the reason as the end of a sentence.
         private static JObject ParseObject(string json, out string problem)

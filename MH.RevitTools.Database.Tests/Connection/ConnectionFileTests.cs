@@ -218,4 +218,46 @@ public sealed class ConnectionFileTests : IDisposable
         Assert.False(result.IsLoaded);
         Assert.Contains(expectedKey, result.Problem);
     }
+
+    [Fact]
+    public void Read_MasterParameterFile_FillsInEnvironmentVariables()
+    {
+        string path = WriteFile("""
+            {
+              "server": "(localdb)\\MSSQLLocalDB",
+              "database": "MH_Database",
+              "windowsSignIn": true,
+              "masterParameterFile": " %LOCALAPPDATA%\\MH Database Studio\\MH_Parameter.txt "
+            }
+            """);
+
+        ConnectionFileResult result = ConnectionFile.Read(path);
+
+        Assert.True(result.IsLoaded);
+        string expected = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MH Database Studio", "MH_Parameter.txt");
+        Assert.Equal(expected, result.MasterParameterFile);
+    }
+
+    [Theory]
+    [InlineData("""{ "server": "s", "database": "d", "windowsSignIn": true }""")]
+    [InlineData("""{ "server": "s", "database": "d", "windowsSignIn": true, "masterParameterFile": " " }""")]
+    [InlineData("""{ "server": "s", "database": "d", "windowsSignIn": true, "masterParameterFile": null }""")]
+    public void Read_WithoutMasterParameterFile_StillLoads(string json)
+    {
+        ConnectionFileResult result = ConnectionFile.Read(WriteFile(json));
+
+        Assert.True(result.IsLoaded);
+        Assert.Null(result.MasterParameterFile);
+    }
+
+    [Fact]
+    public void Read_MasterParameterFileThatIsNoText_SaysSo()
+    {
+        ConnectionFileResult result = ConnectionFile.Read(WriteFile(
+            """{ "server": "s", "database": "d", "windowsSignIn": true, "masterParameterFile": 5 }"""));
+
+        Assert.False(result.IsLoaded);
+        Assert.Contains("\"masterParameterFile\"", result.Problem);
+    }
 }

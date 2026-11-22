@@ -80,7 +80,7 @@ namespace Revit.Addin._2027.Commands
                 {
                     ProjectLinkStorage.Write(document, link);
                 }
-                catch (Autodesk.Revit.Exceptions.ApplicationException ex)
+                catch (Exception ex) when (RevitErrors.IsRefusal(ex))
                 {
                     transaction.RollBack();
                     Show("The link wasn't saved", "Revit refused the change: " + ex.Message, TaskDialogIcon.TaskDialogIconWarning);
@@ -118,7 +118,7 @@ namespace Revit.Addin._2027.Commands
             {
                 borrowed = WorksharingUtils.CheckoutElements(document, new List<ElementId> { projectInformation });
             }
-            catch (Autodesk.Revit.Exceptions.ApplicationException ex)
+            catch (Exception ex) when (RevitErrors.IsRefusal(ex))
             {
                 return "Revit couldn't borrow Project Information from the central model: " + ex.Message;
             }

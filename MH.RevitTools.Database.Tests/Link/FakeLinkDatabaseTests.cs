@@ -48,6 +48,15 @@ public sealed class FakeLinkDatabaseTests
     }
 
     [Fact]
+    public void GetParameters_IsTheDictionaryOfTheProjectsData()
+    {
+        var database = new FakeLinkDatabase(new[] { Munich, Ulm }, new[] { UlmData(7, "0.3") });
+
+        Assert.Equal("Dicke", Assert.Single(database.GetParameters()).RevitName);
+        Assert.Empty(new FakeLinkDatabase(new[] { Ulm }, Array.Empty<LinkProjectData>()).GetParameters());
+    }
+
+    [Fact]
     public void DataForAProjectNotInTheList_IsRejected()
     {
         Assert.Throws<ArgumentException>(() => new FakeLinkDatabase(new[] { Munich }, new[] { UlmData(7, "0.3") }));

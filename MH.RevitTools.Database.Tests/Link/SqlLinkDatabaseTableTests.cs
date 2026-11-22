@@ -72,6 +72,18 @@ public sealed class SqlLinkDatabaseTableTests : IClassFixture<StandInDatabaseFix
     }
 
     [Fact]
+    public void GetParameters_IsTheSameDictionaryAsInTheProjectData()
+    {
+        var parameters = _database.GetParameters();
+
+        Assert.Equal(new[] { 8, 61, 140 }, parameters.Select(p => p.ParameterId).OrderBy(id => id));
+        LinkParameter dicke = parameters.Single(p => p.ParameterId == 61);
+        Assert.Equal(new Guid("3f1c2a6e-8b4d-4c1e-9a7f-61d1c4e0a061"), dicke.Guid);
+        Assert.Equal(new[] { "OST_GenericModel" }, dicke.Categories);
+        Assert.Empty(parameters.Single(p => p.ParameterId == 8).Categories);
+    }
+
+    [Fact]
     public void GetProjectData_GivesTheRevitName_OrThePlainNameUntilStudioHasSetOne()
     {
         LinkProjectData data = _database.GetProjectData(13);

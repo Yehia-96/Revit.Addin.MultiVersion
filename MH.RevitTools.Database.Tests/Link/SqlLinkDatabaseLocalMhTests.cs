@@ -58,6 +58,15 @@ public sealed class SqlLinkDatabaseLocalMhTests
     }
 
     [Fact]
+    public void GetParameters_IsTheDictionary_EachOnARevitCategory()
+    {
+        var parameters = Database.GetParameters();
+
+        Assert.Equal(Database.GetProjectData(Ulm.ProjectId).Parameters.Count, parameters.Count);
+        Assert.All(parameters, p => Assert.NotEmpty(p.Categories));
+    }
+
+    [Fact]
     public void ObjectValues_UseBauteilIdsBuiltFromTheCatalog_OnePerObject()
     {
         LinkProjectData data = Database.GetProjectData(Ulm.ProjectId);
