@@ -228,6 +228,29 @@ namespace MH.RevitTools.Database.Parameters
                 : "Replace only the other " + others.ToString(CultureInfo.InvariantCulture);
         }
 
+        /// <summary>
+        /// The list's button that opens the elements in a new 3D view (Yehia, 2026-11-22): "Show them in a
+        /// new view", or "Show 2 of 3 in a new view" when only some are model elements.
+        /// </summary>
+        public static string ShowInViewButton(ReplaceDeletions deletions)
+        {
+            if (deletions == null) throw new ArgumentNullException(nameof(deletions));
+            int total = deletions.Elements.Count;
+            int shown = deletions.Elements.Count(element => element.CanBeShown);
+            if (shown == 0 || shown == total)
+                return total == 1 ? "Show it in a new view" : "Show them in a new view";
+            return "Show " + shown.ToString(CultureInfo.InvariantCulture) + " of "
+                + total.ToString(CultureInfo.InvariantCulture) + " in a new view";
+        }
+
+        /// <summary>Beside that button when it can't help: none is a model element. Empty otherwise.</summary>
+        public static string ShowInViewNote(ReplaceDeletions deletions)
+        {
+            if (deletions == null) throw new ArgumentNullException(nameof(deletions));
+            return deletions.Elements.Any(element => element.CanBeShown) ? ""
+                : "None of them is a model element, so a view can't show them. The line under each name says where it is.";
+        }
+
         /// <summary>For the banner after replacing only the others: a sentence for each parameter left.</summary>
         public static IReadOnlyList<string> LeftForDeletions(ReplaceDeletions deletions)
         {

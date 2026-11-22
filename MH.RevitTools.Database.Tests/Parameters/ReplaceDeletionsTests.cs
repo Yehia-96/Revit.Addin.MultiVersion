@@ -139,6 +139,34 @@ public sealed class ReplaceDeletionsTests
         Assert.Equal("Delete 1 element and replace", ParameterCheckTexts.DeleteAndReplaceButton(single));
     }
 
+    [Fact]
+    public void EachElementSaysWhereItIs()
+    {
+        Assert.Equal("In schedule “Wandliste”", new DeletedElement(501, 9001, null, "Element", "schedule", " Wandliste ").Note);
+        Assert.Equal("In view “Ebene 0”", new DeletedElement(501, 9002, null, "Element", null, "Ebene 0").Note);
+        Assert.Equal("", new DeletedElement(501, 9003, "Wand", "Walls", canBeShown: true).Note);
+        Assert.Equal("Not shown in any view", new DeletedElement(501, 9004, null, null).Note);
+    }
+
+    [Fact]
+    public void ShowInView_CountsWhatAViewCanShow_AndSaysWhenItCantShowAny()
+    {
+        ReplaceDeletions some = ReplaceDeletions.Found(Check.ToReplace, new[]
+        {
+            new DeletedElement(501, 9001, "Wand", "Walls", canBeShown: true),
+            new DeletedElement(501, 9002, null, null, "schedule", "Wandliste"),
+            new DeletedElement(502, 9003, "Decke", "Floors", canBeShown: true),
+        });
+        ReplaceDeletions all = ReplaceDeletions.Found(Check.ToReplace, new[] { new DeletedElement(501, 9001, "Wand", "Walls", canBeShown: true) });
+        ReplaceDeletions none = ReplaceDeletions.Found(Check.ToReplace, new[] { new DeletedElement(501, 9002, null, null) });
+
+        Assert.Equal("Show 2 of 3 in a new view", ParameterCheckTexts.ShowInViewButton(some));
+        Assert.Equal("", ParameterCheckTexts.ShowInViewNote(some));
+        Assert.Equal("Show it in a new view", ParameterCheckTexts.ShowInViewButton(all));
+        Assert.Equal("Show it in a new view", ParameterCheckTexts.ShowInViewButton(none));
+        Assert.StartsWith("None of them is a model element, so a view can't show them.", ParameterCheckTexts.ShowInViewNote(none));
+    }
+
     private static LinkParameter Parameter(int id, string name) =>
         new(id, Guid.NewGuid(), name, "BAU", "GEO", name, "Double", "m", LinkTarget.Object, new[] { GenericModels });
 

@@ -17,6 +17,7 @@ namespace MH.RevitTools.Database.Parameters
             Func<IReadOnlyList<ParameterToReplace>, ReplaceUses> findUses,
             Func<IReadOnlyList<ParameterToReplace>, ReplaceDeletions> findDeletions,
             Func<IReadOnlyList<ParameterToReplace>, IReadOnlyCollection<long>, ParameterAddResult> replace,
+            Func<IReadOnlyCollection<long>, string> showElements,
             Func<string, string, bool> confirm,
             Func<ReplaceUses, ReplaceChoice> askAboutUses,
             Func<string, string> categoryLabel)
@@ -26,6 +27,7 @@ namespace MH.RevitTools.Database.Parameters
             FindUses = findUses ?? throw new ArgumentNullException(nameof(findUses));
             FindDeletions = findDeletions ?? throw new ArgumentNullException(nameof(findDeletions));
             Replace = replace ?? throw new ArgumentNullException(nameof(replace));
+            ShowElements = showElements ?? throw new ArgumentNullException(nameof(showElements));
             Confirm = confirm ?? throw new ArgumentNullException(nameof(confirm));
             AskAboutUses = askAboutUses ?? throw new ArgumentNullException(nameof(askAboutUses));
             CategoryLabel = categoryLabel ?? throw new ArgumentNullException(nameof(categoryLabel));
@@ -48,6 +50,12 @@ namespace MH.RevitTools.Database.Parameters
         /// (the ones the user agreed to); called on Revit's thread.
         /// </summary>
         public Func<IReadOnlyList<ParameterToReplace>, IReadOnlyCollection<long>, ParameterAddResult> Replace { get; }
+
+        /// <summary>
+        /// Makes a new 3D view showing just these elements, to open once the dialog closes; returns why it
+        /// couldn't, or null. Called on Revit's thread.
+        /// </summary>
+        public Func<IReadOnlyCollection<long>, string> ShowElements { get; }
 
         /// <summary>Asks a yes/no question (title, text); true means go ahead.</summary>
         public Func<string, string, bool> Confirm { get; }

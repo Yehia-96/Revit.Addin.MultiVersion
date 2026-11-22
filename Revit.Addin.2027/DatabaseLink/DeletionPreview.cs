@@ -96,9 +96,12 @@ namespace Revit.Addin._2027.DatabaseLink
             try
             {
                 Element element = document.GetElement(new ElementId(id));
-                return element == null
-                    ? new DeletedElement(parameterId, id, null, null)
-                    : new DeletedElement(parameterId, id, element.Name, KindOf(element));
+                if (element == null)
+                    return new DeletedElement(parameterId, id, null, null);
+
+                var owner = element.ViewSpecific ? document.GetElement(element.OwnerViewId) as View : null;
+                return new DeletedElement(parameterId, id, NameOf(document, element), KindOf(element),
+                    owner == null ? null : ViewKindOf(owner), owner == null ? null : owner.Name, CanBeShown(element));
             }
             catch (Exception ex) when (RevitErrors.IsRefusal(ex))
             {
@@ -107,6 +110,28 @@ namespace Revit.Addin._2027.DatabaseLink
                 return new DeletedElement(parameterId, id, null, null);
             }
         }
+
+        // Its own name, else its type's ("Family: Type"); empty when Revit gives neither.
+        private static string NameOf(Document document, Element element)
+        {
+            if (!string.IsNullOrWhiteSpace(element.Name))
+                return element.Name;
+            ElementId typeId = element.GetTypeId();
+            var type = typeId == ElementId.InvalidElementId ? null : document.GetElement(typeId) as ElementType;
+            if (type == null || string.IsNullOrWhiteSpace(type.Name))
+                return null;
+            return string.IsNullOrWhiteSpace(type.FamilyName) ? type.Name : type.FamilyName + ": " + type.Name;
+        }
+
+        // A model element with geometry: what a 3D view of its own can show.
+        private static bool CanBeShown(Element element) =>
+            !element.ViewSpecific
+            && element.Category != null
+            && element.Category.CategoryType == CategoryType.Model
+            && element.get_BoundingBox(null) != null;
+
+        private static string ViewKindOf(View view) =>
+            view is ViewSchedule ? "schedule" : view is ViewSheet ? "sheet" : "view";
 
         // What the list calls it: the kinds a parameter is likely to take with it, else its category, else
         // Revit's own name for its class.

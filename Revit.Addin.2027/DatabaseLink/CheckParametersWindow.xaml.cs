@@ -170,16 +170,37 @@ namespace Revit.Addin._2027.DatabaseLink
         }
 
         // The list of elements Revit deletes with some of the parameters, found by trying without changing
-        // the model. Returns the swaps to go on with, and the elements Replace may delete with them.
+        // the model. Returns the swaps to go on with, and the elements Replace may delete with them; none
+        // when the user asked to see the elements in a new view instead.
         private IReadOnlyList<ParameterToReplace> ChooseWithDeletions(
             IReadOnlyList<ParameterToReplace> swaps, List<string> left, out IReadOnlyCollection<long> alsoDelete)
         {
             ReplaceDeletions deletions = WithWaitCursor(() => _actions.FindDeletions(swaps));
-            ReplaceChoice choice = deletions.Deleting.Count == 0 ? ReplaceChoice.ReplaceAll : AlsoDeletedWindow.Ask(this, deletions);
+            ReplaceChoice choice = ReplaceChoice.ReplaceAll;
+            if (deletions.Deleting.Count > 0)
+            {
+                AlsoDeletedWindow list = AlsoDeletedWindow.Ask(this, deletions);
+                choice = list.Choice;
+                if (list.ShowRequested)
+                    ShowInNewView(deletions);
+            }
             if (choice == ReplaceChoice.ReplaceOthers)
                 left.AddRange(ParameterCheckTexts.LeftForDeletions(deletions));
             alsoDelete = deletions.AllowedFor(choice);
             return deletions.Choose(choice);
+        }
+
+        // Makes the view of the elements; the dialog then closes, as Revit can only open the view after it.
+        private void ShowInNewView(ReplaceDeletions deletions)
+        {
+            List<long> ids = deletions.Elements.Where(element => element.CanBeShown).Select(element => element.Id).ToList();
+            string problem = WithWaitCursor(() => _actions.ShowElements(ids));
+            if (problem == null)
+            {
+                Close();
+                return;
+            }
+            ShowBanner(new[] { TextPart.Strong("No view was made. "), TextPart.Plain("Revit said: " + problem + ".") }, true);
         }
 
         // While Add or Replace runs, or asks its question, nothing else in the dialog can be clicked: Revit's

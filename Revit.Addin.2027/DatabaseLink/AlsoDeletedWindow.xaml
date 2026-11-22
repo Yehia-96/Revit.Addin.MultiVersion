@@ -39,6 +39,19 @@
             </Setter>
         </Style>
 
+        <!-- Show in a new view: greyed out when none of the elements is one a view can show. -->
+        <Style x:Key="ShowButton" TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
+            <Setter Property="Height" Value="30"/>
+            <Setter Property="Padding" Value="12,0"/>
+            <Style.Triggers>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Foreground" Value="#8C95A5"/>
+                    <Setter Property="BorderBrush" Value="#DDE1E7"/>
+                    <Setter Property="Cursor" Value="Arrow"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
         <!-- Deleting is what this button does, so it's the filled red one; Enter never presses it. -->
         <Style x:Key="DeleteButton" TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
             <Setter Property="Foreground" Value="#FFFFFF"/>
@@ -71,8 +84,12 @@
                         <ColumnDefinition Width="0.8*"/>
                         <ColumnDefinition Width="1.4*"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Margin="0,0,12,0" Text="{Binding Name}" Foreground="#0F1B2D" FontWeight="SemiBold"
-                               TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}" VerticalAlignment="Center"/>
+                    <StackPanel Grid.Column="0" Margin="0,0,12,0" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Name}" Foreground="#0F1B2D" FontWeight="SemiBold"
+                                   TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}"/>
+                        <TextBlock Text="{Binding Note}" Visibility="{Binding NoteVisibility}" FontSize="11.5" Foreground="#5B6578"
+                                   TextWrapping="Wrap" Margin="0,1,0,0"/>
+                    </StackPanel>
                     <TextBlock Grid.Column="1" Margin="0,0,12,0" Text="{Binding Kind}" FontSize="12" Foreground="#3F4855"
                                TextTrimming="CharacterEllipsis" ToolTip="{Binding Kind}" VerticalAlignment="Center"/>
                     <TextBlock Grid.Column="2" Margin="0,0,12,0" Text="{Binding Id}" FontFamily="{StaticResource CodeFont}"
@@ -86,6 +103,7 @@
 
     <Grid>
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
@@ -109,8 +127,15 @@
             </StackPanel>
         </DockPanel>
 
+        <!-- Show them in a view of their own; or why a view can't -->
+        <DockPanel Grid.Row="1" Margin="24,0,24,10">
+            <Button x:Name="ShowButton" DockPanel.Dock="Right" Margin="12,0,0,0" Style="{StaticResource ShowButton}"
+                    Click="OnShow" ToolTipService.ShowOnDisabled="True"/>
+            <TextBlock x:Name="ShowNoteText" FontSize="12" Foreground="#5B6578" TextWrapping="Wrap" VerticalAlignment="Center"/>
+        </DockPanel>
+
         <!-- The elements -->
-        <Border Grid.Row="1" Margin="24,0" CornerRadius="8" BorderThickness="1" BorderBrush="#E4E7EC" ClipToBounds="True">
+        <Border Grid.Row="2" Margin="24,0" CornerRadius="8" BorderThickness="1" BorderBrush="#E4E7EC" ClipToBounds="True">
             <DockPanel>
                 <Border DockPanel.Dock="Top" Padding="12,8" Background="#F7F8FA" BorderBrush="#E4E7EC" BorderThickness="0,0,0,1"
                         CornerRadius="8,8,0,0">
@@ -142,10 +167,10 @@
             </DockPanel>
         </Border>
 
-        <TextBlock x:Name="MoreText" Grid.Row="2" Margin="24,8,24,0" FontSize="12" Foreground="#5B6578" Visibility="Collapsed"/>
+        <TextBlock x:Name="MoreText" Grid.Row="3" Margin="24,8,24,0" FontSize="12" Foreground="#5B6578" Visibility="Collapsed"/>
 
         <!-- Buttons: Cancel is the safe way out, and Esc presses it -->
-        <Border Grid.Row="3" Margin="0,16,0,0" Padding="24,14" Background="#F7F8FA" BorderBrush="#E4E7EC"
+        <Border Grid.Row="4" Margin="0,16,0,0" Padding="24,14" Background="#F7F8FA" BorderBrush="#E4E7EC"
                 BorderThickness="0,1,0,0">
             <DockPanel>
                 <Button x:Name="DeleteButton" DockPanel.Dock="Right" Margin="12,0,0,0" Style="{StaticResource DeleteButton}"

@@ -8,9 +8,10 @@ using System.Windows.Controls;
 namespace Revit.Addin._2027.DatabaseLink
 {
     /// <summary>
-    /// Lists the elements Revit deletes together with the parameters Replace would delete, by name, kind
-    /// and id, and asks before anything goes (Yehia, 2026-11-22): delete them and replace, replace only the
-    /// parameters that go on their own, or cancel. It only asks; Replace does the deleting.
+    /// Lists the elements Revit deletes together with the parameters Replace would delete, by name, kind,
+    /// id and where they are, and asks before anything goes (Yehia, 2026-11-22): delete them and replace,
+    /// replace only the parameters that go on their own, show them in a new view, or cancel. It only asks;
+    /// Replace does the deleting.
     /// </summary>
     public partial class AlsoDeletedWindow : Window
     {
@@ -30,6 +31,13 @@ namespace Revit.Addin._2027.DatabaseLink
             OthersButton.Content = others;
             OthersButton.Visibility = others.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
 
+            ShowButton.Content = ParameterCheckTexts.ShowInViewButton(deletions);
+            ShowNoteText.Text = ParameterCheckTexts.ShowInViewNote(deletions);
+            ShowButton.IsEnabled = ShowNoteText.Text.Length == 0;
+            ShowButton.ToolTip = ShowButton.IsEnabled
+                ? "Makes a 3D view with just these elements and opens it. Check parameters closes; open it again to replace."
+                : ShowNoteText.Text;
+
             // Each element once, grouped by the parameter it goes with; one that several take names them all.
             Rows.ItemsSource = deletions.Elements
                 .Take(RowsShown)
@@ -46,12 +54,15 @@ namespace Revit.Addin._2027.DatabaseLink
         /// <summary>The answer; Cancel unless a button said otherwise.</summary>
         public ReplaceChoice Choice { get; private set; } = ReplaceChoice.Cancel;
 
-        /// <summary>Shows the list over the owner, and gives the answer once it's closed.</summary>
-        public static ReplaceChoice Ask(Window owner, ReplaceDeletions deletions)
+        /// <summary>True when the user asked to see the elements in a new view; nothing is replaced then.</summary>
+        public bool ShowRequested { get; private set; }
+
+        /// <summary>Shows the list over the owner; once it's closed, the window holds the answer.</summary>
+        public static AlsoDeletedWindow Ask(Window owner, ReplaceDeletions deletions)
         {
             var window = new AlsoDeletedWindow(deletions) { Owner = owner };
             window.ShowDialog();
-            return window.Choice;
+            return window;
         }
 
         private void OnDelete(object sender, RoutedEventArgs e)
@@ -63,6 +74,13 @@ namespace Revit.Addin._2027.DatabaseLink
         private void OnOthers(object sender, RoutedEventArgs e)
         {
             Choice = ReplaceChoice.ReplaceOthers;
+            DialogResult = true;
+        }
+
+        private void OnShow(object sender, RoutedEventArgs e)
+        {
+            Choice = ReplaceChoice.Cancel;
+            ShowRequested = true;
             DialogResult = true;
         }
 

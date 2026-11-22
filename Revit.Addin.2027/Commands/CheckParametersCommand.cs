@@ -9,6 +9,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Windows.Interop;
 
 namespace Revit.Addin._2027.Commands
@@ -54,12 +55,22 @@ namespace Revit.Addin._2027.Commands
                 MasterFileCopies.RemoveOld(CopyFolder, DateTime.UtcNow, OldCopy);
                 string localCopy = MasterFileCopies.PathFor(CopyFolder, Process.GetCurrentProcess().Id);
 
+                // The view "Show in a new view" makes; Revit can only switch to it once the dialog has closed.
+                View3D toOpen = null;
+                IReadOnlyCollection<long> toZoomTo = null;
                 var actions = new ParameterActions(
                     () => ModelParameterScan.Read(document),
                     toAdd => ParameterAdder.Add(application.Application, document, localCopy, toAdd),
                     toReplace => ParameterUseScan.Find(document, toReplace),
                     toReplace => DeletionPreview.Find(document, toReplace),
                     (toReplace, alsoDelete) => ParameterAdder.Replace(application.Application, document, localCopy, toReplace, alsoDelete),
+                    ids =>
+                    {
+                        string problem;
+                        toOpen = DeletedElementsView.Create(document, ids, out problem);
+                        toZoomTo = ids;
+                        return problem;
+                    },
                     AskToReplace,
                     AskAboutUses,
                     category => CategoryLabel(document, category));
@@ -67,6 +78,9 @@ namespace Revit.Addin._2027.Commands
                     new SqlLinkDatabase(file.Settings), file.MasterParameterFile, localCopy, ModelParameterScan.Read(document), actions);
                 new WindowInteropHelper(window).Owner = application.MainWindowHandle;
                 window.ShowDialog();
+
+                if (toOpen != null)
+                    Open(application.ActiveUIDocument, toOpen, toZoomTo);
 
                 // Succeeded keeps what Add bound; with nothing added there is nothing to keep either way.
                 return Result.Succeeded;
@@ -126,6 +140,32 @@ namespace Revit.Addin._2027.Commands
 
             int chosen = Array.IndexOf(LinkResults, dialog.Show());
             return chosen >= 0 && chosen < offered ? answers[chosen].Choice : ReplaceChoice.Cancel;
+        }
+
+        // Switches to the view of the elements Replace would delete (setting ActiveView switches at once,
+        // unlike RequestViewChange), then zooms to them. The view is already in the model, so a failure here
+        // only means opening it from the Project Browser; a failed zoom just leaves the view as it opens.
+        private static void Open(UIDocument active, View3D view, IReadOnlyCollection<long> elementIds)
+        {
+            try
+            {
+                active.ActiveView = view;
+            }
+            catch (Exception ex) when (RevitErrors.IsRefusal(ex))
+            {
+                Show("Open the view yourself", "The view “" + view.Name + "” is ready, but Revit didn't switch to it: "
+                    + ex.Message + " It's in the Project Browser under 3D Views.", TaskDialogIcon.TaskDialogIconInformation);
+                return;
+            }
+
+            try
+            {
+                active.ShowElements(elementIds.Select(id => new ElementId(id)).ToList());
+            }
+            catch (Exception ex) when (RevitErrors.IsRefusal(ex))
+            {
+                Trace.WriteLine("[Parameter Tools] Couldn't zoom to the elements Replace would delete: " + ex.Message);
+            }
         }
 
         // Revit's own name for the category, in Revit's language, e.g. "Generic Models".

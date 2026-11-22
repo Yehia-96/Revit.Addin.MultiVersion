@@ -10,8 +10,9 @@ request it gained Replace for Other GUID parameters, and the Database panel now 
 (00b0fb7, pushed). After walking those, he asked for two more: the Database button shows the linked
 project's number with a green dot (walked, works), and Replace also takes parameters that schedules or
 view filters use, after a second warning. In his model Revit would delete other elements with every
-parameter, so Replace now lists those elements by name and deletes them only after he confirms (not
-walked yet). Step 5 is next.
+parameter, so Replace now lists those elements, says where each one is and can show them in a 3D view of
+their own, and deletes them only after he confirms. Yehia tried it: "everything is good". Committed and
+pushed with this note.
 
 The live link from the MH database into Revit, inside the "Parameter Tools" add-in (MH.RevitTools),
 in `Revit.Addin.2027` only. It only reads from the database. This file holds the plan, the status, and
@@ -281,6 +282,12 @@ after Yehia has walked it.
     elements and replace" deletes them and replaces; "Replace only the other N" leaves those
     parameters; Cancel does nothing. Replace never deletes an element that wasn't in the list: a swap
     that would is refused.
+  - Under each name the list says where the element is: "In schedule “…”" for one that belongs to a
+    view, "Not shown in any view" for Revit's own records. A nameless element shows its type's name if
+    it has one. **"Show them in a new view"** (Yehia, 2026-11-22) makes a 3D view named "MH Replace -
+    elements it would delete" with only those model elements shown, closes Check parameters and opens
+    the view, zoomed to them; open Check parameters again to replace. It's greyed out when none of them
+    is a model element. The view stays until someone deletes it.
   - It's only offered where the database's parameter can be added, e.g. not while the master file
     lacks it. The values come back from the database when they're applied (step 6).
 - **Add N missing parameters** binds them as instance parameters, in one undo step, from Studio's
@@ -726,3 +733,16 @@ Still open:
   - Not known until Revit shows it: whether the trial borrows elements in a workshared model. Replace
     itself borrows them anyway; after a Cancel, Relinquish All Mine gives them back.
   - 283 tests pass. Deployed with Revit closed.
+- **2026-11-22, committed** (abe28f8) and pushed. Yehia tried the list: the elements had no name. He
+  asked for a button that makes a view with just those elements. Built: "Show them in a new view", and a
+  line under each name saying where the element is (its view, or no view at all). Drawn off screen with
+  made-up elements: some model elements, and none.
+  - A C# review found nothing critical. Fixed: the new view has no view template and shows the elements'
+    categories and worksets, so isolating can't leave it empty; a failed zoom no longer says the view
+    didn't open. (Its "ActiveView switches only later" point was wrong: that's RequestViewChange.)
+  - 285 tests pass. Deployed with Revit closed.
+  - Yehia tried it: "everything is good". Committed and pushed with this entry.
+  - He also asked whether the pane's changes come from Studio's history and activity, and so are the same
+    across the database: yes. The stamp and each value's who/when come from AuditLogs in MH_Database,
+    which every PC reads. The add-in never writes to the database, so what Revit applies doesn't appear
+    in Studio's history.
