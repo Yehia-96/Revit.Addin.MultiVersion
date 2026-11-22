@@ -6,8 +6,12 @@ change stamp from the history. The database session has built its side: the view
 GUID and Revit name, and the master shared parameter file. The views are in dev MH_Database. Its
 answers are under "What the database session built". Step 3 (link the model to its project) is done
 and committed (ee72e57). Step 4 (Check parameters) is done: Yehia walked it on 2026-11-22. At his
-request it gained Replace for Other GUID parameters, and the Database panel now has the mockup's layout.
-Step 5 is next.
+request it gained Replace for Other GUID parameters, and the Database panel now has the mockup's layout
+(00b0fb7, pushed). After walking those, he asked for two more: the Database button shows the linked
+project's number with a green dot (walked, works), and Replace also takes parameters that schedules or
+view filters use, after a second warning. In his model Revit would delete other elements with every
+parameter, so Replace now lists those elements by name and deletes them only after he confirms (not
+walked yet). Step 5 is next.
 
 The live link from the MH database into Revit, inside the "Parameter Tools" add-in (MH.RevitTools),
 in `Revit.Addin.2027` only. It only reads from the database. This file holds the plan, the status, and
@@ -228,6 +232,12 @@ after Yehia has walked it.
   central, a plain message says so instead of linking.
 - A copy made with Save As keeps the link, like everything else in Project Information. Link the copy
   again if it belongs to another project.
+- **The big Database button shows the active model's link** (Yehia, 2026-11-22): "Database" over the
+  project's number (1761-01) and a green dot on the icon once the model is linked; "Database" over "Link
+  model" while it isn't; plain "Database" without a project model. The tooltip names the project, who
+  linked it and when. The button follows the active view from model to model, Link project, Undo and
+  Redo, and what Synchronize with Central or Reload Latest brings. It reads only the model, never the
+  database.
 - **Walk:**
   1. Open a test model whose Project Number is 1761-01 → Database → Link project. The dialog says
      "Suggested from Project Information: Project Number 1761-01 matches 1761-01 Ulm", with Ulm picked.
@@ -236,6 +246,9 @@ after Yehia has walked it.
      Linked by (your Revit user name), (time)", and the button says "Already linked".
   4. Optional, on a model that isn't linked: with the Project Number 1761, Ulm is suggested too, as dev
      has only one 1761. With no Project Number, the dialog asks you to pick.
+  5. The button (added 2026-11-22): a linked model shows "Database / 1761-01" with the green dot; an
+     unlinked one "Database / Link model". Link a model: the button changes at once; Ctrl+Z puts it
+     back. With two models open, switching between their views switches the button.
 
 ### 4. Check parameters
 - Database → **Check parameters** opens the dialog from the mockup. It lists every database parameter
@@ -249,12 +262,25 @@ after Yehia has walked it.
 - **Replace N…** (Yehia, 2026-11-22), in the red Other GUID box. Revit can't change a parameter's GUID,
   so replacing deletes the model's parameter, with its values in every element and on every category,
   and binds the database's in its place.
-  - It asks first, naming the parameters ("Replace them" / "Keep them"; Cancel is the default).
+  - It asks first, naming the parameters ("Replace them" / "Keep them"; Cancel is the default). The
+    question also says that tags show the new parameters only once their tag families use the master
+    file's.
   - All swaps are one undo step. Each swap is all or nothing: if the database's parameter can't be
     bound, the old one stays, values and all.
-  - A parameter that a schedule or a view filter uses is left alone, as deleting it would drop it from
-    them; so is one that Revit would delete anything else with. The dialog names them, to be done by
-    hand.
+  - **When schedules or view filters use some of them, it asks once more** (Yehia, 2026-11-22; until
+    then those were left alone). The warning names each parameter's schedules and view filters, and
+    says what replacing does there: the schedules lose its column, and the filters can no longer
+    filter by it, so the new parameter goes into them by hand afterwards. The answers are "Replace all
+    N" / "Replace only the other M", or "Replace them anyway" / "Keep them" when all are in use; Cancel
+    is the default. The add-in looks in schedule fields (combined and embedded ones too) and in view
+    filter rules. When Revit can't tell, every parameter counts as used.
+  - **When Revit can only delete a parameter together with other elements, it lists them first**
+    (Yehia, 2026-11-22: until then such a swap was refused, and in his model every one was). The
+    add-in finds them by deleting each parameter in a change it always undoes, then shows a list:
+    each element's name, kind, id (for Select by ID) and the parameter it goes with. "Delete N
+    elements and replace" deletes them and replaces; "Replace only the other N" leaves those
+    parameters; Cancel does nothing. Replace never deletes an element that wasn't in the list: a swap
+    that would is refused.
   - It's only offered where the database's parameter can be added, e.g. not while the master file
     lacks it. The values come back from the database when they're applied (step 6).
 - **Add N missing parameters** binds them as instance parameters, in one undo step, from Studio's
@@ -272,6 +298,11 @@ after Yehia has walked it.
   4. Select a Generic Model: its Properties show the new parameters with their Revit names, e.g.
      Bauteil_ID under Identity Data and Dicke under Geometry.
   5. Check parameters again: everything that was Missing is Ready.
+  6. Replace (added 2026-11-22): on a model with an Other GUID parameter that a schedule shows, click
+     Replace… → Replace them → the second warning names the schedule. Replace all: the schedule's
+     column goes and the parameter shows Added. Close the dialog: Ctrl+Z brings both back.
+  7. Where Revit deletes other elements with a parameter, the list shows them by name before anything
+     goes. Delete … and replace: they go, the parameters are replaced, and Ctrl+Z brings it all back.
 
 ### 5. The pane and the change check (no apply yet)
 - The docked "MH Database" pane, with these states: up to date, n changes, not reachable, not set up,
@@ -340,12 +371,17 @@ mockup (https://claude.ai/artifact/BUxmo897HJTFcEt43wpcen) stays as it was.
   connection file. A small sign-in with the Studio account replaces it, together with the per-user
   settings (how often to check, auto-apply).
 - **Check parameters, "Replace…" on Other GUID:** left out at first, as replacing deletes the old
-  parameter's values. Back at Yehia's request (2026-11-22): it asks first and is one undo step (step 4).
+  parameter's values. Back at Yehia's request (2026-11-22): it asks first and is one undo step, and it
+  asks once more for parameters that schedules or view filters use (step 4).
 - **The Database panel** follows the mockup since 2026-11-22: the big Database button, then three rows
   (Apply changes, Check parameters, Sign in). Until the pane comes (step 5), Database opens the Link
   dialog. Apply changes (step 6) and Sign in (step 8) stay greyed out until they're built. Test
   connection sits in the panel's slide-out (the arrow under the panel). The small icons are a lighter
   grey than the mockup's, so they also show on Revit's dark ribbon.
+- **The Database button's second line** is the pane's state in the mockup ("3 changes", "Up to date",
+  "Link model"). Until the pane comes, a linked model shows its project number there, and the icon gets
+  a green dot in the place of the mockup's status dots (Yehia, 2026-11-22). The dot sits inside the
+  32 px icon, as Revit's icons can't reach past their edge.
 - **Who and when on each change** ("M. Keller · 14:28"): from Studio's change history, as the history
   names the person.
 - **Docking:** the pane opens on the right the first time. After that Revit remembers where the user put
@@ -619,7 +655,8 @@ Still open:
     for Autodesk's settings server, so Revit's online settings never came. Models → Open … still works.
   - The Link project button gets the mockup's link icon (the one in the dialog's header).
   - Yehia asked about the signed-in person shown in the mockup's ribbon: that comes with step 8.
-- **2026-11-20, step 3 committed** (ee72e57). The push failed: github.com doesn't resolve on this PC yet.
+- **2026-11-20, step 3 committed** (ee72e57). The push failed then, as github.com didn't resolve on this
+  PC; it went up with step 4 on 2026-11-22.
 - **2026-11-20, step 4 built:** Database → Check parameters, the dialog from the mockup, and Add from
   Studio's master file (details under step 4).
   - Yehia chose Studio's master file for the definitions. The connection file names it
@@ -652,3 +689,40 @@ Still open:
     - an unexpected error undoes only its own swap;
     - a missing ribbon icon can't hide the tab.
   - 253 tests pass.
+- **2026-11-22, later:** committed (00b0fb7) and pushed together with step 3. Yehia tried both: they work.
+  He asked for two more:
+  - the Database button to show the link: the project number under "Database", and a green dot on the
+    icon (step 3);
+  - Replace to take parameters that schedules or view filters use as well, after a second warning that
+    he confirms (step 4).
+
+  Both are built and deployed with Revit closed, but not walked yet. The button's text and the warning's
+  wording sit in the library under tests (`DatabaseButtonFace`, `ReplaceUses`, `ParameterCheckTexts`). The
+  Revit side follows the active model and finds the schedules and filters (`DatabaseButton`,
+  `ParameterUseScan`).
+  - The first Replace question now also says that tags show the new parameters only once their tag
+    families use the master file's.
+  - A C# review found nothing critical. Fixed:
+    - after a model closes, the button looks at the active model once Revit is idle;
+    - when Revit can't check, the answers don't claim that schedules use the parameters;
+    - any failure of the scan counts every parameter as used.
+  - 275 tests pass.
+  - Only Revit can show two things: whether Undo of a link turns the button back (Revit has to report
+    Project Information as changed), and what Revit does to a view filter whose rule loses its
+    parameter.
+- **2026-11-22, walk:** the Database button works. Replace replaced nothing: Revit said it would delete
+  other elements with every parameter, and the add-in refused each swap. Yehia asked to see those
+  elements by name in a list, with a button that deletes them all and then replaces the parameters.
+  - Built (step 4, "When Revit can only delete…"): the add-in tries each deletion in a change it always
+    undoes, lists what Revit deleted with it, and deletes exactly those after the red button.
+  - The list was drawn off screen with made-up elements, short and long.
+  - The answer type for Replace's questions is now `ReplaceChoice`, shared by the second question and
+    the list.
+  - A C# review found nothing critical. Fixed:
+    - an element that two parameters take is listed once, naming both, and neither counts as going on
+      its own;
+    - Revit's messages about the trial are cleared with it, never shown;
+    - a failed rollback can't hide the error before it.
+  - Not known until Revit shows it: whether the trial borrows elements in a workshared model. Replace
+    itself borrows them anyway; after a Cancel, Relinquish All Mine gives them back.
+  - 283 tests pass. Deployed with Revit closed.

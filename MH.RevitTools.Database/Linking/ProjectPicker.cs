@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
 using MH.RevitTools.Database.Link;
 
@@ -146,15 +145,8 @@ namespace MH.RevitTools.Database.Linking
 
         private string LinkedByText()
         {
-            string when = CurrentLink.LinkedAtUtc.HasValue
-                ? TimeZoneInfo.ConvertTimeFromUtc(CurrentLink.LinkedAtUtc.Value, _timeZone)
-                    .ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)
-                : null;
-            if (CurrentLink.LinkedBy == null)
-                return when == null ? "" : " Linked " + when + ".";
-            return when == null
-                ? " Linked by " + CurrentLink.LinkedBy + "."
-                : " Linked by " + CurrentLink.LinkedBy + ", " + when + ".";
+            string linked = CurrentLink.Linked(_timeZone);
+            return linked.Length == 0 ? "" : " " + linked;
         }
 
         private IReadOnlyList<TextPart> BuildBanner()

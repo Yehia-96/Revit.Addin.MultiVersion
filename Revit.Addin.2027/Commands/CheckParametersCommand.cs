@@ -6,6 +6,7 @@ using MH.RevitTools.Database.Link;
 using MH.RevitTools.Database.Parameters;
 using Revit.Addin._2027.DatabaseLink;
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Windows.Interop;
@@ -15,8 +16,9 @@ namespace Revit.Addin._2027.Commands
     /// <summary>
     /// Database → Check parameters. Lists the MH database's parameters in the open model as Ready,
     /// Missing, Other GUID or Can't add, and adds the missing ones as project parameters from Studio's
-    /// master shared parameter file, which the connection file names. Families aren't reloaded and
-    /// values aren't touched. It only reads the database.
+    /// master shared parameter file, which the connection file names. Replace swaps Other GUID ones for
+    /// the database's after asking, and once more for those that schedules or view filters use. Families
+    /// aren't reloaded. It only reads the database.
     /// </summary>
     [Transaction(TransactionMode.Manual)]
     public class CheckParametersCommand : IExternalCommand
@@ -55,8 +57,11 @@ namespace Revit.Addin._2027.Commands
                 var actions = new ParameterActions(
                     () => ModelParameterScan.Read(document),
                     toAdd => ParameterAdder.Add(application.Application, document, localCopy, toAdd),
-                    toReplace => ParameterAdder.Replace(application.Application, document, localCopy, toReplace),
+                    toReplace => ParameterUseScan.Find(document, toReplace),
+                    toReplace => DeletionPreview.Find(document, toReplace),
+                    (toReplace, alsoDelete) => ParameterAdder.Replace(application.Application, document, localCopy, toReplace, alsoDelete),
                     AskToReplace,
+                    AskAboutUses,
                     category => CategoryLabel(document, category));
                 var window = new CheckParametersWindow(
                     new SqlLinkDatabase(file.Settings), file.MasterParameterFile, localCopy, ModelParameterScan.Read(document), actions);
@@ -89,6 +94,38 @@ namespace Revit.Addin._2027.Commands
             dialog.AddCommandLink(TaskDialogCommandLinkId.CommandLink2, "Keep them",
                 "Leave the model's parameters as they are; the link leaves them empty.");
             return dialog.Show() == TaskDialogResult.CommandLink1;
+        }
+
+        // The command links Revit's dialog offers, in order, and what each answers.
+        private static readonly TaskDialogCommandLinkId[] Links =
+        {
+            TaskDialogCommandLinkId.CommandLink1, TaskDialogCommandLinkId.CommandLink2, TaskDialogCommandLinkId.CommandLink3,
+        };
+
+        private static readonly TaskDialogResult[] LinkResults =
+        {
+            TaskDialogResult.CommandLink1, TaskDialogResult.CommandLink2, TaskDialogResult.CommandLink3,
+        };
+
+        // Replace's second question, when schedules or view filters use some of the parameters (Yehia,
+        // 2026-11-22): replace them anyway, or not. Cancel is the safe default.
+        private static ReplaceChoice AskAboutUses(ReplaceUses uses)
+        {
+            var dialog = new TaskDialog(Title)
+            {
+                MainInstruction = ParameterCheckTexts.ReplaceUsedTitle(uses),
+                MainContent = ParameterCheckTexts.ReplaceUsedQuestion(uses),
+                MainIcon = TaskDialogIcon.TaskDialogIconWarning,
+                CommonButtons = TaskDialogCommonButtons.Cancel,
+                DefaultButton = TaskDialogResult.Cancel,
+            };
+            IReadOnlyList<ReplaceUsedAnswer> answers = ParameterCheckTexts.ReplaceUsedAnswers(uses);
+            int offered = Math.Min(answers.Count, Links.Length);
+            for (int i = 0; i < offered; i++)
+                dialog.AddCommandLink(Links[i], answers[i].Label, answers[i].Note);
+
+            int chosen = Array.IndexOf(LinkResults, dialog.Show());
+            return chosen >= 0 && chosen < offered ? answers[chosen].Choice : ReplaceChoice.Cancel;
         }
 
         // Revit's own name for the category, in Revit's language, e.g. "Generic Models".

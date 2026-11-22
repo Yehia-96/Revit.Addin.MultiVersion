@@ -30,13 +30,19 @@ namespace Revit.Addin._2027.DatabaseLink
         /// and binds the database's in its place. Each swap is all or nothing: when the new one can't be
         /// bound, the old one stays.
         /// </summary>
+        /// <param name="alsoDelete">
+        /// The other elements Revit may delete with the parameters: the ones the user saw listed and agreed to
+        /// (<see cref="DeletionPreview"/>). A swap that would delete anything else is refused.
+        /// </param>
         public static ParameterAddResult Replace(
-            Application application, Document document, string masterFileCopy, IReadOnlyList<ParameterToReplace> toReplace)
+            Application application, Document document, string masterFileCopy, IReadOnlyList<ParameterToReplace> toReplace,
+            IReadOnlyCollection<long> alsoDelete)
         {
             if (toReplace == null || toReplace.Count == 0)
                 return new ParameterAddResult(null, null);
+            var allowed = new HashSet<long>(alsoDelete ?? Array.Empty<long>());
             return WithMasterFile(application, document, masterFileCopy,
-                definitions => ReplaceAll(application, document, definitions, toReplace));
+                definitions => ReplaceAll(application, document, definitions, toReplace, allowed));
         }
 
         // Opens the copy of the master file as Revit's shared parameter file for the time of the change.
@@ -127,7 +133,8 @@ namespace Revit.Addin._2027.DatabaseLink
         }
 
         private static ParameterAddResult ReplaceAll(
-            Application application, Document document, Dictionary<Guid, ExternalDefinition> definitions, IReadOnlyList<ParameterToReplace> toReplace)
+            Application application, Document document, Dictionary<Guid, ExternalDefinition> definitions,
+            IReadOnlyList<ParameterToReplace> toReplace, HashSet<long> allowed)
         {
             var replaced = new List<Guid>();
             var problems = new List<string>();
@@ -139,7 +146,7 @@ namespace Revit.Addin._2027.DatabaseLink
 
                 foreach (ParameterToReplace item in toReplace)
                 {
-                    string problem = ReplaceOne(application, document, definitions, item, deleted);
+                    string problem = ReplaceOne(application, document, definitions, item, deleted, allowed);
                     if (problem == null)
                         replaced.Add(item.Add.Parameter.Guid);
                     else
@@ -159,13 +166,15 @@ namespace Revit.Addin._2027.DatabaseLink
 
         // One swap in a sub-transaction of its own: when anything goes wrong, rolling it back brings the old
         // parameter back, values and all, and the other swaps still go on. A parameter that two database
-        // parameters clash with (one per category) is deleted once; the second swap only binds.
+        // parameters clash with (one per category) is deleted once; the second swap only binds. Schedules and
+        // view filters that use the old parameter lose it, and Revit may delete listed elements with it: the
+        // dialog has asked about both first.
         private static string ReplaceOne(
             Application application, Document document, Dictionary<Guid, ExternalDefinition> definitions,
-            ParameterToReplace item, HashSet<long> deleted)
+            ParameterToReplace item, HashSet<long> deleted, HashSet<long> allowed)
         {
             bool alreadyGone = deleted.Contains(item.Old.ElementId);
-            string problem = alreadyGone ? null : CheckOld(document, item.Old) ?? ParameterUses.Describe(document, item.Old.ElementId);
+            string problem = alreadyGone ? null : CheckOld(document, item.Old);
             if (problem != null)
                 return problem;
 
@@ -175,7 +184,7 @@ namespace Revit.Addin._2027.DatabaseLink
                     return "Revit couldn't start the swap";
                 try
                 {
-                    problem = alreadyGone ? null : Delete(document, item.Old);
+                    problem = alreadyGone ? null : Delete(document, item.Old, allowed);
                     if (problem == null)
                         problem = BindOne(application, document, definitions, item.Add);
                     if (problem != null)
@@ -197,8 +206,9 @@ namespace Revit.Addin._2027.DatabaseLink
             }
         }
 
-        // Deletes the old parameter, and refuses when Revit would take anything else with it.
-        private static string Delete(Document document, ModelBinding old)
+        // Deletes the old parameter, and refuses when Revit would take anything with it that the user didn't
+        // see listed and agree to.
+        private static string Delete(Document document, ModelBinding old, HashSet<long> allowed)
         {
             ICollection<ElementId> gone;
             try
@@ -210,10 +220,10 @@ namespace Revit.Addin._2027.DatabaseLink
                 return "Revit wouldn't delete the model's parameter: " + ex.Message.TrimEnd('.');
             }
 
-            int others = gone.Count(id => id.Value != old.ElementId);
-            return others == 0 ? null
-                : "Revit would delete " + others + (others == 1 ? " other element" : " other elements")
-                  + " with it; replace it by hand";
+            int unlisted = gone.Select(id => id.Value).Distinct().Count(id => id != old.ElementId && !allowed.Contains(id));
+            return unlisted == 0 ? null
+                : "Revit would also delete " + unlisted + (unlisted == 1 ? " element" : " elements")
+                  + " that weren't in the list; check again";
         }
 
         // The element to delete must still be that parameter: never delete on a stale id.

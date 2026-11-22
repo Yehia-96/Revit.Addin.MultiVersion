@@ -124,14 +124,16 @@ namespace Revit.Addin._2027.DatabaseLink
 
             WhileBusy(() =>
             {
-                ParameterAddResult result = Changing(() => _actions.Add(_check.ToAdd));
+                ParameterAddResult result = WithWaitCursor(() => _actions.Add(_check.ToAdd));
                 // Done once all went in; after a partial or failed Add, the button offers what's still missing.
                 _addDone = result.Added.Count > 0 && result.Problems.Count == 0;
                 ShowCheck(ParameterCheck.Run(_parameters, _masterFile, _actions.ScanModel(), result.Added), result, "Added");
             }, "Adding failed. ");
         }
 
-        // Replace deletes the model's parameters and their values, so it asks first.
+        // Replace deletes the model's parameters and their values, so it asks first; once more when schedules
+        // or view filters use some of them; and lists the elements Revit deletes with them, if any, before
+        // anything goes.
         private void OnReplace(object sender, RoutedEventArgs e)
         {
             if (_check == null || _check.ToReplace.Count == 0)
@@ -141,9 +143,43 @@ namespace Revit.Addin._2027.DatabaseLink
             {
                 if (!_actions.Confirm(ParameterCheckTexts.ReplaceTitle(_check), ParameterCheckTexts.ReplaceQuestion(_check)))
                     return;
-                ParameterAddResult result = Changing(() => _actions.Replace(_check.ToReplace));
+                var left = new List<string>();
+                IReadOnlyList<ParameterToReplace> chosen = ChooseWithUses(_check.ToReplace, left);
+                if (chosen.Count == 0)
+                    return;
+                IReadOnlyCollection<long> alsoDelete;
+                chosen = ChooseWithDeletions(chosen, left, out alsoDelete);
+                if (chosen.Count == 0)
+                    return;
+
+                ParameterAddResult result = WithWaitCursor(() => _actions.Replace(chosen, alsoDelete));
+                result = left.Aggregate(result, (sofar, note) => sofar.WithProblem(note));
                 ShowCheck(ParameterCheck.Run(_parameters, _masterFile, _actions.ScanModel(), result.Added), result, "Replaced");
             }, "Replacing failed. ");
+        }
+
+        // The second question, when schedules or view filters use some of the parameters. Returns the swaps
+        // to go on with; empty for Cancel. Notes what it leaves for the banner.
+        private IReadOnlyList<ParameterToReplace> ChooseWithUses(IReadOnlyList<ParameterToReplace> swaps, List<string> left)
+        {
+            ReplaceUses uses = WithWaitCursor(() => _actions.FindUses(swaps));
+            ReplaceChoice choice = uses.Used.Count == 0 ? ReplaceChoice.ReplaceAll : _actions.AskAboutUses(uses);
+            if (choice == ReplaceChoice.ReplaceOthers)
+                left.AddRange(ParameterCheckTexts.LeftInUse(uses));
+            return uses.Choose(choice);
+        }
+
+        // The list of elements Revit deletes with some of the parameters, found by trying without changing
+        // the model. Returns the swaps to go on with, and the elements Replace may delete with them.
+        private IReadOnlyList<ParameterToReplace> ChooseWithDeletions(
+            IReadOnlyList<ParameterToReplace> swaps, List<string> left, out IReadOnlyCollection<long> alsoDelete)
+        {
+            ReplaceDeletions deletions = WithWaitCursor(() => _actions.FindDeletions(swaps));
+            ReplaceChoice choice = deletions.Deleting.Count == 0 ? ReplaceChoice.ReplaceAll : AlsoDeletedWindow.Ask(this, deletions);
+            if (choice == ReplaceChoice.ReplaceOthers)
+                left.AddRange(ParameterCheckTexts.LeftForDeletions(deletions));
+            alsoDelete = deletions.AllowedFor(choice);
+            return deletions.Choose(choice);
         }
 
         // While Add or Replace runs, or asks its question, nothing else in the dialog can be clicked: Revit's
@@ -171,12 +207,12 @@ namespace Revit.Addin._2027.DatabaseLink
             }
         }
 
-        private ParameterAddResult Changing(Func<ParameterAddResult> change)
+        private T WithWaitCursor<T>(Func<T> work)
         {
             Cursor = Cursors.Wait;
             try
             {
-                return change();
+                return work();
             }
             finally
             {

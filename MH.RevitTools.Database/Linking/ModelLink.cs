@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using MH.RevitTools.Database.Link;
 
@@ -50,6 +51,23 @@ namespace MH.RevitTools.Database.Linking
 
         /// <summary>E.g. "1761-01 Ulm".</summary>
         public string Describe() => ProjectCode.Describe(Number, SubNumber, Name);
+
+        /// <summary>
+        /// Who linked the model and when, in the given time zone, e.g. "Linked by Y.Abdelazziz, 2026-11-19 15:32.";
+        /// empty when neither is known.
+        /// </summary>
+        public string Linked(TimeZoneInfo timeZone)
+        {
+            string when = LinkedAtUtc.HasValue
+                ? TimeZoneInfo.ConvertTimeFromUtc(LinkedAtUtc.Value, timeZone ?? TimeZoneInfo.Utc)
+                    .ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)
+                : null;
+            if (LinkedBy == null)
+                return when == null ? "" : "Linked " + when + ".";
+            return when == null
+                ? "Linked by " + LinkedBy + "."
+                : "Linked by " + LinkedBy + ", " + when + ".";
+        }
 
         /// <summary>
         /// Whether the database's project with the saved id is still the project the model was linked to:

@@ -51,11 +51,13 @@
     <None Remove="Icons\ModernIcons\16\ApplyChangesIcon.png" />
     <None Remove="Icons\ModernIcons\16\CheckParametersIcon.png" />
     <None Remove="Icons\ModernIcons\16\DatabaseLinkIcon.png" />
+    <None Remove="Icons\ModernIcons\16\DatabaseLinkedIcon.png" />
     <None Remove="Icons\ModernIcons\16\SignInIcon.png" />
     <None Remove="Icons\ModernIcons\32\AddMaterialParametersRE.png" />
     <None Remove="Icons\ModernIcons\32\CheckParametersIcon.png" />
     <None Remove="Icons\ModernIcons\32\DatabaseIcon.png" />
     <None Remove="Icons\ModernIcons\32\DatabaseLinkIcon.png" />
+    <None Remove="Icons\ModernIcons\32\DatabaseLinkedIcon.png" />
     <None Remove="Icons\ModernIcons\32\FamilyFileUpdate.png" />
     <None Remove="Icons\ModernIcons\32\HideElementsIcon.png" />
     <None Remove="Icons\ModernIcons\32\ParameterAutomationIcon.png" />
@@ -151,6 +153,9 @@
     <Resource Include="Icons\ModernIcons\16\DatabaseLinkIcon.png">
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </Resource>
+    <Resource Include="Icons\ModernIcons\16\DatabaseLinkedIcon.png">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Resource>
     <Resource Include="Icons\ModernIcons\16\SignInIcon.png">
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </Resource>
@@ -164,6 +169,9 @@
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </Resource>
     <Resource Include="Icons\ModernIcons\32\DatabaseLinkIcon.png">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Resource>
+    <Resource Include="Icons\ModernIcons\32\DatabaseLinkedIcon.png">
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </Resource>
     <Resource Include="Icons\ModernIcons\32\FamilyFileUpdate.png">

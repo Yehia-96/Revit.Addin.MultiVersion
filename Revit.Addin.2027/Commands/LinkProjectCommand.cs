@@ -95,6 +95,8 @@ namespace Revit.Addin._2027.Commands
                 }
             }
 
+            // The ribbon follows the change itself; this makes sure it shows the number before the message.
+            DatabaseButton.Refresh(document);
             Show("Linked to " + link.Describe(),
                 document.IsWorkshared
                     ? "Synchronize with central to share the link with everyone who opens the model."

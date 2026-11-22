@@ -3,7 +3,9 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Events;
 using Autodesk.Revit.UI;
 using Autodesk.Revit.UI.Events;
+using MH.RevitTools.Database.Linking;
 using Revit.Addin._2027.Commands;
+using Revit.Addin._2027.DatabaseLink;
 using Revit.Addin._2027.Updaters;
 using System;
 using System.Diagnostics;
@@ -46,9 +48,13 @@ namespace Revit.Addin._2027
             // ---- Database -------------------------------------------------
             // Laid out like the mockup: the big Database button, then three rows: Apply changes, Check
             // parameters, and the signed-in person. Until the MH Database pane comes (step 5), Database
-            // opens the Link dialog. Apply changes (step 6) and Sign in (step 8) stay greyed out until
-            // they're built. Test connection sits in the panel's slide-out, under the panel's arrow.
-            AddDatabasePanel(panelDatabase, assemblyPath, assemblyName);
+            // opens the Link dialog; it shows the active model's project number, and a green dot once the
+            // model is linked. Apply changes (step 6) and Sign in (step 8) stay greyed out until they're
+            // built. Test connection sits in the panel's slide-out, under the panel's arrow.
+            PushButton database = AddDatabasePanel(panelDatabase, assemblyPath, assemblyName);
+            _databaseButton = new DatabaseButton(database,
+                LoadIcon(assemblyName, 16, "DatabaseLinkedIcon.png"), LoadIcon(assemblyName, 32, "DatabaseLinkedIcon.png"));
+            _databaseButton.Hook(application);
 
             // ---- Parameter Automation -------------------------------------
             var btnAddParams = new PushButtonData(
@@ -139,12 +145,15 @@ namespace Revit.Addin._2027
 
         private const string Commands = "Revit.Addin._2027.Commands.";
 
-        private static void AddDatabasePanel(RibbonPanel panel, string assemblyPath, string assemblyName)
+        // Keeps the big Database button showing the active model's link.
+        private DatabaseButton _databaseButton;
+
+        /// <returns>The big Database button, whose text and icon follow the active model's link.</returns>
+        private static PushButton AddDatabasePanel(RibbonPanel panel, string assemblyPath, string assemblyName)
         {
-            panel.AddItem(new PushButtonData("DatabaseLink", "Database", assemblyPath, Commands + "LinkProjectCommand")
+            var database = (PushButton)panel.AddItem(new PushButtonData("DatabaseLink", DatabaseButtonFace.NoModel.Text, assemblyPath, Commands + "LinkProjectCommand")
             {
-                ToolTip = "Links this model to its project in the MH database; the link is saved in the model. "
-                          + "Later this button opens the MH Database pane.",
+                ToolTip = DatabaseButtonFace.NoModel.ToolTip,
                 AvailabilityClassName = Commands + "AvailableInProject",
                 Image = LoadIcon(assemblyName, 16, "DatabaseLinkIcon.png"),
                 LargeImage = LoadIcon(assemblyName, 32, "DatabaseLinkIcon.png"),
@@ -181,6 +190,7 @@ namespace Revit.Addin._2027
                 Image = LoadIcon(assemblyName, 32, "DatabaseIcon.png"),
                 LargeImage = LoadIcon(assemblyName, 32, "DatabaseIcon.png"),
             });
+            return database;
         }
 
         /// <summary>
@@ -205,6 +215,7 @@ namespace Revit.Addin._2027
 
         public Result OnShutdown(UIControlledApplication application)
         {
+            _databaseButton?.Unhook(application);
             application.DialogBoxShowing -= Application_DialogBoxShowing; // Unsubscribe from the dialog box showing event
             return Result.Succeeded;
         }

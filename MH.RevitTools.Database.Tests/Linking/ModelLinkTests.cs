@@ -24,6 +24,17 @@ public sealed class ModelLinkTests
     }
 
     [Fact]
+    public void Linked_SaysWhoAndWhen_InTheTimeZone_LeavingOutWhatsUnknown()
+    {
+        TimeZoneInfo plusOne = TimeZoneInfo.CreateCustomTimeZone("Test+1", TimeSpan.FromHours(1), "Test+1", "Test+1");
+
+        Assert.Equal("Linked by Y.Abdelazziz, 2026-11-19 15:32.", ModelLink.To(Ulm, LinkedAt, "Y.Abdelazziz").Linked(plusOne));
+        Assert.Equal("Linked 2026-11-19 15:32.", ModelLink.To(Ulm, LinkedAt, null).Linked(plusOne));
+        Assert.Equal("Linked by Y.Abdelazziz.", new ModelLink(13, 1761, 1, "Ulm", null, "Y.Abdelazziz").Linked(plusOne));
+        Assert.Equal("", new ModelLink(13, 1761, 1, "Ulm", null, null).Linked(plusOne));
+    }
+
+    [Fact]
     public void KeepsTimesInUtc()
     {
         DateTime local = new(2026, 11, 19, 15, 32, 5, DateTimeKind.Local);
