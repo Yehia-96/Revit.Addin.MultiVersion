@@ -225,6 +225,15 @@
                                VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                 </DockPanel>
                 <TextBlock Text="{Binding When}" Margin="16,0,0,0" Style="{StaticResource MutedText}"/>
+                <DockPanel Margin="16,2,0,0" Visibility="{Binding ShowSignedIn, Converter={StaticResource Visible}}">
+                    <Viewbox DockPanel.Dock="Left" Width="13" Height="13" Margin="0,2,6,0" VerticalAlignment="Top">
+                        <Canvas Width="24" Height="24">
+                            <Path Data="M16,8 A4,4 0 1 1 8,8 A4,4 0 1 1 16,8 Z M4,21 A8,8 0 0 1 20,21" Stroke="{StaticResource Muted}" StrokeThickness="2"
+                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
+                        </Canvas>
+                    </Viewbox>
+                    <TextBlock Text="{Binding SignedInText}" Style="{StaticResource MutedText}"/>
+                </DockPanel>
             </StackPanel>
         </Border>
 
@@ -255,6 +264,26 @@
                     <TextBlock Style="{StaticResource MutedText}" Margin="0,10,0,0"
                                Text="Ask whoever installs the add-in on this computer to run the installer again. The pane finds the file at its next check."/>
                 </StackPanel>
+
+                <!-- Nobody signed in since Revit started -->
+                <Border Margin="14,12,14,0" Padding="14" CornerRadius="8" BorderThickness="1" BorderBrush="#A9C5F7" Background="#F5F9FF"
+                        Visibility="{Binding ShowSignIn, Converter={StaticResource Visible}}">
+                    <DockPanel>
+                        <Border DockPanel.Dock="Left" Width="32" Height="32" CornerRadius="8" Background="#E8F0FE" VerticalAlignment="Top" Margin="0,0,12,0">
+                            <Viewbox Width="18" Height="18">
+                                <Canvas Width="24" Height="24">
+                                    <Path Data="M16,8 A4,4 0 1 1 8,8 A4,4 0 1 1 16,8 Z M4,21 A8,8 0 0 1 20,21" Stroke="#1F6FEB" StrokeThickness="2"
+                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
+                                </Canvas>
+                            </Viewbox>
+                        </Border>
+                        <StackPanel>
+                            <TextBlock Text="{Binding SignInCardTitle}" FontWeight="SemiBold" Foreground="{StaticResource Strong}" TextWrapping="Wrap"/>
+                            <TextBlock Style="{StaticResource MutedText}" Margin="0,4,0,0" Text="{Binding SignInCardText}"/>
+                            <Button Style="{StaticResource PrimaryButton}" Margin="0,10,0,0" Content="Sign in…" Command="{Binding SignInCommand}"/>
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
 
                 <!-- Not linked: two steps -->
                 <StackPanel Margin="14,18" Visibility="{Binding ShowSetup, Converter={StaticResource Visible}}">

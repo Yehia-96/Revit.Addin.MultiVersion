@@ -6,8 +6,10 @@ using MH.RevitTools.Database.Checking;
 using MH.RevitTools.Database.Connection;
 using MH.RevitTools.Database.Link;
 using MH.RevitTools.Database.Linking;
+using MH.RevitTools.Database.SigningIn;
 using Revit.Addin._2027.Commands;
 using Revit.Addin._2027.DatabaseLink.Apply;
+using Revit.Addin._2027.DatabaseLink.SignIn;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -20,8 +22,8 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
     /// Runs the MH Database pane: follows the active model through the Database button, checks its project on
     /// the <see cref="CheckLoop"/>'s thread, compares the model with the database's values inside Revit whenever
     /// either changes, shows the result in the pane and as the button's dot (step 5), and applies the changes
-    /// the user asks for (step 6). Only Apply changes the model; nothing ever changes the database. Everything
-    /// but the check runs on Revit's main thread.
+    /// the user asks for (step 6). The database is read only while someone is signed in to it (step 8). Only Apply
+    /// changes the model; nothing ever changes the database. Everything but the check runs on Revit's main thread.
     /// </summary>
     internal sealed class LinkMonitor : IPaneActions, IDisposable
     {
@@ -64,11 +66,13 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
             var checker = new LinkChecker(
                 () => ConnectionFile.Read(ConnectionFile.DefaultPath),
                 settings => new SqlLinkDatabase(settings),
+                settings => SignInGate.Session.PersonFor(settings) != null,
                 PullCache.DefaultFolder,
                 () => DateTime.UtcNow);
             // Last, so nothing above can fail with the thread already running.
             _loop = new CheckLoop(checker, OnChecked, OnCheckFailed, _settings.Interval);
             _button.ModelShown += OnModelShown;
+            SignInGate.Session.Changed += OnSignInChanged;
             Current = this;
         }
 
@@ -96,6 +100,7 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
             if (ReferenceEquals(Current, this))
                 Current = null;
             _button.ModelShown -= OnModelShown;
+            SignInGate.Session.Changed -= OnSignInChanged;
             _settle.Stop();
             _settle.Tick -= OnModelSettled;
             _loop.Dispose();
@@ -114,6 +119,9 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
 
         public void Link() => _revit.Run("linking the model", application => RunCommand(application, "Link project",
             (UIApplication app, ref string message) => LinkProjectCommand.Run(app, ref message)));
+
+        public void SignIn() => _revit.Run("signing in", application => RunCommand(application, "Sign in",
+            (UIApplication app, ref string message) => SignInCommand.Run(app, ref message)));
 
         public void CheckParameters() => _revit.Run("checking parameters", application => RunCommand(application, "Check parameters",
             (UIApplication app, ref string message) => CheckParametersCommand.Run(app, ref message)));
@@ -149,6 +157,9 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
         /// <summary>Applies everything the pane lists, after asking; says why when there's nothing to apply.</summary>
         public Result ApplyFromRibbon(UIApplication application)
         {
+            if (_link != null && _outcome != null && _outcome.State == CheckState.NotSignedIn)
+                return SignInBeforeApplying(application);
+
             // As they are now: while the question is open, a check can bring others.
             Document document = _document;
             ChangeReport report = _report;
@@ -197,7 +208,31 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
             return Result.Succeeded;
         }
 
+        // Signing in only starts the check; what there is to apply is known once it's done.
+        private static Result SignInBeforeApplying(UIApplication application)
+        {
+            ConnectionFileResult file = ConnectionFile.Read(ConnectionFile.DefaultPath);
+            if (!file.IsLoaded)
+                Tell("Can't use the connection file", file.Problem, TaskDialogIcon.TaskDialogIconWarning);
+            else if (SignInGate.Ensure(application, file.Settings))
+                Tell("Signed in", "The MH Database pane checks for changes now. Apply them once it lists them.", TaskDialogIcon.TaskDialogIconInformation);
+            return Result.Cancelled;
+        }
+
         // ---- Revit (main thread, API context) ----
+
+        // Someone signed in or out. The pane shows it at once, and stops offering Apply at once; the check that
+        // follows can take a moment.
+        private void OnSignInChanged(object sender, EventArgs e) =>
+            Safely("following the sign-in", () =>
+            {
+                if (SignInGate.Session.Person == null)
+                    _outcome = _outcome?.SignedOut(DateTime.UtcNow);
+                else if (_outcome != null && _outcome.State == CheckState.NotSignedIn)
+                    _outcome = null;
+                _loop.CheckNow();
+                Render();
+            });
 
         // Another model, or another link: check its project at once, and compare when its values are in.
         private void OnModelShown(Document document, ModelLink link)
@@ -355,6 +390,9 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
         {
             if (_link == null || outcome.ProjectId != _link.ProjectId)
                 return;
+            // Someone signed out while it was being read; the check that says so is on its way.
+            if (outcome.State == CheckState.Answered && SignInGate.Session.Person == null)
+                return;
             _outcome = outcome;
             _checkFault = null;
             if (outcome.CacheProblem != null)
@@ -383,8 +421,9 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
 
         private void Render()
         {
-            var snapshot = new PaneSnapshot(_document != null, _link, ConnectionFile.DefaultPath, _outcome, _compareFault ?? _checkFault, _report,
-                _isReadOnlyFile, _applied, _appliedAtUtc, _settings.Interval, DateTime.UtcNow, TimeZoneInfo.Local);
+            SignedInPerson person = SignInGate.Session.Person;
+            var snapshot = new PaneSnapshot(_document != null, _link, ConnectionFile.DefaultPath, person == null ? null : person.Name, _outcome,
+                _compareFault ?? _checkFault, _report, _isReadOnlyFile, _applied, _appliedAtUtc, _settings.Interval, DateTime.UtcNow, TimeZoneInfo.Local);
             _view.Show(snapshot);
 
             LinkCondition condition = snapshot.Condition;

@@ -9,7 +9,7 @@ namespace MH.RevitTools.Database.Linking
         /// <summary>No dot: no project model, or a model that isn't linked.</summary>
         None,
 
-        /// <summary>Linked, but nothing known yet: being checked, or the PC has no connection file.</summary>
+        /// <summary>Linked, but nothing known: being checked, nobody signed in, or the PC has no connection file.</summary>
         Grey,
 
         /// <summary>The model matches the database.</summary>
@@ -29,6 +29,10 @@ namespace MH.RevitTools.Database.Linking
         Checking,
 
         NotSetUp,
+
+        /// <summary>Nobody is signed in, so nothing is checked.</summary>
+        NotSignedIn,
+
         UpToDate,
         Changes,
         NotReachable,
@@ -110,6 +114,10 @@ namespace MH.RevitTools.Database.Linking
                 case LinkCondition.NotSetUp:
                     dot = ButtonDot.Grey;
                     state = "This computer has no connection file, so nothing is checked.";
+                    break;
+                case LinkCondition.NotSignedIn:
+                    dot = ButtonDot.Grey;
+                    state = "Nobody is signed in, so nothing is checked: use Sign in… in this panel.";
                     break;
                 default:
                     dot = ButtonDot.Grey;

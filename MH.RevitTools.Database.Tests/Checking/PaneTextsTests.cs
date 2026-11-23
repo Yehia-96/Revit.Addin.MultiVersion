@@ -78,6 +78,8 @@ public sealed class PaneTextsTests
             PaneTexts.LinkedLine("Linked by Y.Abdelazziz, 2026-11-19 15:32."));
         Assert.Equal("Elements meet it by Bauteil_ID.", PaneTexts.LinkedLine(""));
         Assert.Equal("Values from the last pull: today 11:12.", PaneTexts.FromLastPull(Now.AddHours(-3).AddMinutes(-20), Now, PlusOne));
+        Assert.Equal("Values from the last pull: today 11:12", PaneTexts.NotSignedIn(Now.AddHours(-3).AddMinutes(-20), Now, PlusOne));
+        Assert.Equal("Nothing pulled on this computer yet", PaneTexts.NotSignedIn(null, Now, PlusOne));
     }
 
     [Theory]

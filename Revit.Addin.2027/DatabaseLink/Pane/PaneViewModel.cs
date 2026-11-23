@@ -1,6 +1,7 @@
 using MH.RevitTools.Database.Changes;
 using MH.RevitTools.Database.Checking;
 using MH.RevitTools.Database.Linking;
+using MH.RevitTools.Database.SigningIn;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -14,6 +15,9 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
     public interface IPaneActions
     {
         void CheckNow();
+
+        /// <summary>Asks for the Studio account.</summary>
+        void SignIn();
 
         /// <summary>Opens the Link dialog: "Link the model…" and "Change project…".</summary>
         void Link();
@@ -57,6 +61,7 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
         {
             _actions = actions ?? throw new ArgumentNullException(nameof(actions));
             CheckNowCommand = new RelayCommand(() => _actions.CheckNow());
+            SignInCommand = new RelayCommand(() => _actions.SignIn());
             LinkCommand = new RelayCommand(() => _actions.Link());
             CheckParametersCommand = new RelayCommand(() => _actions.CheckParameters());
             SelectLinkedCommand = new RelayCommand(() => SelectCounted(counts => counts.Linked));
@@ -66,7 +71,7 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
             ToggleNotAppliedCommand = new RelayCommand(ToggleNotApplied);
             Groups = new ChangeGroupView[0];
             NotAppliedItems = new NotAppliedView[0];
-            Show(new PaneSnapshot(false, null, null, null, null, null, false, null, DateTime.MinValue, null, DateTime.UtcNow, TimeZoneInfo.Local));
+            Show(new PaneSnapshot(false, null, null, null, null, null, null, false, null, DateTime.MinValue, null, DateTime.UtcNow, TimeZoneInfo.Local));
         }
 
         public event PropertyChangedEventHandler PropertyChanged;
@@ -77,8 +82,13 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
         public string Where { get; private set; }
         public string When { get; private set; }
         public bool CanCheckNow { get; private set; }
+        public bool ShowSignedIn { get; private set; }
+        public string SignedInText { get; private set; }
 
         // ---- Cards ----
+        public bool ShowSignIn { get; private set; }
+        public string SignInCardTitle => SignInTexts.CardTitle;
+        public string SignInCardText => SignInTexts.CardText;
         public bool ShowNoModel { get; private set; }
         public bool ShowNoFile { get; private set; }
         public string NoFilePath { get; private set; }
@@ -159,6 +169,7 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
         }
 
         public ICommand CheckNowCommand { get; }
+        public ICommand SignInCommand { get; }
         public ICommand LinkCommand { get; }
         public ICommand CheckParametersCommand { get; }
         public ICommand SelectLinkedCommand { get; }
@@ -175,6 +186,8 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
             _snapshot = snapshot ?? throw new ArgumentNullException(nameof(snapshot));
             _selectedInterval = CheckInterval.All.FirstOrDefault(choice => choice.Seconds == snapshot.Interval.Seconds);
             Clear();
+            ShowSignedIn = snapshot.SignedInAs != null;
+            SignedInText = ShowSignedIn ? SignInTexts.SignedIn(snapshot.SignedInAs) : "";
 
             if (!snapshot.HasProjectModel)
                 ShowWithoutModel();
@@ -188,7 +201,7 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
 
         private void Clear()
         {
-            CanCheckNow = ShowNoModel = ShowNoFile = ShowSetup = ShowModel = ShowCounts = false;
+            CanCheckNow = ShowNoModel = ShowNoFile = ShowSignIn = ShowSetup = ShowModel = ShowCounts = false;
             ShowBanner = BannerCanRetry = BannerOffersLink = ShowComparing = ShowUpToDate = ShowChanges = ShowMore = false;
             ShowLastPull = ShowFooter = false;
             CanApply = ShowApplyWaits = ShowApplied = AppliedSomething = ShowNotApplied = false;
@@ -254,6 +267,15 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
                         : outcome.Problem;
                     ShowFooter = false;
                     break;
+                case CheckState.NotSignedIn:
+                    DotColor = Grey;
+                    Title = "Not signed in";
+                    Where = outcome.Where;
+                    When = PaneTexts.NotSignedIn(outcome.DataReadAtUtc, snapshot.NowUtc, snapshot.TimeZone);
+                    ShowSignIn = true;
+                    CanCheckNow = false;
+                    ShowFooter = false;
+                    break;
                 case CheckState.NotReachable:
                     DotColor = Red;
                     Title = "Not reachable";
@@ -281,6 +303,14 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
             }
 
             ShowFault(snapshot);
+            if (outcome.State == CheckState.NotSignedIn)
+            {
+                // What the model is, by the last pull; nothing about changes until someone signs in.
+                if (snapshot.Report != null)
+                    ShowCountsOf(snapshot.Report);
+                return;
+            }
+
             ShowAppliedBanner(snapshot);
             if (outcome.Data == null)
                 return;
@@ -308,14 +338,7 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
             _listedReport = report;
             _listedCanApply = CanApply;
 
-            ShowCounts = true;
-            LinkedCount = Number(report.Counts.Linked.Count);
-            LinkedLabel = PaneTexts.LinkedLabel(report.Counts.Linked.Count);
-            WithoutIdCount = Number(report.Counts.WithoutId.Count);
-            NotInProjectCount = Number(report.Counts.IdNotInProject.Count);
-            WithoutIdColor = report.Counts.WithoutId.Count > 0 ? "#8F5B0A" : "#0F1B2D";
-            NotInProjectColor = report.Counts.IdNotInProject.Count > 0 ? "#8F5B0A" : "#0F1B2D";
-
+            ShowCountsOf(report);
             if (report.IsUpToDate)
             {
                 ShowUpToDate = true;
@@ -343,6 +366,17 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
             NotAppliedTitle = ApplyTexts.NotAppliedTitle(report.NotApplied.Count).ToUpperInvariant();
             if (relist)
                 NotAppliedItems = report.NotApplied.Select(item => new NotAppliedView(item, CheckParametersCommand)).ToList();
+        }
+
+        private void ShowCountsOf(ChangeReport report)
+        {
+            ShowCounts = true;
+            LinkedCount = Number(report.Counts.Linked.Count);
+            LinkedLabel = PaneTexts.LinkedLabel(report.Counts.Linked.Count);
+            WithoutIdCount = Number(report.Counts.WithoutId.Count);
+            NotInProjectCount = Number(report.Counts.IdNotInProject.Count);
+            WithoutIdColor = report.Counts.WithoutId.Count > 0 ? "#8F5B0A" : "#0F1B2D";
+            NotInProjectColor = report.Counts.IdNotInProject.Count > 0 ? "#8F5B0A" : "#0F1B2D";
         }
 
         // Whole cards only: a card's Apply writes all it has, so it must also show all of it.

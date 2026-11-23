@@ -5,6 +5,7 @@ using MH.RevitTools.Database.Connection;
 using MH.RevitTools.Database.Link;
 using MH.RevitTools.Database.Parameters;
 using Revit.Addin._2027.DatabaseLink;
+using Revit.Addin._2027.DatabaseLink.SignIn;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -54,6 +55,9 @@ namespace Revit.Addin._2027.Commands
                     Show("Can't use the connection file", file.Problem, TaskDialogIcon.TaskDialogIconWarning);
                     return Result.Cancelled;
                 }
+
+                if (!SignInGate.Ensure(application, file.Settings))
+                    return Result.Cancelled;
 
                 MasterFileCopies.RemoveOld(CopyFolder, DateTime.UtcNow, OldCopy);
                 string localCopy = MasterFileCopies.PathFor(CopyFolder, Process.GetCurrentProcess().Id);

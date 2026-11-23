@@ -16,6 +16,7 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
             bool hasProjectModel,
             ModelLink link,
             string connectionFilePath,
+            string signedInAs,
             CheckOutcome outcome,
             string fault,
             ChangeReport report,
@@ -30,6 +31,9 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
             Link = hasProjectModel ? link : null;
             ConnectionFilePath = connectionFilePath ?? "";
             Outcome = Link == null ? null : outcome;
+            // Signed in to another database than the connection file names now is not signed in.
+            bool isSignedOut = Outcome != null && (Outcome.State == CheckState.NotSignedIn || Outcome.State == CheckState.NotSetUp);
+            SignedInAs = isSignedOut || string.IsNullOrWhiteSpace(signedInAs) ? null : signedInAs;
             Fault = string.IsNullOrWhiteSpace(fault) ? null : fault;
             Report = Outcome == null || Outcome.Data == null ? null : report;
             IsReadOnly = isReadOnly;
@@ -48,6 +52,9 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
 
         /// <summary>Where the connection file is expected, for the "not set up" card.</summary>
         public string ConnectionFilePath { get; }
+
+        /// <summary>The name of who is signed in; null when nobody is.</summary>
+        public string SignedInAs { get; }
 
         /// <summary>The last check for the model's project; null before the first one.</summary>
         public CheckOutcome Outcome { get; }
@@ -83,6 +90,8 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
                 {
                     case CheckState.NotSetUp:
                         return LinkCondition.NotSetUp;
+                    case CheckState.NotSignedIn:
+                        return LinkCondition.NotSignedIn;
                     case CheckState.NotReachable:
                         return LinkCondition.NotReachable;
                     case CheckState.ProjectMissing:

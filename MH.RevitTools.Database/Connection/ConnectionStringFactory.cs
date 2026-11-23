@@ -16,7 +16,11 @@ namespace MH.RevitTools.Database.Connection
         /// False for a one-off check: the session then really ends when the connection closes, and
         /// the next check signs in afresh instead of reusing a pooled session.
         /// </param>
-        internal static string Build(ConnectionSettings settings, int timeoutSeconds, bool pooling)
+        /// <param name="alwaysEncrypt">
+        /// True where what's sent must never be readable on the way, whatever the connection file says about encryption.
+        /// SqlClient leaves it out for LocalDB, where nothing leaves the PC.
+        /// </param>
+        internal static string Build(ConnectionSettings settings, int timeoutSeconds, bool pooling, bool alwaysEncrypt = false)
         {
             if (settings == null)
                 throw new ArgumentNullException(nameof(settings));
@@ -28,12 +32,14 @@ namespace MH.RevitTools.Database.Connection
                 DataSource = settings.Server,
                 InitialCatalog = settings.Database,
                 IntegratedSecurity = settings.WindowsSignIn,
-                Encrypt = settings.Encrypt ? SqlConnectionEncryptOption.Mandatory : SqlConnectionEncryptOption.Optional,
+                Encrypt = settings.Encrypt || alwaysEncrypt ? SqlConnectionEncryptOption.Mandatory : SqlConnectionEncryptOption.Optional,
                 TrustServerCertificate = settings.TrustServerCertificate,
                 ConnectTimeout = timeoutSeconds,
                 ApplicationName = ApplicationName,
                 PersistSecurityInfo = false,
                 Pooling = pooling,
+                // Never part of a transaction around the call: the sign-in refuses that, and the rest only reads.
+                Enlist = false,
             };
             if (!settings.WindowsSignIn)
             {

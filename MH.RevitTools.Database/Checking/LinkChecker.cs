@@ -13,12 +13,14 @@ namespace MH.RevitTools.Database.Checking
     /// has moved. Every full read is kept on the PC (<see cref="PullCache"/>), so a later session that can't
     /// reach the database still has the values and knows when they were read. It reads the connection file
     /// each time, so a file put right, or taken away, counts at the next check. It only ever reads the
-    /// database. Not thread-safe: one check at a time, which the pane's own check thread guarantees.
+    /// database, and only while someone is signed in to it. Not thread-safe: one check at a time, which the
+    /// pane's own check thread guarantees.
     /// </summary>
     public sealed class LinkChecker
     {
         private readonly Func<ConnectionFileResult> _readConnectionFile;
         private readonly Func<ConnectionSettings, ILinkDatabase> _openDatabase;
+        private readonly Func<ConnectionSettings, bool> _isSignedIn;
         private readonly string _cacheFolder;
         private readonly Func<DateTime> _utcNow;
         private readonly Dictionary<int, ProjectCheckState> _projects = new Dictionary<int, ProjectCheckState>();
@@ -30,16 +32,19 @@ namespace MH.RevitTools.Database.Checking
 
         /// <param name="readConnectionFile">Reads the PC's connection file, e.g. <c>() =&gt; ConnectionFile.Read(ConnectionFile.DefaultPath)</c>.</param>
         /// <param name="openDatabase">The database for those settings, e.g. <c>s =&gt; new SqlLinkDatabase(s)</c>.</param>
+        /// <param name="isSignedIn">Whether someone is signed in to that database; asked at every check.</param>
         /// <param name="cacheFolder">Where the last pulls are kept; null keeps none.</param>
         /// <param name="utcNow">The clock.</param>
         public LinkChecker(
             Func<ConnectionFileResult> readConnectionFile,
             Func<ConnectionSettings, ILinkDatabase> openDatabase,
+            Func<ConnectionSettings, bool> isSignedIn,
             string cacheFolder,
             Func<DateTime> utcNow)
         {
             _readConnectionFile = readConnectionFile ?? throw new ArgumentNullException(nameof(readConnectionFile));
             _openDatabase = openDatabase ?? throw new ArgumentNullException(nameof(openDatabase));
+            _isSignedIn = isSignedIn ?? throw new ArgumentNullException(nameof(isSignedIn));
             _cacheFolder = string.IsNullOrWhiteSpace(cacheFolder) ? null : cacheFolder;
             _utcNow = utcNow ?? throw new ArgumentNullException(nameof(utcNow));
         }
@@ -69,6 +74,12 @@ namespace MH.RevitTools.Database.Checking
             ProjectCheckState project = StateFor(link.ProjectId);
             PullCache cache = _cacheFolder == null ? null : new PullCache(_cacheFolder, file.Settings);
             string where = DatabaseLabel.For(file.Settings);
+            if (!_isSignedIn(file.Settings))
+            {
+                ShowLastPull(link, project, cache);
+                return CheckOutcome.NotSignedIn(link.ProjectId, where, now, project);
+            }
+
             try
             {
                 ILinkDatabase database = _openDatabase(file.Settings);
@@ -87,16 +98,20 @@ namespace MH.RevitTools.Database.Checking
             }
             catch (LinkDatabaseException ex)
             {
-                // Nothing read yet this session: the pull kept from an earlier one still shows the values,
-                // if it was kept for this same project.
-                if (project.Data == null && cache != null)
-                {
-                    CachedPull kept = cache.Load(link);
-                    if (kept != null)
-                        project.Take(kept.Data, kept.ReadAtUtc, true, ++_lastVersion);
-                }
+                ShowLastPull(link, project, cache);
                 return CheckOutcome.NotReachable(link.ProjectId, where, ex.Message, now, project);
             }
+        }
+
+        // Nothing read yet this session: the pull kept from an earlier one still shows the values, if it was kept
+        // for this same project.
+        private void ShowLastPull(ModelLink link, ProjectCheckState project, PullCache cache)
+        {
+            if (project.Data != null || cache == null)
+                return;
+            CachedPull kept = cache.Load(link);
+            if (kept != null)
+                project.Take(kept.Data, kept.ReadAtUtc, true, ++_lastVersion);
         }
 
         private CheckOutcome ReadEverything(

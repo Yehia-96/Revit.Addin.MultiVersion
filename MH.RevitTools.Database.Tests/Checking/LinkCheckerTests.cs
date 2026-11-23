@@ -17,6 +17,7 @@ public sealed class LinkCheckerTests : IDisposable
     private readonly string _folder = Path.Combine(Path.GetTempPath(), "MH.RevitTools.Database.Tests", Guid.NewGuid().ToString("N"));
     private DateTime _now = new(2026, 11, 22, 13, 32, 0, DateTimeKind.Utc);
     private ConnectionFileResult _file = ConnectionFileResult.Loaded("database.json", Dev, null);
+    private Func<ConnectionSettings, bool> _isSignedIn = _ => true;
 
     public void Dispose()
     {
@@ -24,7 +25,7 @@ public sealed class LinkCheckerTests : IDisposable
             Directory.Delete(_folder, recursive: true);
     }
 
-    private LinkChecker Checker(ILinkDatabase database) => new(() => _file, _ => database, _folder, () => _now);
+    private LinkChecker Checker(ILinkDatabase database) => new(() => _file, _ => database, settings => _isSignedIn(settings), _folder, () => _now);
 
     private static FakeLinkDatabase Database(LinkProjectData data) => new(new[] { UlmData.Project }, new[] { data });
 
@@ -108,6 +109,123 @@ public sealed class LinkCheckerTests : IDisposable
         Assert.StartsWith("No connection file at", outcome.Problem);
         Assert.Null(outcome.Data);
         Assert.Equal(0, database.DataReads + database.StampReads);
+    }
+
+    [Fact]
+    public void WithNobodySignedIn_TheDatabaseIsntAsked_AndTheLastPullStays()
+    {
+        DateTime earlier = _now;
+        Checker(Database(UlmData.Bodenplatte(7))).Check(UlmLink);
+        _now = _now.AddHours(3);
+        _isSignedIn = _ => false;
+        var database = new CountingDatabase(Database(UlmData.Bodenplatte(8)));
+
+        CheckOutcome outcome = Checker(database).Check(UlmLink);
+
+        Assert.Equal(CheckState.NotSignedIn, outcome.State);
+        Assert.Equal(0, database.DataReads + database.StampReads + database.ProjectReads);
+        Assert.Equal(7, outcome.Data.Stamp);
+        Assert.True(outcome.DataFromCache);
+        Assert.Equal(earlier, outcome.DataReadAtUtc);
+        Assert.Equal("(localdb)\\MSSQLLocalDB · MH_Database", outcome.Where);
+        Assert.Null(outcome.Problem);
+    }
+
+    [Fact]
+    public void WithNobodySignedIn_AndNothingKept_ThereAreNoValues()
+    {
+        _isSignedIn = _ => false;
+        var database = new CountingDatabase(Database(UlmData.Bodenplatte(7)));
+
+        CheckOutcome outcome = Checker(database).Check(UlmLink);
+
+        Assert.Equal(CheckState.NotSignedIn, outcome.State);
+        Assert.Null(outcome.Data);
+        Assert.Null(outcome.DataReadAtUtc);
+        Assert.Equal(0, database.DataReads + database.StampReads + database.ProjectReads);
+    }
+
+    [Fact]
+    public void OnceSignedIn_EverythingIsReadAfresh()
+    {
+        Checker(Database(UlmData.Bodenplatte(7))).Check(UlmLink);
+        var database = new CountingDatabase(Database(UlmData.Bodenplatte(7, guete: "B500A")));
+        LinkChecker checker = Checker(database);
+        _isSignedIn = _ => false;
+        CheckOutcome before = checker.Check(UlmLink);
+
+        _isSignedIn = _ => true;
+        CheckOutcome after = checker.Check(UlmLink);
+
+        Assert.Equal(CheckState.Answered, after.State);
+        Assert.False(after.DataFromCache);
+        Assert.Equal(1, database.DataReads);
+        Assert.True(after.DataVersion > before.DataVersion);
+    }
+
+    [Fact]
+    public void AfterSigningOut_TheValuesReadThisSessionStay_AndNothingMoreIsRead()
+    {
+        var database = new CountingDatabase(Database(UlmData.Bodenplatte(7)));
+        LinkChecker checker = Checker(database);
+        CheckOutcome before = checker.Check(UlmLink);
+        int reads = database.DataReads + database.StampReads + database.ProjectReads;
+
+        _isSignedIn = _ => false;
+        _now = _now.AddMinutes(1);
+        CheckOutcome after = checker.Check(UlmLink);
+
+        Assert.Equal(CheckState.NotSignedIn, after.State);
+        Assert.Same(before.Data, after.Data);
+        Assert.Equal(before.DataVersion, after.DataVersion);
+        Assert.False(after.DataFromCache);
+        Assert.Equal(reads, database.DataReads + database.StampReads + database.ProjectReads);
+    }
+
+    [Fact]
+    public void SigningOut_LeavesTheValues_ButNothingAnswersForThem()
+    {
+        CheckOutcome answered = Checker(Database(UlmData.Bodenplatte(7))).Check(UlmLink);
+
+        CheckOutcome signedOut = answered.SignedOut(_now.AddMinutes(1));
+
+        Assert.Equal(CheckState.NotSignedIn, signedOut.State);
+        Assert.Same(answered.Data, signedOut.Data);
+        Assert.Equal(answered.DataVersion, signedOut.DataVersion);
+        Assert.Equal(answered.DataReadAtUtc, signedOut.DataReadAtUtc);
+        Assert.Equal((answered.Where, answered.ProjectId), (signedOut.Where, signedOut.ProjectId));
+    }
+
+    [Fact]
+    public void SigningOut_WithoutAConnectionFile_ChangesNothing()
+    {
+        _file = ConnectionFileResult.Failed("database.json", "No connection file at database.json.");
+        CheckOutcome notSetUp = Checker(Database(UlmData.Bodenplatte(7))).Check(UlmLink);
+
+        Assert.Same(notSetUp, notSetUp.SignedOut(_now));
+    }
+
+    [Fact]
+    public void SigningIn_IsForTheDatabaseOfTheConnectionFile()
+    {
+        _isSignedIn = settings => settings.Server == Dev.Server;
+        LinkChecker checker = Checker(Database(UlmData.Bodenplatte(7)));
+        Assert.Equal(CheckState.Answered, checker.Check(UlmLink).State);
+
+        _file = ConnectionFileResult.Loaded("database.json", Office, null);
+        CheckOutcome outcome = checker.Check(UlmLink);
+
+        Assert.Equal(CheckState.NotSignedIn, outcome.State);
+        Assert.Null(outcome.Data);
+    }
+
+    [Fact]
+    public void WithoutAConnectionFile_NobodysSignInMatters()
+    {
+        _isSignedIn = _ => throw new InvalidOperationException("There's no database to be signed in to.");
+        _file = ConnectionFileResult.Failed("database.json", "No connection file at database.json.");
+
+        Assert.Equal(CheckState.NotSetUp, Checker(Database(UlmData.Bodenplatte(7))).Check(UlmLink).State);
     }
 
     [Fact]
@@ -259,7 +377,7 @@ public sealed class LinkCheckerTests : IDisposable
     [Fact]
     public void Faults_AreThrown_NotPassedOffAsAnUnreachableDatabase()
     {
-        LinkChecker checker = new(() => _file, _ => throw new InvalidOperationException("a bug"), _folder, () => _now);
+        LinkChecker checker = new(() => _file, _ => throw new InvalidOperationException("a bug"), _ => true, _folder, () => _now);
 
         Assert.Throws<InvalidOperationException>(() => checker.Check(UlmLink));
     }
@@ -277,9 +395,12 @@ public sealed class LinkCheckerTests : IDisposable
 
         public int DataReads { get; private set; }
 
+        public int ProjectReads { get; private set; }
+
         public IReadOnlyList<LinkProject> GetProjects()
         {
             FailIfAsked();
+            ProjectReads++;
             return _inner.GetProjects();
         }
 

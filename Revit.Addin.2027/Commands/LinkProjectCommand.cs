@@ -5,6 +5,7 @@ using MH.RevitTools.Database.Connection;
 using MH.RevitTools.Database.Link;
 using MH.RevitTools.Database.Linking;
 using Revit.Addin._2027.DatabaseLink;
+using Revit.Addin._2027.DatabaseLink.SignIn;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -45,6 +46,9 @@ namespace Revit.Addin._2027.Commands
                     Show("Can't use the connection file", file.Problem, TaskDialogIcon.TaskDialogIconWarning);
                     return Result.Cancelled;
                 }
+
+                if (!SignInGate.Ensure(application, file.Settings))
+                    return Result.Cancelled;
 
                 LinkProject chosen = AskForProject(application, document, new SqlLinkDatabase(file.Settings));
                 if (chosen == null)

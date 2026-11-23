@@ -15,8 +15,8 @@ their own, and deletes them only after a confirmation. Yehia's answer: "everythi
 pushed). In Yehia's model none of those elements is one a view can show, so "Show them in a new view"
 couldn't be tried. Step 5 (the MH Database pane and the change check) is done: built, committed (1721f93)
 and walked on 2026-11-23. Step 6 (Apply and "Not applied") is done: built, committed and walked on
-2026-11-23. Step 7 (Compare with Excel) is done: built, committed and walked on 2026-11-23. **Step 8 is next;
-after it comes step 9.**
+2026-11-23. Step 7 (Compare with Excel) is done: built, committed and walked on 2026-11-23. Step 8 (Sign in) is
+done: built, committed and walked on 2026-11-23. **Step 9 is next.**
 
 The live link from the MH database into Revit, inside the "Parameter Tools" add-in (MH.RevitTools),
 in `Revit.Addin.2027` only. It only reads from the database. This file holds the plan, the status, and
@@ -473,15 +473,35 @@ after Yehia has walked it.
   3. Change Studio's to 0.31 and compare again: Dicke must show up, with both values.
 
 ### 8. Sign in with your Studio account
-- Revit asks once per start, the first time the pane needs the database. Nothing is saved. A wrong
-  password or an inactive account means no link.
-- It needs the two sign-in procedures ("Needs from the database", item 3: asked for on 2026-11-23).
-- The name is trimmed and the password isn't, as in Studio's sign-in. After several wrong tries Revit says how
-  long to wait, as the database tells it.
+- Revit asks once per start, the first time the database is needed. Nothing is saved: who signed in is known until
+  Revit closes, the password only while it's typed. A wrong password or an inactive account means no link.
+- **What needs it:** everything that reads the database: the pane's check, Link, Check parameters, Apply changes and
+  Compare with Excel. Test connection doesn't, as it reads no project's data.
+- **Where it's asked,** as in the mockup:
+  - The pane shows "Not signed in" with a grey dot, a card with **Sign in…**, when the last pull was, and the model's
+    counts by that pull. Nothing is checked, no change is listed and nothing can be applied.
+  - The Database panel's third row says **Sign in…**, then the person's name. Clicking the name offers to sign out,
+    or to sign in as someone else.
+  - A command that needs it asks first, then goes on.
+- **The window** is the mockup's. One click on Sign in is one try, in the background, and it's never repeated by
+  itself. A refusal says the same for a wrong password, an unknown name and an inactive account. When the database
+  makes a name wait, the button counts it down; another name can try meanwhile.
+- The name is trimmed and the password isn't, as in Studio's sign-in. The hash is Studio's (`PasswordHash`), pinned
+  to the same test value as Studio's own. The sign-in's connection is always encrypted, whatever the connection file
+  says (except LocalDB, where nothing leaves the PC): the hash is as good as the password to whoever reads it.
+- A sign-in holds for the database of the connection file. Another one asks again.
+- With someone signed in, the pane's header says "Signed in as … · until Revit closes".
 - **Walk:**
-  1. Open Revit: the pane asks you to sign in.
-  2. A wrong password is refused; the right one works.
-  3. Restart Revit: it asks again.
+  1. Restart Revit and open the linked model: the pane says "Not signed in", the Database button's dot is grey, and
+     the panel's third row says "Sign in…".
+  2. Check parameters: the sign-in comes first. Cancel: nothing opens.
+  3. Sign in… with a made-up name: refused. With your own account and a wrong password, once: the same words.
+  4. With the right password: the pane checks, the row shows your name, the header says who is signed in. Check
+     parameters now opens straight away.
+  5. Click your name → Sign out: back to "Not signed in".
+  6. The waits, with a made-up name so your own account isn't blocked: five tries in a row, and the button counts
+     down from 30 s.
+  7. Restart Revit: it asks again.
 
 ### 9. Installer
 - `Install.ps1` writes `C:\ProgramData\MH\RevitTools\database.json` from a file Yehia keeps next to the
@@ -515,17 +535,18 @@ mockup (https://claude.ai/artifact/BUxmo897HJTFcEt43wpcen) stays as it was.
 - **Compare with Excel** isn't in the mockup: it's temporary (step 7) and sits in the slide-out.
 - **The Database panel** follows the mockup since 2026-11-22: the big Database button, then three rows
   (Apply changes, Check parameters, Sign in). Database shows and hides the pane (since step 5; before,
-  it opened the Link dialog). Apply changes (step 6) and Sign in (step 8) stay greyed out until they're
-  built. Test connection sits in the panel's slide-out (the arrow under the panel). The small icons are
-  a lighter grey than the mockup's, so they also show on Revit's dark ribbon.
+  it opened the Link dialog). Test connection sits in the panel's slide-out (the arrow under the panel). The
+  small icons are a lighter grey than the mockup's, so they also show on Revit's dark ribbon.
+- **Sign in** (step 8): clicking the name in the ribbon says who is signed in and offers to sign out or to sign in
+  as someone else; the mockup only opens the sign-in there. The button counts a wait down, which the mockup doesn't
+  know. An unlinked model keeps the two setup steps, and the sign-in comes with the first of them.
 - **The Database button's second line** is the pane's state in the mockup ("3 changes", "Up to date",
   "Link model"). Here a linked model keeps its project number there, and the dot on the icon shows the
   state instead: green up to date, blue with the number of changes, red not reachable, grey while
   checking (this session's proposal of 2026-11-22; Yehia on 2026-11-23, after the walk: "the buttons
   meanings are good and are reflected"). The dot sits inside the 32 px icon, as Revit's icons can't reach past their edge.
-- **The pane** leaves out what later steps bring: the "Apply changes automatically" switch (later, phase
-  3), and the signed-in line and "Not signed in" (step 8). "Apply" on a card applies the whole card, as in
-  the mockup. When values differ but none can go in now, the green card says "Nothing to apply now" instead
+- **The pane** leaves out the "Apply changes automatically" switch (later, phase 3). "Apply" on a card applies
+  the whole card, as in the mockup. When values differ but none can go in now, the green card says "Nothing to apply now" instead
   of "Up to date". The ribbon's Apply changes asks before it applies, as the list may not be in sight. An
   unlinked model's header says "Not linked" rather than "Connected", as nothing
   is checked for it. The model section's line says who linked the model and when. Material changes are
@@ -574,11 +595,25 @@ Its side of the contract, with every detail, is `REVIT_LINK.md` in
 - **Values:** Boolean is stored as `true`/`false`, Date as `yyyy-MM-dd`, numbers invariant with a dot.
   Placeholders come through as stored, so the add-in keeps skipping all four.
 
+**The sign-in procedures (2026-11-23),** from the Studio migration `20261123154250_AddRevitSignIn`, in dev
+MH_Database. Details: REVIT_LINK.md, "Signing in to Revit". They are what was asked for below, and:
+- **Waits:** the 5th wrong try 30 s, the 6th 1 min, the 7th 2 min, from the 8th 5 min. A right sign-in or a day
+  without a wrong try clears them.
+- **Errors:** inside a transaction (`INSERT … EXEC` too) `CheckSignIn` refuses with 51000, so the add-in's
+  connections say `Enlist=false`. 51001: the server's secret is missing. A call that timed out may have been
+  counted, so it isn't repeated by itself.
+- **Names:** case and trailing spaces don't matter; everything else does (accents, ß and ss). Over 100 characters is
+  an unknown name. The procedures compare names themselves, not by collation; Yehia agreed.
+  `Users.Username` on dev: SQL_Latin1_General_CP1_CI_AS. CADSQL isn't confirmed; its database was restored from
+  dev's backup, so it should be the same.
+- **Wrong tries on dev count too.** The database session or Yehia clears them with
+  `DELETE FROM dbo.RevitSignInWaits;`. The add-in session calls `CheckSignIn` only on throwaway databases, as a try
+  is written down.
+
 ## Needs from the database
 
-*Final version, 2026-11-19. Items 1 and 2 are built and the questions are answered (see "What the
-database session built"). Item 3 is asked for now (2026-11-23). Item 4 comes later, and item 5 isn't wanted
-for now.*
+*Final version, 2026-11-19. Items 1, 2 and 3 are built and the questions are answered (see "What the
+database session built"). Item 4 comes later, and item 5 isn't wanted for now.*
 
 **What the link needs, in order**
 1. **Now: the `revit` views.** The SQL is ready in the add-in repo (branch `database-link`):
@@ -595,7 +630,7 @@ for now.*
    - The Revit name is the plain name, with a suffix where plain names clash on one category.
    - Studio writes the master shared parameter file from them, in one go (to a temporary file, then
      rename), so the add-in never reads half a file. Tell me its path on the share.
-3. **Now (2026-11-23), for step 8:** the two sign-in procedures (below).
+3. **For step 8:** the two sign-in procedures (below). Built on 2026-11-23.
 4. **Later, step 9:** the read-only login (below).
 5. **Not for now (Yehia, 2026-11-23). From step 7, in case the link is to fill what the Excel import fills:**
    values that the views don't give, so the link can't write them. Each has its parameter in the dictionary
@@ -1016,3 +1051,28 @@ Still open:
   above was made exact for that, against Studio's own sign-in code, which was only read.
 - **2026-11-23, step 7 walked:** in Yehia's words, for steps 7 and 8, "It works commit and push step 7 and 8".
   Committed with this entry.
+- **2026-11-23, the sign-in procedures are built** by the database session (summed up under "What the database
+  session built").
+- **2026-11-23, step 8 built:** the sign-in, as described under step 8. The hashing, the tries, who is signed in and
+  every word sit in the library (`SigningIn`) under tests; the Revit side (`DatabaseLink\SignIn`) asks before anything
+  reads the database and shows who is signed in.
+  - The hash was checked against Studio's own pinned test value, made again here with OpenSSL.
+  - The window was driven off screen with a made-up database (refused, waiting and the wait lifting, cancelled while
+    trying, not reachable, signed in) and drawn in eight states; the pane was drawn in its two new ones.
+  - A C# and a security review, reading the code only, found nothing critical or high. Fixed: the sign-in's
+    connection is always encrypted; signing out takes the changes list and Apply away at once instead of with the
+    next check; an answer that was still being read when someone signed out isn't shown; a name from the database is
+    shown on one line. Left as it is: after the window is closed, the database itself still refuses a name that has
+    to wait, and says so; a connection file that changes while Revit runs counts from the next check.
+  - 470 tests pass. The 32 that need LocalDB weren't run: this session can't reach it. Six of them are new and run the
+    procedures' copy on a throwaway database.
+  - Deployed to both add-in folders on Yehia's PC, with step 7. Not tried in Revit, and not against the real
+    procedures: this session doesn't write to dev MH_Database, and a try is written down there.
+- **2026-11-23, step 8 walked:** in Yehia's words, for steps 7 and 8, "It works commit and push step 7 and 8".
+  Committed and pushed with this entry.
+- **2026-11-23, a question of Yehia's:** does the link assign materials to objects? No. It only writes values into
+  parameters of materials that are already in the model, found by their Materialname. It doesn't create materials,
+  doesn't assign them to elements and doesn't set fill patterns. The Excel import's Automate Material Creation does all
+  three (it assigns through the element's "Material" parameter). The database holds what it would take: an object's
+  Material-ID (BT-1101-01: MB-1761-01-BET-0031), and each material's name, group and fill patterns; global materials
+  aren't in the views. Open: whether the link should do it too.

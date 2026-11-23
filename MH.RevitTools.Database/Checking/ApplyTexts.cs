@@ -178,6 +178,8 @@ namespace MH.RevitTools.Database.Checking
             {
                 case CheckState.NotSetUp:
                     return "This computer has no connection file, so there's nothing to apply.";
+                case CheckState.NotSignedIn:
+                    return "Nobody is signed in to the MH database. Sign in first (Sign in… in the Database panel); the MH Database pane then checks for changes.";
                 case CheckState.NotReachable:
                     return "The database isn't reachable now. Apply waits until it answers again, so that nothing outdated goes in.";
                 case CheckState.ProjectMissing:
@@ -198,6 +200,8 @@ namespace MH.RevitTools.Database.Checking
         {
             if (isReadOnly)
                 return "The model is open read-only, so nothing can be applied.";
+            if (state == CheckState.NotSignedIn)
+                return "Apply waits until you sign in, so that nothing outdated goes in.";
             return state == CheckState.Answered
                 ? null
                 : "Apply waits until the database answers again, so that nothing outdated goes in.";

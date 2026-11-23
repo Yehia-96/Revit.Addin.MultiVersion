@@ -9,6 +9,9 @@ namespace MH.RevitTools.Database.Checking
         /// <summary>The PC's connection file is missing or broken.</summary>
         NotSetUp,
 
+        /// <summary>Nobody is signed in to this database, so it wasn't asked.</summary>
+        NotSignedIn,
+
         /// <summary>The database didn't answer: the VPN is off, the server is down, the login is refused...</summary>
         NotReachable,
 
@@ -72,13 +75,14 @@ namespace MH.RevitTools.Database.Checking
         /// <summary>
         /// The project's values: as read now or earlier this session, or the last pull kept on this PC
         /// (<see cref="DataFromCache"/>). Null when there are none, and whenever the project is missing or changed.
+        /// They stay the last ones while nobody is signed in or the database doesn't answer.
         /// </summary>
         public LinkProjectData Data { get; }
 
         /// <summary>When <see cref="Data"/> was read from the database.</summary>
         public DateTime? DataReadAtUtc { get; }
 
-        /// <summary>True when <see cref="Data"/> is the pull kept from an earlier session, as the database can't be reached.</summary>
+        /// <summary>True when <see cref="Data"/> is the pull kept from an earlier session, as the database wasn't read in this one.</summary>
         public bool DataFromCache { get; }
 
         /// <summary>
@@ -96,16 +100,26 @@ namespace MH.RevitTools.Database.Checking
         /// </summary>
         public string CacheProblem { get; }
 
+        /// <summary>The same values from the moment someone signs out, before the next check says so.</summary>
+        public CheckOutcome SignedOut(DateTime nowUtc) =>
+            State == CheckState.NotSetUp
+                ? this
+                : new CheckOutcome(CheckState.NotSignedIn, ProjectId, Where, null, nowUtc, LastAnswerUtc,
+                    Data, DataReadAtUtc, DataFromCache, DataVersion, null, null);
+
         internal static CheckOutcome NotSetUp(int projectId, string problem, DateTime nowUtc) =>
             new CheckOutcome(CheckState.NotSetUp, projectId, "", problem, nowUtc, null, null, null, false, 0, null, null);
+
+        internal static CheckOutcome NotSignedIn(int projectId, string where, DateTime nowUtc, ProjectCheckState project) =>
+            new CheckOutcome(CheckState.NotSignedIn, projectId, where, null, nowUtc, LastAnswer(project),
+                project.Data, project.DataReadAtUtc, project.DataFromCache, project.Version, null, null);
 
         internal static CheckOutcome Answered(int projectId, string where, DateTime nowUtc, ProjectCheckState project, string cacheProblem) =>
             new CheckOutcome(CheckState.Answered, projectId, where, null, nowUtc, project.LastAnswerUtc,
                 project.Data, project.DataReadAtUtc, project.DataFromCache, project.Version, null, cacheProblem);
 
         internal static CheckOutcome NotReachable(int projectId, string where, string problem, DateTime nowUtc, ProjectCheckState project) =>
-            new CheckOutcome(CheckState.NotReachable, projectId, where, problem, nowUtc,
-                project.LastAnswerUtc ?? (project.DataFromCache ? project.DataReadAtUtc : null),
+            new CheckOutcome(CheckState.NotReachable, projectId, where, problem, nowUtc, LastAnswer(project),
                 project.Data, project.DataReadAtUtc, project.DataFromCache, project.Version, null, null);
 
         internal static CheckOutcome ProjectMissing(int projectId, string where, string problem, DateTime nowUtc,
@@ -117,6 +131,9 @@ namespace MH.RevitTools.Database.Checking
             ProjectCheckState project, LinkProject other, string cacheProblem) =>
             new CheckOutcome(CheckState.ProjectChanged, projectId, where, problem, nowUtc, project.LastAnswerUtc,
                 null, null, false, project.Version, other, cacheProblem);
+
+        private static DateTime? LastAnswer(ProjectCheckState project) =>
+            project.LastAnswerUtc ?? (project.DataFromCache ? project.DataReadAtUtc : null);
     }
 
     /// <summary>

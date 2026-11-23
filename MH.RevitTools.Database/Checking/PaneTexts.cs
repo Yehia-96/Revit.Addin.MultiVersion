@@ -51,6 +51,12 @@ namespace MH.RevitTools.Database.Checking
             return last + " · " + (every.ChecksByItself ? "tries again " + every.Phrase : "try again when you like");
         }
 
+        /// <summary>The header's second line while nobody is signed in, e.g. "Values from the last pull: today 09:12".</summary>
+        public static string NotSignedIn(DateTime? lastPullUtc, DateTime nowUtc, TimeZoneInfo timeZone) =>
+            lastPullUtc.HasValue
+                ? "Values from the last pull: " + WhenInSentence(lastPullUtc.Value, nowUtc, timeZone)
+                : "Nothing pulled on this computer yet";
+
         /// <summary>The red banner's text when the database doesn't answer.</summary>
         public static string NotReachableDetail(string problem, CheckInterval interval)
         {

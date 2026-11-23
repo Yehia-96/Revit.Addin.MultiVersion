@@ -39,7 +39,7 @@ namespace Revit.Addin._2027.Commands
                 {
                     Show("Connected",
                         result.Database + " on " + result.Server + Environment.NewLine
-                        + "Signed in as " + result.SignedInAs + Environment.NewLine
+                        + "Server login: " + result.SignedInAs + Environment.NewLine
                         + result.ServerVersion + " · " + Seconds(result.Elapsed),
                         background,
                         TaskDialogIcon.TaskDialogIconInformation);

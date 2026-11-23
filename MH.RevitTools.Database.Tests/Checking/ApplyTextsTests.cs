@@ -207,6 +207,7 @@ public sealed class ApplyTextsTests
         Assert.StartsWith("This model isn't linked", ApplyTexts.WhyNothingToApply(false, null, null));
         Assert.Contains("still being checked", ApplyTexts.WhyNothingToApply(true, null, null));
         Assert.Contains("no connection file", ApplyTexts.WhyNothingToApply(true, CheckState.NotSetUp, null));
+        Assert.Contains("Sign in first", ApplyTexts.WhyNothingToApply(true, CheckState.NotSignedIn, changes));
         Assert.Contains("isn't reachable", ApplyTexts.WhyNothingToApply(true, CheckState.NotReachable, changes));
         Assert.Contains("any more", ApplyTexts.WhyNothingToApply(true, CheckState.ProjectChanged, null));
         Assert.Contains("still being compared", ApplyTexts.WhyNothingToApply(true, CheckState.Answered, null));
@@ -222,6 +223,7 @@ public sealed class ApplyTextsTests
 
         Assert.Null(ApplyTexts.ApplyWaits(CheckState.Answered, false));
         Assert.Contains("until the database answers", ApplyTexts.ApplyWaits(CheckState.NotReachable, false));
+        Assert.Contains("until you sign in", ApplyTexts.ApplyWaits(CheckState.NotSignedIn, false));
         Assert.Contains("read-only", ApplyTexts.ApplyWaits(CheckState.Answered, true));
         Assert.Equal("Up to date", ApplyTexts.UpToDateTitle(Report(data, (id, parameter, value) => ValueCheck.Same)));
         Assert.Equal("Nothing to apply now", ApplyTexts.UpToDateTitle(Report(data, (id, parameter, value) => ValueCheck.ReadOnly)));

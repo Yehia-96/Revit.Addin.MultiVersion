@@ -8,6 +8,7 @@ using MH.RevitTools.Database.Linking;
 using Microsoft.Win32;
 using Revit.Addin._2027.DatabaseLink;
 using Revit.Addin._2027.DatabaseLink.Compare;
+using Revit.Addin._2027.DatabaseLink.SignIn;
 using System;
 using System.Globalization;
 using System.IO;
@@ -44,6 +45,9 @@ namespace Revit.Addin._2027.Commands
                 ConnectionFileResult file = ConnectionFile.Read(ConnectionFile.DefaultPath);
                 if (!file.IsLoaded)
                     return Tell("Can't use the connection file", file.Problem);
+
+                if (!SignInGate.Ensure(application, file.Settings))
+                    return Result.Cancelled;
 
                 string path = AskForWorkbook();
                 if (path == null)

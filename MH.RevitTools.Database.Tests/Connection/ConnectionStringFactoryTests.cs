@@ -21,6 +21,30 @@ public sealed class ConnectionStringFactoryTests
         Assert.Equal(pooling, builder.Pooling);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void WhatMustAlwaysBeEncrypted_Is_WhateverTheConnectionFileSays(bool trustServerCertificate)
+    {
+        var settings = new ConnectionSettings("s", "d", true, null, null, false, trustServerCertificate);
+
+        var always = new SqlConnectionStringBuilder(ConnectionStringFactory.Build(settings, 5, pooling: false, alwaysEncrypt: true));
+
+        Assert.Equal(SqlConnectionEncryptOption.Mandatory, always.Encrypt);
+        Assert.Equal(trustServerCertificate, always.TrustServerCertificate);
+        Assert.Equal(SqlConnectionEncryptOption.Optional, Build(settings).Encrypt);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void NoConnection_JoinsATransactionAroundIt(bool pooling)
+    {
+        var builder = Build(new ConnectionSettings("s", "d", true, null, null, true, false), pooling: pooling);
+
+        Assert.False(builder.Enlist);
+    }
+
     [Fact]
     public void WindowsSignIn_UsesIntegratedSecurityWithoutCredentials()
     {

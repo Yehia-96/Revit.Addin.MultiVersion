@@ -4,11 +4,14 @@ using Autodesk.Revit.DB.Events;
 using Autodesk.Revit.UI;
 using Autodesk.Revit.UI.Events;
 using MH.RevitTools.Database.Linking;
+using MH.RevitTools.Database.SigningIn;
 using Revit.Addin._2027.Commands;
 using Revit.Addin._2027.DatabaseLink;
 using Revit.Addin._2027.DatabaseLink.Pane;
+using Revit.Addin._2027.DatabaseLink.SignIn;
 using Revit.Addin._2027.Updaters;
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Reflection;
 using System.Windows.Media.Imaging;
@@ -51,9 +54,11 @@ namespace Revit.Addin._2027
             // Laid out like the mockup: the big Database button, then three rows: Apply changes, Check
             // parameters, and the signed-in person. Database shows and hides the MH Database pane; it shows
             // the active model's project number, and a dot with what the pane's check found. Apply changes
-            // applies what the pane lists. Sign in (step 8) stays greyed out until it's built. Test connection
-            // sits in the panel's slide-out, under the panel's arrow.
-            PushButton database = AddDatabasePanel(panelDatabase, assemblyPath, assemblyName);
+            // applies what the pane lists. Sign in shows who is signed in (step 8). Test connection sits in the
+            // panel's slide-out, under the panel's arrow.
+            PushButton signIn;
+            PushButton database = AddDatabasePanel(panelDatabase, assemblyPath, assemblyName, out signIn);
+            _signInRow = new SignInRow(signIn, SignInGate.Session);
             _databaseButton = new DatabaseButton(database);
             _databaseButton.Hook(application);
             StartDatabasePane(application);
@@ -150,6 +155,9 @@ namespace Revit.Addin._2027
         // Keeps the big Database button showing the active model's link.
         private DatabaseButton _databaseButton;
 
+        // Keeps the Database panel's third row showing who is signed in.
+        private SignInRow _signInRow;
+
         // Runs the MH Database pane: the check, the comparison and what the pane shows.
         private LinkMonitor _linkMonitor;
 
@@ -176,8 +184,9 @@ namespace Revit.Addin._2027
             }
         }
 
+        /// <param name="signInRow">The third row, whose text follows who is signed in.</param>
         /// <returns>The big Database button, whose text and icon follow the active model's link.</returns>
-        private static PushButton AddDatabasePanel(RibbonPanel panel, string assemblyPath, string assemblyName)
+        private static PushButton AddDatabasePanel(RibbonPanel panel, string assemblyPath, string assemblyName, out PushButton signInRow)
         {
             var database = (PushButton)panel.AddItem(new PushButtonData("DatabaseLink", DatabaseButtonFace.NoModel.Text, assemblyPath, Commands + "DatabasePaneCommand")
             {
@@ -202,14 +211,14 @@ namespace Revit.Addin._2027
                 Image = LoadIcon(assemblyName, 16, "CheckParametersIcon.png"),
                 LargeImage = LoadIcon(assemblyName, 32, "CheckParametersIcon.png"),
             };
-            var signIn = new PushButtonData("SignInDatabase", "Sign in…", assemblyPath, Commands + "NotYetCommand")
+            var signIn = new PushButtonData("SignInDatabase", SignInFace.Nobody.Text, assemblyPath, Commands + "SignInCommand")
             {
-                ToolTip = "Signs you in with your MH Database Studio account; then it shows your name. Comes with "
-                          + "step 8 of the database link.",
-                AvailabilityClassName = Commands + "NotYetAvailable",
+                ToolTip = SignInFace.Nobody.ToolTip,
+                AvailabilityClassName = Commands + "AvailableWithoutModel",
                 Image = LoadIcon(assemblyName, 16, "SignInIcon.png"),
             };
-            panel.AddStackedItems(applyChanges, checkParameters, signIn);
+            IList<RibbonItem> rows = panel.AddStackedItems(applyChanges, checkParameters, signIn);
+            signInRow = (PushButton)rows[2];
 
             panel.AddSlideOut();
             panel.AddItem(new PushButtonData("TestDatabaseConnection", "Test\nconnection", assemblyPath, Commands + "TestConnectionCommand")
