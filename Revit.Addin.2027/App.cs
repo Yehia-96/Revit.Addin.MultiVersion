@@ -219,6 +219,16 @@ namespace Revit.Addin._2027
                 Image = LoadIcon(assemblyName, 32, "DatabaseIcon.png"),
                 LargeImage = LoadIcon(assemblyName, 32, "DatabaseIcon.png"),
             });
+
+            // Temporary (step 7): goes once the Excel and the database give the same.
+            panel.AddItem(new PushButtonData("CompareWithExcel", "Compare\nwith Excel", assemblyPath, Commands + "CompareWithExcelCommand")
+            {
+                ToolTip = "Lists every difference between a Planungsdatenbank workbook and this model's project in the MH "
+                          + "database. It only reads. Temporary, until both give the same.",
+                AvailabilityClassName = Commands + "AvailableInProject",
+                Image = LoadIcon(assemblyName, 32, "Tables_Icon.png"),
+                LargeImage = LoadIcon(assemblyName, 32, "Tables_Icon.png"),
+            });
             return database;
         }
 

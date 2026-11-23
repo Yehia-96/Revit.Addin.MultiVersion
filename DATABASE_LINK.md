@@ -15,7 +15,8 @@ their own, and deletes them only after a confirmation. Yehia's answer: "everythi
 pushed). In Yehia's model none of those elements is one a view can show, so "Show them in a new view"
 couldn't be tried. Step 5 (the MH Database pane and the change check) is done: built, committed (1721f93)
 and walked on 2026-11-23. Step 6 (Apply and "Not applied") is done: built, committed and walked on
-2026-11-23. **Step 7 is next; after it come steps 8 and 9.**
+2026-11-23. Step 7 (Compare with Excel) is done: built, committed and walked on 2026-11-23. **Step 8 is next;
+after it comes step 9.**
 
 The live link from the MH database into Revit, inside the "Parameter Tools" add-in (MH.RevitTools),
 in `Revit.Addin.2027` only. It only reads from the database. This file holds the plan, the status, and
@@ -66,6 +67,8 @@ after it are listed next.
 - **Duplicate Bauteil-IDs stay as they are** until Yehia gives the fix (a new Bauteilunternummer).
 - **The link fills Bauteilnummer and Bauteilunternummer** (Yehia, 2026-11-23, step 6): the modellers enter the
   Bauteil_ID by hand, and that's the unique ID. Only the Bauteil_ID itself is never written.
+- **What the views don't give stays unfilled for now** (Yehia, 2026-11-23, step 7): the 14 material parameters,
+  the two object ones and the global materials under "Needs from the database", item 5.
 - **Parameter definitions come from Studio's master file** (Yehia, 2026-11-20, step 4), as in the
   mockup. The connection file names the file, so each PC pairs a database with its own file, and the
   add-in refuses a file that holds none of the database's GUIDs.
@@ -433,15 +436,48 @@ after Yehia has walked it.
      a test model, as before. Values and counts are the same as they always were.
 
 ### 7. Excel and database give the same result (the acceptance)
-- A temporary **Compare with Excel** button. It loads Planungsdatenbank.xlsx and project 1761 from the
-  database and lists every difference: objects, parameters, values after unit conversion, and materials.
-- It reads 1761 through the views, so it can move earlier as soon as they exist in dev MH_Database.
-- **Walk:** Compare → pick Planungsdatenbank.xlsx → "Identical", or the list of differences.
+- A temporary **Compare with Excel** button, in the Database panel's slide-out. It loads a Planungsdatenbank
+  workbook with the Excel import's own reader and the model's linked project from the database, and lists
+  every difference. It only reads; the workbook may stay open in Excel, and what's loaded for the Excel import
+  stays as it is. What's typed into an open workbook and not saved isn't compared: the window says when it was
+  saved.
+  - **Objects** and **materials** by their IDs; a material's name, group and fill patterns too.
+  - **Values** after unit conversion: what Revit would get from each, with the Excel import's conversion. Only
+    rounding is forgiven: whole numbers must be the same, others up to a billionth of their size.
+  - **Parameters** by set, group and name (BAU-GEO-Dicke), as the two number them differently, and whether Revit
+    takes them the same. One filed under another set on one side is still the same parameter, said once.
+  - What's known to differ is listed apart and doesn't count: the columns the Excel reader leaves out
+    (Bauteil_ID, Bauteilnummer, Bauteilunternummer, a material's Material-ID), the fill pattern columns, global
+    materials, and parameters only the database's dictionary has.
+  - What one side gives twice, differently, counts as a difference: only the first is compared.
+  - What the Excel reader leaves out or questions (a repeated Bauteil_ID, a row without one, a material without a
+    name) is listed as its remarks. With any, the headline never says "Identical".
+  - "Copy the list" puts all of it on the clipboard.
+- **What it finds today** (the workbook of 2026-11-12 against 1761-01 as kept on 2026-11-23, 14:49; run outside
+  Revit, with a stand-in for Revit's unit conversion):
+  - **The same:** all 109 material values the database has, the name, group and fill patterns of all 38 common
+    materials, what Revit makes of every common parameter, and BT-1101-01's values but two.
+  - **Gaps:** 14 material parameters (472 values) and two object parameters that the Excel import writes and the
+    database doesn't give as values, and 23 global materials. Yehia leaves them for now ("Needs from the
+    database", item 5).
+  - **Filed under another set** (Excel: IDE; database: BAU or REV): Betonstahl Mat.-ID, Darstellung-ID,
+    Oberfläche-Ansicht_ID, Oberfläche-Schnitt_ID. The link goes by GUID, so it doesn't matter to it.
+  - **Test data:** three objects only in the Excel (BG-3454-02, EB-6565-01, ET-3333-01), one only in the database
+    (ET-2101-01), and BT-1101-01's Bauwerk ("nope") and Bauteilkategorie ("Bauteil?") changed in Studio.
+  - **Not tested by this data:** units. The only common object has no measurement in both.
+- **Walk:**
+  1. On the linked model, Database panel → the arrow under it → Compare with Excel → pick
+     Planungsdatenbank.xlsx. The list comes up; Copy the list.
+  2. For the units: in a copy of the workbook give BT-1101-01 a Dicke of 0.3, save it, and give it 0.3 in Studio
+     too. Compare with the copy: Dicke must not show up.
+  3. Change Studio's to 0.31 and compare again: Dicke must show up, with both values.
 
 ### 8. Sign in with your Studio account
 - Revit asks once per start, the first time the pane needs the database. Nothing is saved. A wrong
   password or an inactive account means no link.
-- It needs the two sign-in procedures.
+- It needs the two sign-in procedures ("Needs from the database", item 3: asked for on 2026-11-23).
+- The name is trimmed and the password isn't, as in Studio's sign-in. After several wrong tries Revit says how
+  long to wait, as the database tells it.
 - **Walk:**
   1. Open Revit: the pane asks you to sign in.
   2. A wrong password is refused; the right one works.
@@ -476,6 +512,7 @@ mockup (https://claude.ai/artifact/BUxmo897HJTFcEt43wpcen) stays as it was.
 - **Check parameters, "Replace…" on Other GUID:** left out at first, as replacing deletes the old
   parameter's values. Back at Yehia's request (2026-11-22): it asks first and is one undo step, and it
   asks once more for parameters that schedules or view filters use (step 4).
+- **Compare with Excel** isn't in the mockup: it's temporary (step 7) and sits in the slide-out.
 - **The Database panel** follows the mockup since 2026-11-22: the big Database button, then three rows
   (Apply changes, Check parameters, Sign in). Database shows and hides the pane (since step 5; before,
   it opened the Link dialog). Apply changes (step 6) and Sign in (step 8) stay greyed out until they're
@@ -540,7 +577,8 @@ Its side of the contract, with every detail, is `REVIT_LINK.md` in
 ## Needs from the database
 
 *Final version, 2026-11-19. Items 1 and 2 are built and the questions are answered (see "What the
-database session built"). Items 3 and 4 come later.*
+database session built"). Item 3 is asked for now (2026-11-23). Item 4 comes later, and item 5 isn't wanted
+for now.*
 
 **What the link needs, in order**
 1. **Now: the `revit` views.** The SQL is ready in the add-in repo (branch `database-link`):
@@ -557,8 +595,19 @@ database session built"). Items 3 and 4 come later.*
    - The Revit name is the plain name, with a suffix where plain names clash on one category.
    - Studio writes the master shared parameter file from them, in one go (to a temporary file, then
      rename), so the add-in never reads half a file. Tell me its path on the share.
-3. **Later, step 8:** the two sign-in procedures (below).
+3. **Now (2026-11-23), for step 8:** the two sign-in procedures (below).
 4. **Later, step 9:** the read-only login (below).
+5. **Not for now (Yehia, 2026-11-23). From step 7, in case the link is to fill what the Excel import fills:**
+   values that the views don't give, so the link can't write them. Each has its parameter in the dictionary
+   already.
+   - Materials, as rows of `revit.MaterialValues`: Materialname, Materialname2, Materialgruppe, Materialgruppen-ID,
+     Materialkategorie, Materialkategorie-ID, Materialnummer, Materialnummer2, Projekt-ID, Projektnummer,
+     Projektunternummer, and Bezeichnung, Bemerkung, Materialnorm. Most look like columns of the material, its
+     group, category and project; the last three may not be stored at all. Please say which are.
+   - Objects, as rows of `revit.ObjectValues`: Bauteilkategorie_ID and Bauteilgruppen-ID.
+   - Global materials (MP-9999-99-…): 23 in the workbook, none in `revit.Materials`, as they belong to no project.
+     Should a project's model get them too?
+   - Their history (who, when) and the change stamp should cover them like the other values.
 
 Step 3 (linking a model to its project) needs only `revit.Projects`. It can start once the views exist
 in dev MH_Database.
@@ -654,26 +703,62 @@ duplicate today, because Schlitzrinne has no catalog numbers yet.
 IX_AuditLogs_EntityName_EntityKey. The stamp counts the whole history every minute, which is quick at
 today's size. Tell me if the history gets trimmed or grows very large.
 
-**Sign-in procedures (step 8; Studio accounts; the stored hash never leaves the server).** Put them in
-schema `revit`, so the schema grant covers them.
-- `revit.GetSignInSalt(@Username)` returns the user's salt, base64 as stored. For an unknown or inactive
-  user it returns a made-up but stable salt, so the answer doesn't give away who exists. Make that salt
-  an HMAC of the name with a secret kept on the server; a plain hash of the name can be checked by
-  anyone. Keep the secret where the `revit` role can't read it, e.g. in a dbo table that only the
-  procedure reads, under its owner's rights.
-- `revit.CheckSignIn(@Username, @Hash)` returns one row (IsValid bit, DisplayName, Role) for an active
-  user whose hash matches.
-- `CheckSignIn` slows down after failed attempts: an increasing delay per user, and at most a short lock
-  that lifts on its own. Never a permanent lock: the login is shared, so anyone holding the connection
-  file could otherwise lock every Studio user out, TheAdmin included. Log the attempts. Without any
-  limit, a password could be guessed at leisure from any PC.
-- That attempt count is the only thing in the link that writes, and it does so under the procedure
-  owner's rights. Everything else only reads.
-- No dynamic SQL in either procedure.
-- The add-in computes `@Hash` exactly like Studio's `PasswordHashService`: PBKDF2, SHA-512, 100,000
-  rounds, 32-byte salt, base64. If Studio ever changes this, Revit's sign-in has to change in the same
-  release. Please note that in REVIT_LINK.md.
-- Both procedures run with their owner's rights, so the role needs no rights on `dbo.Users`.
+**Sign-in procedures (step 8; Studio accounts; the stored hash never leaves the server).** Settled on
+2026-11-23, after reading Studio's `AuthService`, `LoginWindow` and `PasswordHashService`. Both go into schema
+`revit`, so the schema grant covers them, and come with a Studio migration whose Down removes everything again.
+
+| Procedure | Takes | Always gives exactly one row |
+|---|---|---|
+| `revit.GetSignInSalt` | `@Username nvarchar(256)` | Salt: base64 as stored (44 characters) |
+| `revit.CheckSignIn` | `@Username nvarchar(256)`, `@Hash nvarchar(256)` (base64, 88 characters) | IsValid (bit); DisplayName (the user name where there is none) and Role, both NULL unless IsValid is 1; WaitSeconds (int): how long the next try is refused, 0 for not at all |
+
+- **Who may sign in:** every active account. Role is only shown.
+- **Names match as at Studio's sign-in:** by the database's own comparison of `Users.Username`, which looks like
+  it ignores case and trailing spaces (the column has no collation of its own, although a comment in
+  `AuthService` says case-sensitive). The add-in trims the name and leaves the password as typed, like Studio. A
+  name longer than the column is an unknown name, never a cut one.
+- **An unknown name, an inactive account and a wrong password look the same:** in the salt, in the row and in the
+  waits.
+  - The salt of an unknown or inactive name is made up but stable: an HMAC of the name with a secret, 32 bytes.
+    A plain hash of the name could be checked by anyone. T-SQL has no HMAC, so nest HASHBYTES (SHA2_512).
+  - Fold the name first, the way the lookup compares it. Otherwise "abc" and "ABC" get two salts, which gives away
+    that there's no such account.
+  - The secret is 32 random bytes the server makes in the migration (CRYPT_GEN_RANDOM), never in the source.
+- **The hash is compared exactly.** Base64 tells upper from lower case and the database's comparison doesn't, so
+  use a binary collation or compare bytes. NULL is wrong.
+- **Waits after wrong tries,** per account (an unknown name counts the same way): from the fifth wrong try in a row
+  30 seconds, then 1, 2 and at most 5 minutes. A right sign-in, or a day without a wrong try, clears it. Never a
+  permanent lock: the login is shared, so anyone holding the connection file could otherwise lock every Studio
+  user out, TheAdmin included.
+  - During a wait a try is refused at once, unchecked, even with the right password, and doesn't lengthen it. No
+    WAITFOR: it would hold connections.
+  - Counting and checking are one step per account, under one lock. Otherwise tries sent at the same moment get
+    through uncounted.
+  - **Nobody may roll the count back.** Whoever holds the connection file can call the procedure inside a
+    transaction of their own and roll back after each guess. So it refuses to run when `@@TRANCOUNT` isn't 0, sets
+    IMPLICIT_TRANSACTIONS OFF, commits the count itself, and only then answers.
+- **The log:** one row per try: when, which account (UserId; NULL for an unknown name), what came of it, and
+  HOST_NAME(). Never the hash, and never the text of an unknown name, as people type their password there by
+  mistake; where one must be told apart (the waits), keep its HMAC. Trim the log, e.g. to 90 days: anyone with the
+  connection file can cause rows.
+- **The secret, the waits and the log are tables in dbo,** not in schema `revit`: the role may read everything in
+  `revit`. The procedures reach them through ownership chaining (dbo owns both schemas), so no EXECUTE AS, and the
+  role needs no rights on dbo. No dynamic SQL.
+- **None of it in AuditLogs:** a row there moves the change stamp, and every Revit would read its project again at
+  each sign-in. `LastLoginAt` stays Studio's own. These counts are the only thing the link ever writes.
+- **The hashing stays as it is.** The add-in computes `@Hash` like `PasswordHashService`: PBKDF2 over the password
+  as UTF-8, HMAC-SHA512, 100,000 iterations, 32-byte salt, 64-byte hash, base64. A Studio test should pin those
+  numbers: if they ever change, Revit's sign-in has to change in the same release (REVIT_LINK.md says so already).
+- **Please test,** on a throwaway database:
+  - right, wrong, unknown, inactive, NULL; the name in other case and with a trailing space; a hash with one
+    letter in the other case; a name with no display name;
+  - the wait: starts, refuses the right password, isn't lengthened, lifts, is cleared; tries at the same moment; a
+    call inside a transaction and with IMPLICIT_TRANSACTIONS ON;
+  - as a user with only `GRANT SELECT, EXECUTE ON SCHEMA::revit`: both procedures work; `dbo.Users`, the secret,
+    the waits and the log are refused;
+  - a sign-in leaves `revit.ProjectStamps` as it was; the migration's Down.
+- **Please tell me:** the migration's name, once it's in dev MH_Database; how names compare there (the collation of
+  `Users.Username`) and on CADSQL, if known; the waits, if they came out differently; and anything that doesn't fit.
 
 ## Questions
 
@@ -910,3 +995,24 @@ Still open:
 - **2026-11-23, Bauteilnummer and Bauteilunternummer:** at Yehia's word the link now fills both; step 6 as
   walked left them out like the Excel import. 360 tests pass (the 26 that need LocalDB weren't run). Not tried
   in Revit.
+- **2026-11-23, step 7 built:** Compare with Excel, as described under step 7. The comparison and its words sit in
+  the library (`Comparing`) under tests; the add-in reads the workbook, converts the values as Revit does and
+  draws the window (`DatabaseLink\Compare`). It was run outside Revit on a copy of the workbook and the kept pull,
+  and the window was drawn off screen. The findings are under step 7.
+  - A C# review, reading the code only, found nothing critical. Fixed: the headline said "Identical" although the
+    Excel reader had left rows out; a Parameter-ID copied to a second column took that column for the first one;
+    a fixed tolerance hid differences in long whole numbers and in very small ones; a material the Excel reader
+    can't create wasn't compared by name and group; the global materials and the fill patterns are told more
+    strictly; messages came up under the wait cursor. Two points weren't real: both sides skip the same four
+    placeholders, and the Excel import itself ignores the case of a Bauteil_ID.
+  - Checked with a faulty copy of the workbook, read by the real Excel reader: an object given twice, a row without
+    an ID, a material without a group and one without a name were each listed, and two columns with one
+    Parameter-ID were kept apart.
+  - 400 tests pass. The 26 that need LocalDB weren't run. Deployed to both add-in folders on Yehia's PC, together
+    with the Bauteilnummer change. Not tried in Revit, so Revit's own unit conversion hasn't been seen at work
+    here yet.
+- **2026-11-23, after step 7:** Yehia leaves the values the views don't give for now (item 5 of "Needs from the
+  database"), and takes the request for the sign-in procedures (item 3) to the database session. Its contract
+  above was made exact for that, against Studio's own sign-in code, which was only read.
+- **2026-11-23, step 7 walked:** in Yehia's words, for steps 7 and 8, "It works commit and push step 7 and 8".
+  Committed with this entry.
