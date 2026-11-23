@@ -124,7 +124,19 @@ public sealed class ChangeFinderTests
     }
 
     [Fact]
-    public void Placeholders_AndWhatIdentifiesAnElement_AreNeverChanges()
+    public void TheNumbersABauteilIdIsMadeOf_AreValuesLikeAnyOther()
+    {
+        LinkProjectData data = UlmData.With(1, new[] { UlmData.Value("BT-1101-01", UlmData.Bauteilnummer, "1101") });
+
+        ChangeReport report = Find(data, new FakeModel().Has(1, UlmData.Bauteilnummer, null), new[] { new ModelElement(1, "BT-1101-01", null) });
+
+        ChangeRow row = Assert.Single(Assert.Single(report.Groups).Rows);
+        Assert.Equal("Bauteilnummer", row.Parameter);
+        Assert.Equal("1101", row.To);
+    }
+
+    [Fact]
+    public void Placeholders_AndTheBauteilIdItself_AreNeverChanges()
     {
         LinkProjectData data = UlmData.With(1, new[]
         {
@@ -134,7 +146,6 @@ public sealed class ChangeFinderTests
             UlmData.Value("BT-1101-01", UlmData.Bauteil, "-"),
             UlmData.Value("BT-1101-01", UlmData.Teilelement, "[ET]"),
             UlmData.Value("BT-1101-01", UlmData.BauteilId, "BT-1101-01-stale"),
-            UlmData.Value("BT-1101-01", UlmData.Bauteilnummer, "1101"),
             UlmData.Value("ET-9999-01", UlmData.Dicke, "[Modeller]"),
         });
         var model = new FakeModel();

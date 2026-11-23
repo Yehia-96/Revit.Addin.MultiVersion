@@ -9,7 +9,7 @@ namespace MH.RevitTools.Database.Changes
     /// <summary>
     /// What one click on Apply writes: the values the pane listed, into the elements it listed them for, and
     /// nothing else. A value that isn't the database's any more by the time Apply runs is left out; the pane
-    /// lists the new one. Placeholders and what identifies an element are never in it, whatever was listed.
+    /// lists the new one. Placeholders and the Bauteil_ID are never in it, whatever was listed.
     /// Immutable.
     /// </summary>
     public sealed class ApplyPlan

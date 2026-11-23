@@ -10,9 +10,8 @@ namespace MH.RevitTools.Database.Changes
     /// Compares the database's values for a project with the model: what the pane lists as "changes from
     /// the database", which is what Apply writes, and what Apply leaves out. Elements meet their object by
     /// Bauteil_ID, materials theirs by name (Revit materials carry the Materialname), parameters are found by
-    /// GUID. Like the Excel route, it never touches the columns that identify an element (Bauteil_ID,
-    /// Bauteilnummer, Bauteilunternummer), and placeholders ([Modeller], [ET], -, TBT and empty values) are
-    /// never changes. Only reads; the Revit side answers for each value through <see cref="CompareValue"/>.
+    /// GUID. It never touches the Bauteil_ID, the key the modellers enter by hand, and placeholders ([Modeller],
+    /// [ET], -, TBT and empty values) are never changes. Only reads; the Revit side answers for each value through <see cref="CompareValue"/>.
     /// </summary>
     public static class ChangeFinder
     {
@@ -21,11 +20,12 @@ namespace MH.RevitTools.Database.Changes
         private const string SubNamePart = "Teilelement";
         private const string NameSet = "BAU";
 
-        // What identifies an element: the key the elements are matched by, in both spellings, and the numbers
-        // it's made of, which families carry as their own parameters. The Excel route leaves these out too.
+        // What identifies an element: the key the elements are matched by, in both spellings. The numbers it's
+        // made of (Bauteilnummer, Bauteilunternummer) are values like any other (Yehia, 2026-11-23), although the
+        // Excel route leaves them out.
         private static readonly HashSet<string> IdentityNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "Bauteil_ID", "Bauteil-ID", "Bauteilnummer", "Bauteilunternummer",
+            "Bauteil_ID", "Bauteil-ID",
         };
 
         public static ChangeReport Find(
@@ -64,7 +64,7 @@ namespace MH.RevitTools.Database.Changes
             return new ChangeReport(groups, counts, finder.NotApplied, newest, newestBy);
         }
 
-        /// <summary>True for the parameters that identify an element, which the link never writes.</summary>
+        /// <summary>True for the Bauteil_ID, which identifies an element and which the link never writes.</summary>
         public static bool IsIdentity(LinkParameter parameter) =>
             parameter != null && (IdentityNames.Contains(parameter.RevitName) || IdentityNames.Contains(parameter.Name));
 

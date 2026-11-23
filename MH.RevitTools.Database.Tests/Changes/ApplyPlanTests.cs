@@ -79,7 +79,7 @@ public sealed class ApplyPlanTests
             data.ProjectId, 2, new[] { guete, dicke }, data.ObjectValues, data.Materials, data.MaterialValues);
 
         ApplyPlan plan = ApplyPlan.For(With(
-            Changed(UlmData.Guete, "Bauteilnummer", UlmData.Guete.Guid, LinkTarget.Object),
+            Changed(UlmData.Guete, "Bauteil_ID", UlmData.Guete.Guid, LinkTarget.Object),
             Changed(UlmData.Dicke, "Dicke", Guid.Empty, LinkTarget.Object)), listed.Groups);
         ApplyPlan ofMaterials = ApplyPlan.For(With(
             Changed(UlmData.Guete, "Betonstahl Güte", UlmData.Guete.Guid, LinkTarget.Material), UlmData.Dicke), listed.Groups);

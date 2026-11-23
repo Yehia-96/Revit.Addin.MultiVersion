@@ -64,6 +64,8 @@ after it are listed next.
 - **Studio's change history (AuditLogs) drives the change check** and says who changed a value and when
   (Yehia suggested it in step 2).
 - **Duplicate Bauteil-IDs stay as they are** until Yehia gives the fix (a new Bauteilunternummer).
+- **The link fills Bauteilnummer and Bauteilunternummer** (Yehia, 2026-11-23, step 6): the modellers enter the
+  Bauteil_ID by hand, and that's the unique ID. Only the Bauteil_ID itself is never written.
 - **Parameter definitions come from Studio's master file** (Yehia, 2026-11-20, step 4), as in the
   mockup. The connection file names the file, so each PC pairs a database with its own file, and the
   add-in refuses a file that holds none of the database's GUIDs.
@@ -330,8 +332,8 @@ after Yehia has walked it.
   ([Modeller], [ET], -, TBT, empty) and the Bauteil_ID itself are never changes. Numbers are compared in
   Revit's units, converted from the database's unit as the Excel route converts them, so 0.3 m and 300 mm
   match. One change is one parameter of one object, however many elements carry its Bauteil_ID.
-  Since step 6, Bauteilnummer and Bauteilunternummer are never changes either: the Excel import leaves
-  them out too, as families carry Bauteilnummer as their own parameter.
+  Bauteilnummer and Bauteilunternummer are values like any other (Yehia, 2026-11-23), although the Excel
+  import leaves them out; a family's own Bauteilnummer is another parameter, which the link never touches.
 - What it shows:
   - The header: a dot and "Connected", "Not reachable", "Project not found", "Not set up" or "Not
     linked"; the database ("CADSQL · MH_Database · read-only"); "Checked 14:32 · every minute" or
@@ -394,8 +396,9 @@ after Yehia has walked it.
   database has changed since the list was made is left out and listed anew; so is an element that got its
   Bauteil_ID since. While the database isn't reachable the list stays, but Apply
   waits, so nothing outdated goes in.
-- It never adds parameters or touches families and types, never writes placeholders, and never writes what
-  identifies an element (Bauteil_ID, Bauteilnummer, Bauteilunternummer), like the Excel import.
+- It never adds parameters or touches families and types, never writes placeholders, and never writes the
+  Bauteil_ID, which the modellers enter by hand. It does fill Bauteilnummer and Bauteilunternummer (Yehia,
+  2026-11-23), which the Excel import leaves out.
 - A banner says what went in ("3 changes applied to 16 elements"), and what didn't and why. Undoing it
   takes the banner back and lists the changes again.
 - **Workshared models:** Apply borrows the elements from central first, all in one go. Those someone else
@@ -904,3 +907,6 @@ Still open:
   - 359 tests pass. The 26 tests that need LocalDB weren't run: this session couldn't reach it. No SQL changed.
 - **2026-11-23, step 6 walked:** in Yehia's words, "I tested all yours steps and its working smoothly".
   Committed and pushed with this entry.
+- **2026-11-23, Bauteilnummer and Bauteilunternummer:** at Yehia's word the link now fills both; step 6 as
+  walked left them out like the Excel import. 360 tests pass (the 26 that need LocalDB weren't run). Not tried
+  in Revit.
