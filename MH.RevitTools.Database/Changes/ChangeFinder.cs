@@ -8,10 +8,11 @@ namespace MH.RevitTools.Database.Changes
 {
     /// <summary>
     /// Compares the database's values for a project with the model: what the pane lists as "changes from
-    /// the database". Elements meet their object by Bauteil_ID, materials theirs by name (Revit materials
-    /// carry the Materialname), parameters are found by GUID. Placeholders ([Modeller], [ET], -, TBT and
-    /// empty values) are never changes, and neither is the Bauteil_ID itself, the key. Only reads; the Revit
-    /// side answers for each value through <see cref="CompareValue"/>.
+    /// the database", which is what Apply writes, and what Apply leaves out. Elements meet their object by
+    /// Bauteil_ID, materials theirs by name (Revit materials carry the Materialname), parameters are found by
+    /// GUID. Like the Excel route, it never touches the columns that identify an element (Bauteil_ID,
+    /// Bauteilnummer, Bauteilunternummer), and placeholders ([Modeller], [ET], -, TBT and empty values) are
+    /// never changes. Only reads; the Revit side answers for each value through <see cref="CompareValue"/>.
     /// </summary>
     public static class ChangeFinder
     {
@@ -20,10 +21,11 @@ namespace MH.RevitTools.Database.Changes
         private const string SubNamePart = "Teilelement";
         private const string NameSet = "BAU";
 
-        // The key the elements are matched by; the Excel route accepts both spellings too.
-        private static readonly HashSet<string> KeyNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        // What identifies an element: the key the elements are matched by, in both spellings, and the numbers
+        // it's made of, which families carry as their own parameters. The Excel route leaves these out too.
+        private static readonly HashSet<string> IdentityNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "Bauteil_ID", "Bauteil-ID",
+            "Bauteil_ID", "Bauteil-ID", "Bauteilnummer", "Bauteilunternummer",
         };
 
         public static ChangeReport Find(
@@ -37,17 +39,7 @@ namespace MH.RevitTools.Database.Changes
             if (compare == null)
                 throw new ArgumentNullException(nameof(compare));
 
-            var dictionary = new Dictionary<int, LinkParameter>();
-            var order = new Dictionary<int, int>();
-            foreach (LinkParameter parameter in data.Parameters)
-            {
-                if (dictionary.ContainsKey(parameter.ParameterId))
-                    continue;
-                dictionary.Add(parameter.ParameterId, parameter);
-                order.Add(parameter.ParameterId, order.Count);
-            }
-
-            var finder = new Finder(dictionary, order, compare);
+            var finder = new Finder(data.Parameters, compare);
             List<ModelElement> modelElements = (elements ?? Enumerable.Empty<ModelElement>()).Where(e => e != null).ToList();
             ModelCounts counts = finder.Objects(data.ObjectValues, modelElements);
             finder.Materials(data.Materials, data.MaterialValues, (materials ?? Enumerable.Empty<ModelMaterial>()).Where(m => m != null).ToList());
@@ -69,9 +61,12 @@ namespace MH.RevitTools.Database.Changes
                 .ThenBy(group => group.IsMaterial)
                 .ThenBy(group => group.Key, NaturalOrder.Instance)
                 .ToList();
-            return new ChangeReport(groups, counts, finder.Missing.OrderBy(name => name, StringComparer.OrdinalIgnoreCase),
-                finder.Problems, newest, newestBy);
+            return new ChangeReport(groups, counts, finder.NotApplied, newest, newestBy);
         }
+
+        /// <summary>True for the parameters that identify an element, which the link never writes.</summary>
+        public static bool IsIdentity(LinkParameter parameter) =>
+            parameter != null && (IdentityNames.Contains(parameter.RevitName) || IdentityNames.Contains(parameter.Name));
 
         /// <summary>
         /// The database's value as the pane shows it: with its unit ("0.3 m", "12 m²", "90°"), and Yes or No
@@ -137,33 +132,50 @@ namespace MH.RevitTools.Database.Changes
             return distinct.Count == 0 || distinct[0].Length == 0 ? "(empty)" : distinct[0];
         }
 
-        private static bool IsKey(LinkParameter parameter) =>
-            KeyNames.Contains(parameter.RevitName) || KeyNames.Contains(parameter.Name);
+        // One value of one parameter, of an object or a material.
+        private sealed class Candidate
+        {
+            public Candidate(int parameterId, string value, DateTime? changedAtUtc, string changedBy)
+            {
+                ParameterId = parameterId;
+                Value = value ?? "";
+                ChangedAtUtc = changedAtUtc;
+                ChangedBy = changedBy;
+            }
 
-        // Collects the groups, the missing parameters and the problems while it compares.
+            public int ParameterId { get; }
+
+            public string Value { get; }
+
+            public DateTime? ChangedAtUtc { get; }
+
+            public string ChangedBy { get; }
+        }
+
+        // Collects the groups and what's left out while it compares.
         private sealed class Finder
         {
-            private const int MaxProblems = 20;
-
-            private readonly Dictionary<int, LinkParameter> _dictionary;
-            private readonly Dictionary<int, int> _order;
+            private readonly Dictionary<int, LinkParameter> _dictionary = new Dictionary<int, LinkParameter>();
+            private readonly Dictionary<int, int> _order = new Dictionary<int, int>();
             private readonly CompareValue _compare;
-            private readonly HashSet<string> _missing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            private readonly List<string> _problems = new List<string>();
-            private readonly HashSet<string> _problemSet = new HashSet<string>(StringComparer.Ordinal);
+            private readonly NotAppliedCollector _notApplied;
 
-            public Finder(Dictionary<int, LinkParameter> dictionary, Dictionary<int, int> order, CompareValue compare)
+            public Finder(IEnumerable<LinkParameter> dictionary, CompareValue compare)
             {
-                _dictionary = dictionary;
-                _order = order;
+                foreach (LinkParameter parameter in dictionary)
+                {
+                    if (_dictionary.ContainsKey(parameter.ParameterId))
+                        continue;
+                    _dictionary.Add(parameter.ParameterId, parameter);
+                    _order.Add(parameter.ParameterId, _order.Count);
+                }
                 _compare = compare;
+                _notApplied = new NotAppliedCollector(PlaceOf);
             }
 
             public List<ChangeGroup> Groups { get; } = new List<ChangeGroup>();
 
-            public IEnumerable<string> Missing => _missing;
-
-            public IEnumerable<string> Problems => _problems;
+            public IReadOnlyList<NotAppliedItem> NotApplied => _notApplied.Items();
 
             public ModelCounts Objects(IReadOnlyList<LinkObjectValue> values, List<ModelElement> elements)
             {
@@ -204,23 +216,11 @@ namespace MH.RevitTools.Database.Changes
                     if (!elementsByObject.TryGetValue(obj.Key, out objectElements))
                         continue;
 
-                    // Values whose parameter goes on elements; an object's material references (e.g. the
-                    // Material-ID of a material parameter) live on the material in Revit, not on the element.
-                    var rows = new List<ChangeRow>();
-                    foreach (LinkObjectValue value in obj.Value)
-                    {
-                        LinkParameter parameter;
-                        if (!_dictionary.TryGetValue(value.ParameterId, out parameter)
-                            || parameter.Target != LinkTarget.Object || IsKey(parameter))
-                            continue;
-                        ChangeRow row = Compare(parameter, value.Value, value.ChangedAtUtc, value.ChangedBy,
-                            objectElements.Select(element => element.Id));
-                        if (row != null)
-                            rows.Add(row);
-                    }
+                    List<long> ids = objectElements.Select(element => element.Id).ToList();
+                    List<ChangeRow> rows = Rows(obj.Key, LinkTarget.Object, ids,
+                        obj.Value.Select(value => new Candidate(value.ParameterId, value.Value, value.ChangedAtUtc, value.ChangedBy)));
                     if (rows.Count > 0)
-                        Groups.Add(new ChangeGroup(obj.Key, ObjectName(obj.Value, objectElements), false,
-                            objectElements.Select(element => element.Id), Ordered(rows)));
+                        Groups.Add(new ChangeGroup(obj.Key, ObjectName(obj.Value, objectElements), false, ids, rows));
                 }
 
                 return new ModelCounts(linked, withoutId, notInProject);
@@ -237,66 +237,126 @@ namespace MH.RevitTools.Database.Changes
                     .GroupBy(value => value.MaterialId.Trim(), StringComparer.OrdinalIgnoreCase)
                     .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.OrdinalIgnoreCase);
 
-                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var seenIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (LinkMaterial material in materials)
                 {
                     List<long> modelIds;
-                    List<LinkMaterialValue> materialValues;
-                    if (!seen.Add(material.MaterialId)
-                        || !modelByName.TryGetValue(material.Name.Trim(), out modelIds)
-                        || !valuesByMaterial.TryGetValue(material.MaterialId.Trim(), out materialValues))
+                    string name = material.Name.Trim();
+                    if (!seenIds.Add(material.MaterialId) || !modelByName.TryGetValue(name, out modelIds))
                         continue;
 
-                    var rows = new List<ChangeRow>();
-                    foreach (LinkMaterialValue value in materialValues)
+                    // Revit tells materials apart by name, so a name can mean one database material only; like
+                    // the Excel route, the first one.
+                    if (!seenNames.Add(name))
                     {
-                        LinkParameter parameter;
-                        if (!_dictionary.TryGetValue(value.ParameterId, out parameter) || parameter.Target != LinkTarget.Material)
-                            continue;
-                        ChangeRow row = Compare(parameter, value.Value, value.ChangedAtUtc, value.ChangedBy, modelIds);
-                        if (row != null)
-                            rows.Add(row);
+                        _notApplied.SameName(name, material.MaterialId);
+                        continue;
                     }
+
+                    List<LinkMaterialValue> materialValues;
+                    if (!valuesByMaterial.TryGetValue(material.MaterialId.Trim(), out materialValues))
+                        continue;
+                    List<ChangeRow> rows = Rows(material.MaterialId, LinkTarget.Material, modelIds,
+                        materialValues.Select(value => new Candidate(value.ParameterId, value.Value, value.ChangedAtUtc, value.ChangedBy)));
                     if (rows.Count > 0)
-                        Groups.Add(new ChangeGroup(material.MaterialId, material.Name, true, modelIds, Ordered(rows)));
+                        Groups.Add(new ChangeGroup(material.MaterialId, material.Name, true, modelIds, rows));
                 }
             }
 
-            // One value against every element (or material) of its object: a row when any of them differs.
-            private ChangeRow Compare(LinkParameter parameter, string value, DateTime? changedAtUtc, string changedBy, IEnumerable<long> ids)
+            // The changes on one object or material, the most recent first.
+            private List<ChangeRow> Rows(string key, LinkTarget target, List<long> ids, IEnumerable<Candidate> values)
+            {
+                var rows = new List<ChangeRow>();
+                foreach (IGrouping<int, Candidate> candidates in values.GroupBy(value => value.ParameterId))
+                {
+                    LinkParameter parameter;
+                    if (!_dictionary.TryGetValue(candidates.Key, out parameter) || IsIdentity(parameter))
+                        continue;
+
+                    // Several values under one ID, as when two objects share a Bauteil_ID: nothing says which one
+                    // is meant, so none goes in, and Apply never goes back and forth between them.
+                    if (candidates.Select(value => value.Value.Trim()).Distinct(StringComparer.Ordinal).Count() > 1)
+                    {
+                        _notApplied.Conflict(key, target == LinkTarget.Material, parameter);
+                        continue;
+                    }
+
+                    Candidate candidate = candidates.First();
+                    if (LeftOut(parameter, candidate.Value, target))
+                        continue;
+                    ChangeRow row = Compare(parameter, candidate, ids);
+                    if (row != null)
+                        rows.Add(row);
+                }
+                return Ordered(rows).ToList();
+            }
+
+            // Placeholders, and an object's values for parameters of materials (its Material-ID): those say which
+            // material it has, and Revit has them on the material, not on the element.
+            private bool LeftOut(LinkParameter parameter, string value, LinkTarget target)
             {
                 if (Placeholders.IsPlaceholder(value))
-                    return null;
+                {
+                    string placeholder = Placeholders.Named(value);
+                    if (placeholder != null)
+                        _notApplied.Placeholder(placeholder, parameter);
+                    return true;
+                }
+                if (parameter.Target == target)
+                    return false;
+                _notApplied.MaterialReference(parameter);
+                return true;
+            }
 
+            // One value against every element (or material) of its object: a row when Apply can write it to any.
+            private ChangeRow Compare(LinkParameter parameter, Candidate candidate, List<long> ids)
+            {
                 var differing = new List<long>();
                 var modelTexts = new List<string>();
                 foreach (long id in ids)
                 {
-                    ValueCheck check = _compare(id, parameter, value) ?? ValueCheck.CantCompare("Revit gave no answer for it.");
+                    ValueCheck check = _compare(id, parameter, candidate.Value) ?? ValueCheck.CantCompare("Revit gave no answer for it");
                     switch (check.State)
                     {
+                        case ValueState.Same:
+                            break;
                         case ValueState.Differs:
                             differing.Add(id);
                             modelTexts.Add(check.ModelText);
                             break;
-                        case ValueState.NoParameter:
-                            _missing.Add(parameter.RevitName);
-                            break;
                         case ValueState.CantCompare:
-                            Problem(parameter.RevitName + ": " + check.Problem);
+                            _notApplied.DoesntFit(parameter, check.Problem);
+                            break;
+                        case ValueState.Borrowed:
+                            _notApplied.Borrowed(check.Owner, parameter, id);
+                            break;
+                        default:
+                            _notApplied.On(ReasonOf(check.State), parameter, id);
                             break;
                     }
                 }
                 return differing.Count == 0
                     ? null
-                    : new ChangeRow(parameter.ParameterId, parameter.RevitName, FromText(modelTexts), Display(parameter, value),
-                        changedAtUtc, changedBy, differing);
+                    : new ChangeRow(parameter.ParameterId, parameter.RevitName, candidate.Value, FromText(modelTexts),
+                        Display(parameter, candidate.Value), candidate.ChangedAtUtc, candidate.ChangedBy, differing);
             }
 
-            private void Problem(string text)
+            private static NotAppliedReason ReasonOf(ValueState state)
             {
-                if (_problems.Count < MaxProblems && _problemSet.Add(text))
-                    _problems.Add(text);
+                switch (state)
+                {
+                    case ValueState.NoParameter:
+                        return NotAppliedReason.MissingParameter;
+                    case ValueState.ReadOnly:
+                        return NotAppliedReason.ReadOnly;
+                    case ValueState.OnType:
+                        return NotAppliedReason.OnType;
+                    case ValueState.OutOfDate:
+                        return NotAppliedReason.OutOfDate;
+                    default:
+                        throw new ArgumentOutOfRangeException(nameof(state), state, "Not a state that leaves a value out.");
+                }
             }
 
             private IEnumerable<ChangeRow> Ordered(List<ChangeRow> rows) => rows

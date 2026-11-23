@@ -195,120 +195,40 @@ namespace Revit.Addin._2027.Helpers
             // -------------------------------
             // PHASE 2: APPLY VALUES
             // -------------------------------
-            var familyTuples = new List<Tuple<Parameter, ParameterValue>>();
-            var otherTuples = new List<Tuple<Parameter, ParameterValue>>();
-
-            foreach (FamilyInstance fi in familyInstances)
-            {
-                string bnKey = ElementKey.Read(fi, keyFormat);
-                if (bnKey == null) continue;
-
-                if (!familyData.TryGetValue(bnKey, out var expectedParams))
-                    continue;
-
-                foreach (var kvp in expectedParams)
-                {
-                    string name = kvp.Key;
-                    string incomingValue = kvp.Value;
-
-                    if (ExcelParser.ParametersToIgnore.Contains(name))
-                        continue;
-
-                    if (!parameterMeta.TryGetValue(name, out var meta))
-                        continue;
-
-                    Parameter p = fi.LookupParameter(name);
-                    if (p == null || p.IsReadOnly)
-                        continue;
-
-                    // Write if EMPTY OR DIFFERENT
-                    if (!IsParameterEmpty(p) && ParamMetaData.AreValuesEqual(p, incomingValue))
-                        continue;
-
-                    ParameterValue converted = ParamMetaData.ConvertValue(projectDoc, meta.DataTypeRevit, incomingValue, meta.Unit);
-
-                    familyTuples.Add(Tuple.Create(p, converted));
-                    valuesWritten++;
-                }
-            }
-
-            foreach (Element elem in otherElements)
-            {
-                string bnKey = ElementKey.Read(elem, keyFormat);
-                if (bnKey == null) continue;
-
-                if (!familyData.TryGetValue(bnKey, out var expectedParams))
-                    continue;
-
-                foreach (var kvp in expectedParams)
-                {
-                    string name = kvp.Key;
-                    string incomingValue = kvp.Value;
-
-                    if (ExcelParser.ParametersToIgnore.Contains(name))
-                        continue;
-
-                    if (!parameterMeta.TryGetValue(name, out var meta))
-                        continue;
-
-                    Parameter p = elem.LookupParameter(name);
-                    if (p == null || p.IsReadOnly)
-                        continue;
-
-                    if (!IsParameterEmpty(p) && ParamMetaData.AreValuesEqual(p, incomingValue))
-                        continue;
-
-                    ParameterValue converted = ParamMetaData.ConvertValue(projectDoc, meta.DataTypeRevit, incomingValue, meta.Unit);
-                    otherTuples.Add(Tuple.Create(p, converted));
-                    valuesWritten++;
-                }
-            }
+            // The loop itself is shared with the database link (ElementValueWriter); the rules are this route's.
+            var rules = new ExcelValueRules();
+            Func<Element, string> keyOf = elem => ElementKey.Read(elem, keyFormat);
+            List<Tuple<Parameter, ParameterValue>> familyTuples = ElementValueWriter.Collect(
+                projectDoc, familyInstances, keyOf, familyData, parameterMeta, rules);
+            List<Tuple<Parameter, ParameterValue>> otherTuples = ElementValueWriter.Collect(
+                projectDoc, otherElements, keyOf, familyData, parameterMeta, rules);
+            valuesWritten = familyTuples.Count + otherTuples.Count;
 
             if (familyTuples.Count > 0)
-            {
-                using (Transaction tx = new Transaction(projectDoc, "Apply Family Instance Parameter Values"))
-                {
-                    tx.Start();
-#if REVIT2024 || REVIT2026 || REVIT2027
-                    Parameter.SetMultiple(familyTuples);
-#else
-                    foreach (var t in familyTuples)
-                    {
-                        var p = t.Item1;
-                        var v = t.Item2;
-                        if (v is StringParameterValue sv) p.Set(sv.Value);
-                        else if (v is DoubleParameterValue dv) p.Set(dv.Value);
-                        else if (v is IntegerParameterValue iv) p.Set(iv.Value);
-                        else if (v is ElementIdParameterValue ev) p.Set(ev.Value);
-                    }
-#endif
-                    tx.Commit();
-                }
-            }
+                ElementValueWriter.Write(projectDoc, "Apply Family Instance Parameter Values", familyTuples);
 
             if (otherTuples.Count > 0)
-            {
-                using (Transaction tx = new Transaction(projectDoc, "Apply Non-Family Parameter Values"))
-                {
-                    tx.Start();
-#if REVIT2024 || REVIT2026 || REVIT2027
-                    Parameter.SetMultiple(otherTuples);
-#else
-                    foreach (var t in otherTuples)
-                    {
-                        var p = t.Item1;
-                        var v = t.Item2;
-                        if (v is StringParameterValue sv) p.Set(sv.Value);
-                        else if (v is DoubleParameterValue dv) p.Set(dv.Value);
-                        else if (v is IntegerParameterValue iv) p.Set(iv.Value);
-                        else if (v is ElementIdParameterValue ev) p.Set(ev.Value);
-                    }
-#endif
-                    tx.Commit();
-                }
-            }
-            
+                ElementValueWriter.Write(projectDoc, "Apply Non-Family Parameter Values", otherTuples);
+
             return Tuple.Create(parametersAdded, valuesWritten);
+        }
+
+        /// <summary>
+        /// The Excel route's rules: parameters by name, the workbook's ignore row, write if EMPTY OR
+        /// DIFFERENT, and the workbook's data type and unit.
+        /// </summary>
+        private sealed class ExcelValueRules : IValueRules
+        {
+            public bool IsIgnored(string parameterName) => ExcelParser.ParametersToIgnore.Contains(parameterName);
+
+            public Parameter Find(Element element, string parameterName, ParamMetaData definition) =>
+                element.LookupParameter(parameterName);
+
+            public bool NeedsValue(Parameter parameter, string value, ParamMetaData definition) =>
+                IsParameterEmpty(parameter) || !ParamMetaData.AreValuesEqual(parameter, value);
+
+            public ParameterValue Convert(Document document, Parameter parameter, string value, ParamMetaData definition) =>
+                ParamMetaData.ConvertValue(document, definition.DataTypeRevit, value, definition.Unit);
         }
 
         private static int BindParametersToCategories(

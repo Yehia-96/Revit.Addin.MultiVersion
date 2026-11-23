@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace MH.RevitTools.Database.Changes
 {
@@ -11,12 +12,24 @@ namespace MH.RevitTools.Database.Changes
     /// </summary>
     public static class Placeholders
     {
-        private static readonly HashSet<string> Values = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "[Modeller]", "[ET]", "-", "TBT",
-        };
+        public const string Modeller = "[Modeller]";
+        public const string NotApplicable = "[ET]";
+        public const string LeftEmpty = "-";
+        public const string ToBeDetermined = "TBT";
+
+        /// <summary>All of them, in the order "Not applied" lists them.</summary>
+        public static IReadOnlyList<string> All { get; } = new[] { Modeller, NotApplicable, LeftEmpty, ToBeDetermined };
 
         public static bool IsPlaceholder(string value) =>
-            string.IsNullOrWhiteSpace(value) || Values.Contains(value.Trim());
+            string.IsNullOrWhiteSpace(value) || Named(value) != null;
+
+        /// <summary>The placeholder as it's usually written, e.g. [Modeller] for "[modeller] "; null for an empty or a real value.</summary>
+        public static string Named(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return null;
+            string trimmed = value.Trim();
+            return All.FirstOrDefault(placeholder => string.Equals(placeholder, trimmed, StringComparison.OrdinalIgnoreCase));
+        }
     }
 }

@@ -19,6 +19,9 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
             CheckOutcome outcome,
             string fault,
             ChangeReport report,
+            bool isReadOnly,
+            ApplyResult applied,
+            DateTime appliedAtUtc,
             CheckInterval interval,
             DateTime nowUtc,
             TimeZoneInfo timeZone)
@@ -29,6 +32,9 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
             Outcome = Link == null ? null : outcome;
             Fault = string.IsNullOrWhiteSpace(fault) ? null : fault;
             Report = Outcome == null || Outcome.Data == null ? null : report;
+            IsReadOnly = isReadOnly;
+            Applied = Link == null ? null : applied;
+            AppliedAtUtc = appliedAtUtc;
             Interval = interval ?? CheckInterval.For(CheckSettings.DefaultSeconds);
             NowUtc = nowUtc;
             TimeZone = timeZone ?? TimeZoneInfo.Local;
@@ -51,6 +57,14 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
 
         /// <summary>The model compared with <see cref="CheckOutcome.Data"/>; null until it has been.</summary>
         public ChangeReport Report { get; }
+
+        /// <summary>The model was opened read-only, so nothing can be applied.</summary>
+        public bool IsReadOnly { get; }
+
+        /// <summary>What the last Apply on this model did; null when there was none, or it was undone.</summary>
+        public ApplyResult Applied { get; }
+
+        public DateTime AppliedAtUtc { get; }
 
         public CheckInterval Interval { get; }
 

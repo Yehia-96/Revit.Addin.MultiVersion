@@ -6,23 +6,22 @@ using System.Linq;
 namespace MH.RevitTools.Database.Changes
 {
     /// <summary>
-    /// Where the model differs from the database: what the pane lists as "changes from the database", and
-    /// what Apply would write (step 6). Made by <see cref="ChangeFinder"/>. Immutable.
+    /// Where the model differs from the database: what the pane lists as "changes from the database", which
+    /// is what Apply writes, and what Apply leaves out (<see cref="NotApplied"/>). Made by
+    /// <see cref="ChangeFinder"/>. Immutable.
     /// </summary>
     public sealed class ChangeReport
     {
         internal ChangeReport(
             IEnumerable<ChangeGroup> groups,
             ModelCounts counts,
-            IEnumerable<string> missingParameters,
-            IEnumerable<string> problems,
+            IEnumerable<NotAppliedItem> notApplied,
             DateTime? newestChangeUtc,
             string newestChangeBy)
         {
             Groups = Freeze(groups);
             Counts = counts ?? throw new ArgumentNullException(nameof(counts));
-            MissingParameters = Freeze(missingParameters);
-            Problems = Freeze(problems);
+            NotApplied = Freeze(notApplied);
             NewestChangeUtc = newestChangeUtc;
             NewestChangeBy = string.IsNullOrWhiteSpace(newestChangeBy) ? null : newestChangeBy.Trim();
             ChangeCount = Groups.Sum(group => group.Rows.Count);
@@ -34,19 +33,18 @@ namespace MH.RevitTools.Database.Changes
         /// <summary>How many values differ: one per parameter of an object or material, however many elements it has.</summary>
         public int ChangeCount { get; }
 
-        /// <summary>True when every value the model can take matches the database.</summary>
+        /// <summary>True when there's nothing to apply: every value that can go into the model is in it.</summary>
         public bool IsUpToDate => ChangeCount == 0;
+
+        /// <summary>True when some values differ but can't go into the model now, e.g. as someone has borrowed the elements.</summary>
+        public bool HasBlockedDifferences => NotApplied.Any(item => item.Reason == NotAppliedReason.Borrowed
+            || item.Reason == NotAppliedReason.OutOfDate || item.Reason == NotAppliedReason.ReadOnly
+            || item.Reason == NotAppliedReason.OnType);
 
         public ModelCounts Counts { get; }
 
-        /// <summary>
-        /// The Revit names of database parameters that linked elements or materials should carry but don't:
-        /// Check parameters adds them. Sorted.
-        /// </summary>
-        public IReadOnlyList<string> MissingParameters { get; }
-
-        /// <summary>Values that can't go into their parameter, e.g. "Dicke: "dick" isn't a number".</summary>
-        public IReadOnlyList<string> Problems { get; }
+        /// <summary>What Apply leaves out, and why; what someone can act on first.</summary>
+        public IReadOnlyList<NotAppliedItem> NotApplied { get; }
 
         /// <summary>The newest change to any of the project's values in the database, in UTC.</summary>
         public DateTime? NewestChangeUtc { get; }
@@ -91,10 +89,12 @@ namespace MH.RevitTools.Database.Changes
     /// <summary>One parameter's value that differs, on one object or material. Immutable.</summary>
     public sealed class ChangeRow
     {
-        internal ChangeRow(int parameterId, string parameter, string from, string to, DateTime? changedAtUtc, string changedBy, IEnumerable<long> elementIds)
+        internal ChangeRow(
+            int parameterId, string parameter, string value, string from, string to, DateTime? changedAtUtc, string changedBy, IEnumerable<long> elementIds)
         {
             ParameterId = parameterId;
             Parameter = parameter ?? "";
+            Value = value ?? "";
             From = from ?? "";
             To = to ?? "";
             ChangedAtUtc = changedAtUtc;
@@ -106,6 +106,9 @@ namespace MH.RevitTools.Database.Changes
 
         /// <summary>The parameter's Revit name, e.g. "Betonstahl Güte".</summary>
         public string Parameter { get; }
+
+        /// <summary>The database's value as stored, which Apply writes; <see cref="To"/> is how it's shown.</summary>
+        public string Value { get; }
 
         /// <summary>The model's value as Revit shows it, "(empty)", or e.g. "3 different values".</summary>
         public string From { get; }

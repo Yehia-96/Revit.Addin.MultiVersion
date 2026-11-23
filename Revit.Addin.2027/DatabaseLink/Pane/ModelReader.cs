@@ -15,20 +15,22 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
     /// </summary>
     internal static class ModelReader
     {
-        public static IReadOnlyList<ModelElement> Elements(Document document, LinkProjectData data)
+        public static IReadOnlyList<ModelElement> Elements(Document document, LinkProjectData data) =>
+            LinkableElements(document, data)
+                .Select(element => new ModelElement(
+                    element.Id.Value, ElementKey.Read(element, ExcelFormat.Planungsdatenbank), TypeName(document, element)))
+                .ToList();
+
+        /// <summary>The elements of the categories the database's object parameters go on, with or without a Bauteil_ID.</summary>
+        public static IReadOnlyList<Element> LinkableElements(Document document, LinkProjectData data)
         {
             List<BuiltInCategory> categories = ObjectCategories(data);
             if (categories.Count == 0)
-                return new ModelElement[0];
+                return new Element[0];
 
             using (var filter = new ElementMulticategoryFilter(categories))
             using (var collector = new FilteredElementCollector(document))
-            {
-                return collector.WhereElementIsNotElementType().WherePasses(filter)
-                    .Select(element => new ModelElement(
-                        element.Id.Value, ElementKey.Read(element, ExcelFormat.Planungsdatenbank), TypeName(document, element)))
-                    .ToList();
-            }
+                return collector.WhereElementIsNotElementType().WherePasses(filter).ToList();
         }
 
         public static IReadOnlyList<ModelMaterial> Materials(Document document)

@@ -92,6 +92,16 @@
             </Setter>
         </Style>
 
+        <Style x:Key="SecondaryButton" TargetType="Button" BasedOn="{StaticResource PlainButton}">
+            <Setter Property="Height" Value="28"/>
+            <Setter Property="Padding" Value="12,0"/>
+            <Setter Property="FontSize" Value="12.5"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="#1F2630"/>
+            <Setter Property="Background" Value="#FFFFFF"/>
+            <Setter Property="BorderBrush" Value="#C9CFD8"/>
+        </Style>
+
         <Style x:Key="LinkButton" TargetType="Button" BasedOn="{StaticResource PlainButton}">
             <Setter Property="Foreground" Value="{StaticResource LinkBlue}"/>
             <Setter Property="FontSize" Value="12.5"/>
@@ -162,20 +172,25 @@
                     </Border>
                     <ItemsControl ItemsSource="{Binding Rows}" ItemTemplate="{StaticResource ChangeRowTemplate}" Margin="12,4,12,4"
                                   Focusable="False"/>
-                    <Button Style="{StaticResource LinkButton}" HorizontalAlignment="Right" Margin="0,0,8,8"
-                            Command="{Binding ShowCommand}" Visibility="{Binding CanShow, Converter={StaticResource Visible}}"
-                            ToolTip="Selects the object's elements and zooms to them">
-                        <StackPanel Orientation="Horizontal">
-                            <Viewbox Width="14" Height="14" Margin="0,0,6,0">
-                                <Canvas Width="24" Height="24">
-                                    <Path Data="M19,12 A7,7 0 1 1 5,12 A7,7 0 1 1 19,12 Z M12,2 V6 M12,18 V22 M2,12 H6 M18,12 H22"
-                                          Stroke="{StaticResource LinkBlue}" StrokeThickness="2" StrokeStartLineCap="Round"
-                                          StrokeEndLineCap="Round"/>
-                                </Canvas>
-                            </Viewbox>
-                            <TextBlock Text="Show in model"/>
-                        </StackPanel>
-                    </Button>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,10,10">
+                        <Button Style="{StaticResource LinkButton}" Height="28"
+                                Command="{Binding ShowCommand}" Visibility="{Binding CanShow, Converter={StaticResource Visible}}"
+                                ToolTip="Selects the object's elements and zooms to them">
+                            <StackPanel Orientation="Horizontal">
+                                <Viewbox Width="14" Height="14" Margin="0,0,6,0">
+                                    <Canvas Width="24" Height="24">
+                                        <Path Data="M19,12 A7,7 0 1 1 5,12 A7,7 0 1 1 19,12 Z M12,2 V6 M12,18 V22 M2,12 H6 M18,12 H22"
+                                              Stroke="{StaticResource LinkBlue}" StrokeThickness="2" StrokeStartLineCap="Round"
+                                              StrokeEndLineCap="Round"/>
+                                    </Canvas>
+                                </Viewbox>
+                                <TextBlock Text="Show in model"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Style="{StaticResource SecondaryButton}" Margin="6,0,0,0" Content="{Binding ApplyLabel}"
+                                Command="{Binding ApplyCommand}" Visibility="{Binding CanApply, Converter={StaticResource Visible}}"
+                                ToolTip="Writes this card's values into the model, in one undo step"/>
+                    </StackPanel>
                 </StackPanel>
             </Border>
         </DataTemplate>
@@ -343,6 +358,27 @@
                     </DockPanel>
                 </Border>
 
+                <!-- What the last Apply did -->
+                <Border Margin="14,12,14,0" Padding="12" CornerRadius="8" BorderThickness="1" BorderBrush="{Binding AppliedLine}"
+                        Background="{Binding AppliedBack}" Visibility="{Binding ShowApplied, Converter={StaticResource Visible}}">
+                    <DockPanel>
+                        <Viewbox DockPanel.Dock="Left" Width="18" Height="18" Margin="0,1,10,0" VerticalAlignment="Top">
+                            <Canvas Width="24" Height="24">
+                                <Path Data="M21,12 A9,9 0 1 1 3,12 A9,9 0 1 1 21,12 Z M8.5,12.5 L11,15 L16,10" Stroke="#1F8A4C" StrokeThickness="2"
+                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                      Visibility="{Binding AppliedSomething, Converter={StaticResource Visible}}"/>
+                                <Path Data="M12,3 L2,20 H22 Z M12,10 V14 M12,17.5 V17.51" Stroke="#B7791F" StrokeThickness="2"
+                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                      Visibility="{Binding AppliedNothing, Converter={StaticResource Visible}}"/>
+                            </Canvas>
+                        </Viewbox>
+                        <StackPanel>
+                            <TextBlock Text="{Binding AppliedTitle}" FontWeight="SemiBold" Foreground="{Binding AppliedText}" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding AppliedDetail}" FontSize="12" Foreground="{Binding AppliedText}" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
+
                 <TextBlock Style="{StaticResource MutedText}" Margin="14,12,14,0" Text="Comparing the model with the database…"
                            Visibility="{Binding ShowComparing, Converter={StaticResource Visible}}"/>
 
@@ -360,7 +396,7 @@
                             </Viewbox>
                         </Border>
                         <StackPanel>
-                            <TextBlock Text="Up to date" FontWeight="SemiBold" Foreground="{StaticResource Strong}"/>
+                            <TextBlock Text="{Binding UpToDateTitle}" FontWeight="SemiBold" Foreground="{StaticResource Strong}"/>
                             <TextBlock Style="{StaticResource MutedText}" Margin="0,2,0,0" Text="{Binding UpToDateText}"/>
                         </StackPanel>
                     </DockPanel>
@@ -368,31 +404,84 @@
 
                 <!-- The changes -->
                 <StackPanel Margin="14,12,14,0" Visibility="{Binding ShowChanges, Converter={StaticResource Visible}}">
-                    <TextBlock Style="{StaticResource SectionTitle}" Text="{Binding ChangesTitle}" Margin="0,0,0,10"/>
+                    <DockPanel Margin="0,0,0,10" MinHeight="30">
+                        <Button DockPanel.Dock="Right" Style="{StaticResource PrimaryButton}" Content="Apply all" Margin="8,0,0,0"
+                                VerticalAlignment="Center" Command="{Binding ApplyAllCommand}"
+                                Visibility="{Binding CanApply, Converter={StaticResource Visible}}"
+                                ToolTip="Writes all of them into the model, in one undo step"/>
+                        <TextBlock Style="{StaticResource SectionTitle}" Text="{Binding ChangesTitle}" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                    </DockPanel>
+                    <TextBlock Style="{StaticResource MutedText}" Text="{Binding ApplyWaitsText}" Margin="0,0,0,10"
+                               Visibility="{Binding ShowApplyWaits, Converter={StaticResource Visible}}"/>
                     <ItemsControl ItemsSource="{Binding Groups}" ItemTemplate="{StaticResource ChangeGroupTemplate}" Focusable="False"/>
                     <TextBlock Style="{StaticResource MutedText}" Text="{Binding MoreText}"
                                Visibility="{Binding ShowMore, Converter={StaticResource Visible}}"/>
                 </StackPanel>
 
+                <!-- What Apply leaves out, and why -->
+                <Border Margin="0,12,0,0" Padding="14,8,14,6" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0"
+                        Visibility="{Binding ShowNotApplied, Converter={StaticResource Visible}}">
+                    <StackPanel>
+                        <Button Style="{StaticResource PlainButton}" HorizontalAlignment="Stretch" Padding="0,4"
+                                Command="{Binding ToggleNotAppliedCommand}" ToolTip="Shows or hides what Apply leaves out">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="Chrome" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}"
+                                            BorderBrush="Transparent" BorderThickness="1" CornerRadius="4">
+                                        <DockPanel>
+                                            <Viewbox DockPanel.Dock="Right" Width="14" Height="14">
+                                                <Canvas Width="24" Height="24">
+                                                    <Path Data="M6,9 L12,15 L18,9" Stroke="{StaticResource Muted}" StrokeThickness="2"
+                                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round">
+                                                        <Path.RenderTransform>
+                                                            <RotateTransform Angle="{Binding NotAppliedTurn}" CenterX="12" CenterY="12"/>
+                                                        </Path.RenderTransform>
+                                                    </Path>
+                                                </Canvas>
+                                            </Viewbox>
+                                            <TextBlock Style="{StaticResource SectionTitle}" Text="{Binding NotAppliedTitle}" VerticalAlignment="Center"/>
+                                        </DockPanel>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Chrome" Property="Background" Value="#F2F4F7"/>
+                                        </Trigger>
+                                        <Trigger Property="IsKeyboardFocused" Value="True">
+                                            <Setter TargetName="Chrome" Property="BorderBrush" Value="#1F6FEB"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+                        <ItemsControl ItemsSource="{Binding NotAppliedItems}" Focusable="False" Margin="0,6,0,0"
+                                      Visibility="{Binding NotAppliedOpen, Converter={StaticResource Visible}}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <DockPanel Margin="0,0,0,10">
+                                        <Viewbox DockPanel.Dock="Left" Width="16" Height="16" Margin="0,1,10,0" VerticalAlignment="Top">
+                                            <Canvas Width="24" Height="24">
+                                                <Path Data="{Binding Icon}" Stroke="{Binding IconColor}" StrokeThickness="2"
+                                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
+                                            </Canvas>
+                                        </Viewbox>
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Title}" Foreground="{StaticResource Strong}" TextWrapping="Wrap"/>
+                                            <TextBlock Style="{StaticResource MutedText}" Text="{Binding Detail}" Margin="0,2,0,0"/>
+                                            <Button Style="{StaticResource LinkButton}" Margin="-6,2,0,0" Content="Check parameters…"
+                                                    Command="{Binding CheckParametersCommand}"
+                                                    Visibility="{Binding OffersCheckParameters, Converter={StaticResource Visible}}"/>
+                                        </StackPanel>
+                                    </DockPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+
                 <!-- Notes -->
                 <StackPanel Margin="14,10,14,14">
                     <TextBlock Style="{StaticResource MutedText}" Text="{Binding LastPullText}" Margin="0,0,0,8"
                                Visibility="{Binding ShowLastPull, Converter={StaticResource Visible}}"/>
-                    <DockPanel Margin="0,0,0,8" Visibility="{Binding ShowMissing, Converter={StaticResource Visible}}">
-                        <Viewbox DockPanel.Dock="Left" Width="16" Height="16" Margin="0,1,10,0" VerticalAlignment="Top">
-                            <Canvas Width="24" Height="24">
-                                <Path Data="M12,3 L2,20 H22 Z M12,10 V14 M12,17.5 V17.51" Stroke="#B7791F" StrokeThickness="2"
-                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
-                            </Canvas>
-                        </Viewbox>
-                        <StackPanel>
-                            <TextBlock Text="{Binding MissingText}" Foreground="{StaticResource Strong}" TextWrapping="Wrap"/>
-                            <Button Style="{StaticResource LinkButton}" Margin="-6,2,0,0" Content="Check parameters…"
-                                    Command="{Binding CheckParametersCommand}"/>
-                        </StackPanel>
-                    </DockPanel>
-                    <TextBlock Style="{StaticResource MutedText}" Text="{Binding ProblemsText}"
-                               Visibility="{Binding ShowProblems, Converter={StaticResource Visible}}"/>
                 </StackPanel>
             </StackPanel>
         </ScrollViewer>

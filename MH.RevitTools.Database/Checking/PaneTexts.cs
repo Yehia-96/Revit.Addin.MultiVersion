@@ -101,29 +101,6 @@ namespace MH.RevitTools.Database.Checking
 
         public static string NotInProjectLabel => "ID not in the project";
 
-        /// <summary>
-        /// The note under the changes when linked elements lack some of the database's parameters, e.g.
-        /// "Dicke and Ort aren't in this model. Check parameters adds them from the master file."; empty without any.
-        /// </summary>
-        public static string Missing(IReadOnlyList<string> names)
-        {
-            if (names == null || names.Count == 0)
-                return "";
-            string which = names.Count <= 3
-                ? List(names) + (names.Count == 1 ? " isn't" : " aren't")
-                : Count(names.Count, "database parameter", "database parameters") + " aren't";
-            return which + " in this model. Check parameters adds them from the master file.";
-        }
-
-        /// <summary>The note when some values can't go into their parameters; empty without any.</summary>
-        public static string Problems(IReadOnlyList<string> problems)
-        {
-            if (problems == null || problems.Count == 0)
-                return "";
-            return "Some values don't fit their parameter in this model: " + string.Join("; ", problems.Take(3))
-                + (problems.Count > 3 ? "; and " + Count(problems.Count - 3, "more", "more") : "") + ".";
-        }
-
         /// <summary>The line under the project's name, e.g. "Linked by Y.Abdelazziz, 2026-11-19 15:32. Elements meet it by Bauteil_ID."</summary>
         public static string LinkedLine(string linked) =>
             (string.IsNullOrWhiteSpace(linked) ? "" : linked.Trim() + " ") + "Elements meet it by Bauteil_ID.";
@@ -135,14 +112,6 @@ namespace MH.RevitTools.Database.Checking
         /// <summary>"1 change", "3 changes".</summary>
         public static string Count(int count, string one, string many) =>
             count.ToString(CultureInfo.InvariantCulture) + " " + (count == 1 ? one : many);
-
-        // "Dicke", "Dicke and Ort", "Dicke, Ort and Breite".
-        private static string List(IReadOnlyList<string> names)
-        {
-            if (names.Count == 1)
-                return names[0];
-            return string.Join(", ", names.Take(names.Count - 1)) + " and " + names[names.Count - 1];
-        }
 
         private static string Sentence(string text)
         {

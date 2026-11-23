@@ -41,6 +41,10 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
                 pane.Show();
         }
 
+        public static void Show(UIApplication application) => application.GetDockablePane(Id).Show();
+
+        public static bool IsShown(UIApplication application) => IsRegistered && application.GetDockablePane(Id).IsShown();
+
         public void SetupDockablePane(DockablePaneProviderData data)
         {
             data.FrameworkElement = _view;

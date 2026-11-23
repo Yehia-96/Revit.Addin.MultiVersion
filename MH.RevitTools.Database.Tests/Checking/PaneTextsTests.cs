@@ -72,17 +72,6 @@ public sealed class PaneTextsTests
     }
 
     [Fact]
-    public void Missing_NamesAFewParameters_OrCountsMany()
-    {
-        Assert.Equal("", PaneTexts.Missing(Array.Empty<string>()));
-        Assert.Equal("Dicke isn't in this model. Check parameters adds them from the master file.", PaneTexts.Missing(new[] { "Dicke" }));
-        Assert.Equal("Dicke, Ort and Breite aren't in this model. Check parameters adds them from the master file.",
-            PaneTexts.Missing(new[] { "Dicke", "Ort", "Breite" }));
-        Assert.Equal("4 database parameters aren't in this model. Check parameters adds them from the master file.",
-            PaneTexts.Missing(new[] { "a", "b", "c", "d" }));
-    }
-
-    [Fact]
     public void TheModelSection_SaysWhoLinkedIt_AndHowElementsMeetTheProject()
     {
         Assert.Equal("Linked by Y.Abdelazziz, 2026-11-19 15:32. Elements meet it by Bauteil_ID.",

@@ -7,6 +7,7 @@ using MH.RevitTools.Database.Connection;
 using MH.RevitTools.Database.Link;
 using MH.RevitTools.Database.Linking;
 using Revit.Addin._2027.Commands;
+using Revit.Addin._2027.DatabaseLink.Apply;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -16,10 +17,11 @@ using System.Windows.Threading;
 namespace Revit.Addin._2027.DatabaseLink.Pane
 {
     /// <summary>
-    /// Runs the MH Database pane (step 5): follows the active model through the Database button, checks its
-    /// project on the <see cref="CheckLoop"/>'s thread, compares the model with the database's values inside
-    /// Revit whenever either changes, and shows the result in the pane and as the button's dot. It never
-    /// changes the model and only reads the database. Everything but the check runs on Revit's main thread.
+    /// Runs the MH Database pane: follows the active model through the Database button, checks its project on
+    /// the <see cref="CheckLoop"/>'s thread, compares the model with the database's values inside Revit whenever
+    /// either changes, shows the result in the pane and as the button's dot (step 5), and applies the changes
+    /// the user asks for (step 6). Only Apply changes the model; nothing ever changes the database. Everything
+    /// but the check runs on Revit's main thread.
     /// </summary>
     internal sealed class LinkMonitor : IPaneActions, IDisposable
     {
@@ -43,6 +45,9 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
         private ChangeReport _report;
         private long _comparedVersion = -1;
         private bool _compareQueued;
+        private bool _isReadOnlyFile;
+        private ApplyResult _applied;
+        private DateTime _appliedAtUtc;
         private LinkCondition _buttonCondition = LinkCondition.Checking;
         private int _buttonChanges;
 
@@ -64,18 +69,32 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
             // Last, so nothing above can fail with the thread already running.
             _loop = new CheckLoop(checker, OnChecked, OnCheckFailed, _settings.Interval);
             _button.ModelShown += OnModelShown;
+            Current = this;
         }
+
+        /// <summary>The one running with Revit, for the ribbon's Apply changes; null when it didn't start.</summary>
+        public static LinkMonitor Current { get; private set; }
 
         public PaneViewModel View => _view;
 
-        public void Hook(UIControlledApplication application) =>
+        public void Hook(UIControlledApplication application)
+        {
             application.ControlledApplication.DocumentChanged += OnDocumentChanged;
+            application.ControlledApplication.DocumentSynchronizedWithCentral += OnSynchronizedWithCentral;
+            application.ControlledApplication.DocumentReloadedLatest += OnReloadedLatest;
+        }
 
-        public void Unhook(UIControlledApplication application) =>
+        public void Unhook(UIControlledApplication application)
+        {
             application.ControlledApplication.DocumentChanged -= OnDocumentChanged;
+            application.ControlledApplication.DocumentSynchronizedWithCentral -= OnSynchronizedWithCentral;
+            application.ControlledApplication.DocumentReloadedLatest -= OnReloadedLatest;
+        }
 
         public void Dispose()
         {
+            if (ReferenceEquals(Current, this))
+                Current = null;
             _button.ModelShown -= OnModelShown;
             _settle.Stop();
             _settle.Tick -= OnModelSettled;
@@ -85,7 +104,13 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
 
         // ---- The pane's buttons (main thread, outside Revit's API context) ----
 
-        public void CheckNow() => _loop.CheckNow();
+        // Asked for by hand, so the model is compared again too, even with the same values: someone may have
+        // released elements since.
+        public void CheckNow()
+        {
+            _comparedVersion = -1;
+            _loop.CheckNow();
+        }
 
         public void Link() => _revit.Run("linking the model", application => RunCommand(application, "Link project",
             (UIApplication app, ref string message) => LinkProjectCommand.Run(app, ref message)));
@@ -100,6 +125,13 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
             _revit.Run("selecting elements", application => SelectInModel(application, shown, ids, zoom));
         }
 
+        public void Apply(IReadOnlyList<ChangeGroup> groups)
+        {
+            List<ChangeGroup> chosen = (groups ?? new ChangeGroup[0]).ToList();
+            Document shown = _document;
+            _revit.Run("applying changes", application => ApplyTo(shown, chosen));
+        }
+
         public void ChooseInterval(CheckInterval interval)
         {
             if (interval == null || interval.Seconds == _settings.Interval.Seconds)
@@ -110,6 +142,59 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
                 Trace.WriteLine("[Parameter Tools] " + problem);
             _loop.SetInterval(_settings.Interval);
             Render();
+        }
+
+        // ---- The ribbon's Apply changes (API context) ----
+
+        /// <summary>Applies everything the pane lists, after asking; says why when there's nothing to apply.</summary>
+        public Result ApplyFromRibbon(UIApplication application)
+        {
+            // As they are now: while the question is open, a check can bring others.
+            Document document = _document;
+            ChangeReport report = _report;
+            UIDocument active = application.ActiveUIDocument;
+            string why = active == null || !IsShown(active.Document)
+                ? "Switch to a view of the model first."
+                : ApplyTexts.WhyNothingToApply(_link != null, _outcome == null ? (CheckState?)null : _outcome.State, report)
+                    ?? ApplyTexts.ApplyWaits(_outcome.State, document.IsReadOnly);
+            if (why != null)
+            {
+                Tell("Nothing to apply", why, TaskDialogIcon.TaskDialogIconInformation);
+                return Result.Cancelled;
+            }
+
+            var question = new TaskDialog(DatabasePane.Title)
+            {
+                MainInstruction = ApplyTexts.ConfirmTitle(report),
+                MainContent = ApplyTexts.ConfirmText(report, _link.Describe()),
+                CommonButtons = TaskDialogCommonButtons.Cancel,
+                DefaultButton = TaskDialogResult.Cancel,
+            };
+            question.AddCommandLink(TaskDialogCommandLinkId.CommandLink1, "Apply them", "Write the database's values into the model.");
+            question.AddCommandLink(TaskDialogCommandLinkId.CommandLink2, "Show them first", "Open the MH Database pane, which lists each change.");
+            switch (question.Show())
+            {
+                case TaskDialogResult.CommandLink1:
+                    break;
+                case TaskDialogResult.CommandLink2:
+                    DatabasePane.Show(application);
+                    return Result.Cancelled;
+                default:
+                    return Result.Cancelled;
+            }
+
+            ApplyResult result = ApplyTo(document, report.Groups);
+            if (result == null)
+                Tell(ApplyTexts.AppliedTitle(null), "The database or the model changed while the question was open. The MH Database pane "
+                    + "shows how it is now.", TaskDialogIcon.TaskDialogIconInformation);
+            else if (result.IsEmpty)
+                Tell(ApplyTexts.AppliedTitle(null), "The model already has the values.", TaskDialogIcon.TaskDialogIconInformation);
+            else if (!DatabasePane.IsShown(application))
+                // The pane shows the result; without it, a message does.
+                Tell(ApplyTexts.AppliedTitle(result),
+                    ApplyTexts.AppliedDetail(result, DateTime.UtcNow, DateTime.UtcNow, TimeZoneInfo.Local),
+                    result.Changes > 0 ? TaskDialogIcon.TaskDialogIconInformation : TaskDialogIcon.TaskDialogIconWarning);
+            return Result.Succeeded;
         }
 
         // ---- Revit (main thread, API context) ----
@@ -127,6 +212,8 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
             }
             _compareFault = null;
             _report = null;
+            _applied = null;
+            _isReadOnlyFile = false;
             _comparedVersion = -1;
             _buttonCondition = LinkCondition.Checking;
             _buttonChanges = 0;
@@ -136,22 +223,43 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
             Render();
         }
 
-        // Any change to the shown model: compare again once it has settled. Undo and Redo count too.
-        private void OnDocumentChanged(object sender, DocumentChangedEventArgs e)
+        // Any change to the shown model: compare again once it has settled. Undo and Redo count too; undoing an
+        // Apply also takes back what the pane says about it.
+        private void OnDocumentChanged(object sender, DocumentChangedEventArgs e) =>
+            Safely("following a change", () =>
+            {
+                if (!IsShown(e.GetDocument()))
+                    return;
+                if (_applied != null && e.Operation == UndoOperation.TransactionUndone
+                    && e.GetTransactionNames().Any(name => name != null && name.StartsWith(ApplyTexts.UndoPrefix, StringComparison.Ordinal)))
+                {
+                    _applied = null;
+                    Render();
+                }
+                CompareWhenSettled();
+            });
+
+        // Other people's changes, and who has borrowed what, arrive with these.
+        private void OnSynchronizedWithCentral(object sender, DocumentSynchronizedWithCentralEventArgs e) =>
+            Safely("following a synchronization", () =>
+            {
+                if (IsShown(e.Document))
+                    CompareWhenSettled();
+            });
+
+        private void OnReloadedLatest(object sender, DocumentReloadedLatestEventArgs e) =>
+            Safely("following Reload Latest", () =>
+            {
+                if (IsShown(e.Document))
+                    CompareWhenSettled();
+            });
+
+        private void CompareWhenSettled()
         {
-            try
-            {
-                if (_document == null || !_document.IsValidObject || _outcome == null || _outcome.Data == null)
-                    return;
-                if (!_document.Equals(e.GetDocument()))
-                    return;
-                _settle.Stop();
-                _settle.Start();
-            }
-            catch (Exception ex)
-            {
-                Trace.WriteLine("[Parameter Tools] The MH Database pane missed a change: " + ex);
-            }
+            if (_outcome == null || _outcome.Data == null)
+                return;
+            _settle.Stop();
+            _settle.Start();
         }
 
         private void OnModelSettled(object sender, EventArgs e)
@@ -182,7 +290,8 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
             LinkProjectData data = outcome.Data;
             try
             {
-                var values = new RevitValueCompare(document);
+                _isReadOnlyFile = document.IsReadOnlyFile;
+                var values = new RevitValues(document);
                 _report = ChangeFinder.Find(data, ModelReader.Elements(document, data), ModelReader.Materials(document), values.Compare);
                 _comparedVersion = outcome.DataVersion;
                 _compareFault = null;
@@ -195,6 +304,35 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
                 _compareFault = "Comparing the model with the database failed: " + ex.Message;
             }
             Render();
+        }
+
+        // Writes what the pane listed, then compares again. Nothing happens, and the answer is null, when the
+        // pane has moved on to another model or state since the click; it shows that already.
+        private ApplyResult ApplyTo(Document document, IReadOnlyList<ChangeGroup> groups)
+        {
+            CheckOutcome outcome = _outcome;
+            if (groups.Count == 0 || !IsShown(document) || outcome == null || outcome.State != CheckState.Answered || outcome.Data == null)
+                return null;
+
+            ApplyResult result;
+            try
+            {
+                result = DatabaseApplier.Apply(document, outcome.Data, groups);
+            }
+            catch (Exception ex)
+            {
+                Trace.WriteLine("[Parameter Tools] The MH Database pane couldn't apply the changes: " + ex);
+                result = ApplyResult.Stop("Something went wrong in the add-in: " + ex.Message);
+            }
+
+            // Nothing left to do, as on a double-click: what the first click did stays on show.
+            if (!result.IsEmpty)
+            {
+                _applied = result;
+                _appliedAtUtc = DateTime.UtcNow;
+            }
+            Compare();
+            return result;
         }
 
         // ---- The check (from its thread, moved to the main thread) ----
@@ -238,17 +376,7 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
         {
             if (_dispatcher.HasShutdownStarted)
                 return;
-            _dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
-            {
-                try
-                {
-                    action();
-                }
-                catch (Exception ex)
-                {
-                    Trace.WriteLine("[Parameter Tools] The MH Database pane failed " + what + ": " + ex);
-                }
-            }));
+            _dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() => Safely(what, action)));
         }
 
         // ---- Showing it ----
@@ -256,7 +384,7 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
         private void Render()
         {
             var snapshot = new PaneSnapshot(_document != null, _link, ConnectionFile.DefaultPath, _outcome, _compareFault ?? _checkFault, _report,
-                _settings.Interval, DateTime.UtcNow, TimeZoneInfo.Local);
+                _isReadOnlyFile, _applied, _appliedAtUtc, _settings.Interval, DateTime.UtcNow, TimeZoneInfo.Local);
             _view.Show(snapshot);
 
             LinkCondition condition = snapshot.Condition;
@@ -268,6 +396,22 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
             Document document = _document;
             ModelLink link = _link;
             _revit.Run("showing the check on the Database button", application => _button.ShowCondition(document, link, condition, changes));
+        }
+
+        private bool IsShown(Document document) =>
+            document != null && document.IsValidObject && _document != null && _document.IsValidObject && _document.Equals(document);
+
+        // An event handler must never throw into Revit.
+        private static void Safely(string what, Action action)
+        {
+            try
+            {
+                action();
+            }
+            catch (Exception ex)
+            {
+                Trace.WriteLine("[Parameter Tools] The MH Database pane failed " + what + ": " + ex);
+            }
         }
 
         private static void SelectInModel(UIApplication application, Document shown, List<long> ids, bool zoom)
@@ -286,8 +430,20 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
             }
             catch (Exception ex) when (RevitErrors.IsRefusal(ex))
             {
-                TaskDialog.Show("MH Database", "The elements are selected, but Revit couldn't show them: " + ex.Message);
+                TaskDialog.Show(DatabasePane.Title, "The elements are selected, but Revit couldn't show them: " + ex.Message);
             }
+        }
+
+        private static void Tell(string headline, string content, TaskDialogIcon icon)
+        {
+            var dialog = new TaskDialog(DatabasePane.Title)
+            {
+                MainInstruction = headline,
+                MainContent = content,
+                MainIcon = icon,
+                CommonButtons = TaskDialogCommonButtons.Close,
+            };
+            dialog.Show();
         }
 
         private delegate Result PaneCommand(UIApplication application, ref string message);

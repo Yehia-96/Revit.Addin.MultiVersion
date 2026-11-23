@@ -14,7 +14,9 @@ public sealed class ChangeFinderTests
 
     /// <summary>
     /// The model's values, by element (or material) and parameter, as the Revit side would read them. A
-    /// parameter an element doesn't have isn't listed; "#bad" stands for a value that can't go in.
+    /// parameter an element doesn't have isn't listed; "#bad" stands for a value that can't go in, and a model
+    /// value starting with "#" for one that differs but can't be written: #readonly, #type, #outdated,
+    /// #borrowed, or "#borrowed M. Keller".
     /// </summary>
     private sealed class FakeModel
     {
@@ -35,6 +37,17 @@ public sealed class ChangeFinderTests
                 return ValueCheck.NoParameter;
             if (databaseValue == "#bad")
                 return ValueCheck.CantCompare("\"#bad\" isn't a number");
+            if (model != null && model.StartsWith("#borrowed", StringComparison.Ordinal))
+                return ValueCheck.Borrowed(model.Substring("#borrowed".Length));
+            switch (model)
+            {
+                case "#readonly":
+                    return ValueCheck.ReadOnly;
+                case "#type":
+                    return ValueCheck.OnType;
+                case "#outdated":
+                    return ValueCheck.OutOfDate;
+            }
             return string.Equals(model, databaseValue, StringComparison.Ordinal) ? ValueCheck.Same : ValueCheck.Differs(model);
         }
     }
@@ -68,6 +81,7 @@ public sealed class ChangeFinderTests
         Assert.Equal("Betonstahl Güte", row.Parameter);
         Assert.Equal("B500B", row.From);
         Assert.Equal("B500A", row.To);
+        Assert.Equal("B500A", row.Value);
         Assert.Equal("M. Keller", row.ChangedBy);
         Assert.Equal(Today, row.ChangedAtUtc);
         Assert.Equal(new long[] { 1, 2 }, row.ElementIds);
@@ -110,7 +124,7 @@ public sealed class ChangeFinderTests
     }
 
     [Fact]
-    public void Placeholders_AndTheBauteilIdItself_AreNeverChanges()
+    public void Placeholders_AndWhatIdentifiesAnElement_AreNeverChanges()
     {
         LinkProjectData data = UlmData.With(1, new[]
         {
@@ -120,14 +134,40 @@ public sealed class ChangeFinderTests
             UlmData.Value("BT-1101-01", UlmData.Bauteil, "-"),
             UlmData.Value("BT-1101-01", UlmData.Teilelement, "[ET]"),
             UlmData.Value("BT-1101-01", UlmData.BauteilId, "BT-1101-01-stale"),
+            UlmData.Value("BT-1101-01", UlmData.Bauteilnummer, "1101"),
+            UlmData.Value("ET-9999-01", UlmData.Dicke, "[Modeller]"),
         });
         var model = new FakeModel();
 
         ChangeReport report = Find(data, model, new[] { new ModelElement(1, "BT-1101-01", null) });
 
         Assert.True(report.IsUpToDate);
+        Assert.False(report.HasBlockedDifferences);
         Assert.Empty(model.Asked);
-        Assert.Empty(report.MissingParameters);
+
+        // Listed by placeholder; an empty value and an object the model doesn't have aren't worth a line.
+        Assert.All(report.NotApplied, item => Assert.Equal(NotAppliedReason.Placeholder, item.Reason));
+        Assert.Equal(new[] { "[Modeller]", "[ET]", "-", "TBT" }, report.NotApplied.Select(item => item.Name));
+        Assert.Equal(new[] { "Dicke" }, report.NotApplied[0].Parameters);
+        Assert.Equal(1, report.NotApplied[0].ValueCount);
+    }
+
+    [Fact]
+    public void ThePlaceholdersOfSeveralObjects_AreOneEntry_WithEveryParameterOnce()
+    {
+        LinkProjectData data = UlmData.With(1, new[]
+        {
+            UlmData.Value("BT-1101-01", UlmData.Bewehrt, "[modeller] "),
+            UlmData.Value("BT-1101-01", UlmData.Dicke, "[Modeller]"),
+            UlmData.Value("BT-1102-01", UlmData.Dicke, "[Modeller]"),
+        });
+
+        ChangeReport report = Find(data, new FakeModel(), new[] { new ModelElement(1, "BT-1101-01", null), new ModelElement(2, "BT-1102-01", null) });
+
+        NotAppliedItem item = Assert.Single(report.NotApplied);
+        Assert.Equal("[Modeller]", item.Name);
+        Assert.Equal(3, item.ValueCount);
+        Assert.Equal(new[] { "Dicke", "Bewehrt" }, item.Parameters);
     }
 
     [Fact]
@@ -139,7 +179,95 @@ public sealed class ChangeFinderTests
         ChangeReport report = Find(data, model, new[] { new ModelElement(1, "BT-1101-01", null) });
 
         Assert.Empty(model.Asked);
-        Assert.Empty(report.MissingParameters);
+        NotAppliedItem item = Assert.Single(report.NotApplied);
+        Assert.Equal(NotAppliedReason.MaterialReference, item.Reason);
+        Assert.Equal(new[] { "Material-ID" }, item.Parameters);
+    }
+
+    [Fact]
+    public void ValuesThatDifferButCantBeWritten_ArentChanges_AndAreListedWithTheReason()
+    {
+        LinkProjectData data = UlmData.With(1, new[]
+        {
+            UlmData.Value("BT-1101-01", UlmData.Guete, "B500A"),
+            UlmData.Value("BT-1101-01", UlmData.Bauteil, "Bodenplatte"),
+        });
+        var model = new FakeModel()
+            .Has(1, UlmData.Guete, "B500B").Has(1, UlmData.Bauteil, "Bodenplatte")
+            .Has(2, UlmData.Guete, "#borrowed M. Keller").Has(2, UlmData.Bauteil, "#borrowed M. Keller")
+            .Has(3, UlmData.Guete, "#borrowed").Has(3, UlmData.Bauteil, "Bodenplatte")
+            .Has(4, UlmData.Guete, "#readonly").Has(4, UlmData.Bauteil, "#type")
+            .Has(5, UlmData.Guete, "#outdated").Has(5, UlmData.Bauteil, "Bodenplatte");
+
+        ChangeReport report = Find(data, model, Enumerable.Range(1, 5).Select(id => new ModelElement(id, "BT-1101-01", null)));
+
+        ChangeRow row = Assert.Single(Assert.Single(report.Groups).Rows);
+        Assert.Equal(new long[] { 1 }, row.ElementIds);
+        Assert.Equal(1, report.ChangeCount);
+        Assert.True(report.HasBlockedDifferences);
+        Assert.Equal(
+            new[]
+            {
+                (NotAppliedReason.Borrowed, (string)null, 1), (NotAppliedReason.Borrowed, "M. Keller", 1), (NotAppliedReason.OutOfDate, null, 1),
+                (NotAppliedReason.ReadOnly, null, 1), (NotAppliedReason.OnType, null, 1),
+            },
+            report.NotApplied.Select(item => (item.Reason, item.Name, item.ElementIds.Count)));
+        Assert.Equal(new long[] { 2 }, report.NotApplied[1].ElementIds);
+        Assert.Equal(new[] { "Betonstahl Güte" }, report.NotApplied[3].Parameters);
+        Assert.Equal(new[] { "Bauteil" }, report.NotApplied[4].Parameters);
+    }
+
+    [Fact]
+    public void WithOnlyBorrowedDifferences_ThereIsNothingToApply()
+    {
+        LinkProjectData data = UlmData.With(1, new[] { UlmData.Value("BT-1101-01", UlmData.Guete, "B500A") });
+
+        ChangeReport report = Find(data, new FakeModel().Has(1, UlmData.Guete, "#borrowed M. Keller"), new[] { new ModelElement(1, "BT-1101-01", null) });
+
+        Assert.Empty(report.Groups);
+        Assert.True(report.IsUpToDate);
+        Assert.True(report.HasBlockedDifferences);
+    }
+
+    [Fact]
+    public void ObjectsThatShareABauteilId_AndDisagree_GetNeitherValue()
+    {
+        LinkProjectData data = UlmData.With(1, new[]
+        {
+            UlmData.Value("ET-2101-01", UlmData.Guete, "B500A"),
+            UlmData.Value("ET-2101-01", UlmData.Dicke, "0.3"),
+            UlmData.Value("et-2101-01", UlmData.Guete, "B500B"),
+            UlmData.Value("et-2101-01", UlmData.Dicke, " 0.3"),
+        });
+        var model = new FakeModel().Has(1, UlmData.Guete, "").Has(1, UlmData.Dicke, "");
+
+        ChangeReport report = Find(data, model, new[] { new ModelElement(1, "ET-2101-01", null) });
+
+        Assert.Equal("Dicke", Assert.Single(Assert.Single(report.Groups).Rows).Parameter);
+        NotAppliedItem conflict = Assert.Single(report.NotApplied);
+        Assert.Equal(NotAppliedReason.ConflictingValues, conflict.Reason);
+        Assert.Equal("ET-2101-01", conflict.Name);
+        Assert.Equal(new[] { "Betonstahl Güte" }, conflict.Parameters);
+        Assert.DoesNotContain(model.Asked, asked => asked.ParameterId == UlmData.Guete.ParameterId);
+    }
+
+    [Fact]
+    public void MaterialsOfTheSameName_OnlyTheFirstIsUsed()
+    {
+        var first = new LinkMaterial("MB-1761-01-BET-0011", "Beton", "BET", "Beton", null, null);
+        var second = new LinkMaterial("MB-1761-01-BET-0012", " beton ", "BET", "Beton", null, null);
+        LinkProjectData data = UlmData.With(1, Array.Empty<LinkObjectValue>(), new[] { first, second }, new[]
+        {
+            new LinkMaterialValue(first.MaterialId, UlmData.Festigkeit.ParameterId, "C16/20", null, null),
+            new LinkMaterialValue(second.MaterialId, UlmData.Festigkeit.ParameterId, "C30/37", null, null),
+        });
+
+        ChangeReport report = Find(data, new FakeModel().Has(70, UlmData.Festigkeit, ""), Array.Empty<ModelElement>(), new[] { new ModelMaterial(70, "Beton") });
+
+        Assert.Equal("C16/20", Assert.Single(Assert.Single(report.Groups).Rows).To);
+        NotAppliedItem item = Assert.Single(report.NotApplied);
+        Assert.Equal(NotAppliedReason.SameMaterialName, item.Reason);
+        Assert.Equal("MB-1761-01-BET-0012", item.Text);
     }
 
     [Fact]
@@ -180,9 +308,11 @@ public sealed class ChangeFinderTests
 
         ChangeReport report = Find(data, model, new[] { new ModelElement(1, "BT-1101-01", null), new ModelElement(2, "ET-2101-01", null) });
 
-        Assert.Equal(new[] { "Betonstahl Güte" }, report.MissingParameters);
-        Assert.Equal(new[] { "Dicke: \"#bad\" isn't a number" }, report.Problems);
+        Assert.Equal(new[] { NotAppliedReason.DoesntFit, NotAppliedReason.MissingParameter }, report.NotApplied.Select(item => item.Reason));
+        Assert.Equal("Dicke: \"#bad\" isn't a number", report.NotApplied[0].Text);
+        Assert.Equal(new[] { "Betonstahl Güte" }, report.NotApplied[1].Parameters);
         Assert.True(report.IsUpToDate);
+        Assert.False(report.HasBlockedDifferences);
     }
 
     [Fact]

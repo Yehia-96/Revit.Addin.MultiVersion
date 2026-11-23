@@ -23,6 +23,9 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
         /// <summary>Selects the elements in the active model; with zoom, also shows them in the view.</summary>
         void Select(IReadOnlyList<long> elementIds, bool zoom);
 
+        /// <summary>Writes the groups' values into the model, as the pane lists them.</summary>
+        void Apply(IReadOnlyList<ChangeGroup> groups);
+
         void ChooseInterval(CheckInterval interval);
     }
 
@@ -43,6 +46,12 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
         private readonly IPaneActions _actions;
         private PaneSnapshot _snapshot;
         private CheckInterval _selectedInterval;
+        private bool _notAppliedOpen = true;
+
+        // What the lists were made from. A check every minute mustn't rebuild them, or they'd flicker and lose
+        // the keyboard's place.
+        private ChangeReport _listedReport;
+        private bool _listedCanApply;
 
         public PaneViewModel(IPaneActions actions)
         {
@@ -53,7 +62,11 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
             SelectLinkedCommand = new RelayCommand(() => SelectCounted(counts => counts.Linked));
             SelectWithoutIdCommand = new RelayCommand(() => SelectCounted(counts => counts.WithoutId));
             SelectNotInProjectCommand = new RelayCommand(() => SelectCounted(counts => counts.IdNotInProject));
-            Show(new PaneSnapshot(false, null, null, null, null, null, null, DateTime.UtcNow, TimeZoneInfo.Local));
+            ApplyAllCommand = new RelayCommand(ApplyAll);
+            ToggleNotAppliedCommand = new RelayCommand(ToggleNotApplied);
+            Groups = new ChangeGroupView[0];
+            NotAppliedItems = new NotAppliedView[0];
+            Show(new PaneSnapshot(false, null, null, null, null, null, false, null, DateTime.MinValue, null, DateTime.UtcNow, TimeZoneInfo.Local));
         }
 
         public event PropertyChangedEventHandler PropertyChanged;
@@ -97,6 +110,7 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
         // ---- Up to date, or the changes ----
         public bool ShowComparing { get; private set; }
         public bool ShowUpToDate { get; private set; }
+        public string UpToDateTitle { get; private set; }
         public string UpToDateText { get; private set; }
         public bool ShowChanges { get; private set; }
         public string ChangesTitle { get; private set; }
@@ -104,11 +118,27 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
         public bool ShowMore { get; private set; }
         public string MoreText { get; private set; }
 
+        // ---- Apply ----
+        public bool CanApply { get; private set; }
+        public bool ShowApplyWaits { get; private set; }
+        public string ApplyWaitsText { get; private set; }
+        public bool ShowApplied { get; private set; }
+        public bool AppliedSomething { get; private set; }
+        public bool AppliedNothing => ShowApplied && !AppliedSomething;
+        public string AppliedTitle { get; private set; }
+        public string AppliedDetail { get; private set; }
+        public string AppliedBack => AppliedSomething ? "#E7F5EC" : "#FDF3E1";
+        public string AppliedLine => AppliedSomething ? "#BFE3CC" : "#F0D6A8";
+        public string AppliedText => AppliedSomething ? "#145C33" : "#8F5B0A";
+
+        // ---- Not applied ----
+        public bool ShowNotApplied { get; private set; }
+        public string NotAppliedTitle { get; private set; }
+        public bool NotAppliedOpen => _notAppliedOpen;
+        public double NotAppliedTurn => _notAppliedOpen ? 180 : 0;
+        public IReadOnlyList<NotAppliedView> NotAppliedItems { get; private set; }
+
         // ---- Notes ----
-        public bool ShowMissing { get; private set; }
-        public string MissingText { get; private set; }
-        public bool ShowProblems { get; private set; }
-        public string ProblemsText { get; private set; }
         public bool ShowLastPull { get; private set; }
         public string LastPullText { get; private set; }
 
@@ -134,6 +164,8 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
         public ICommand SelectLinkedCommand { get; }
         public ICommand SelectWithoutIdCommand { get; }
         public ICommand SelectNotInProjectCommand { get; }
+        public ICommand ApplyAllCommand { get; }
+        public ICommand ToggleNotAppliedCommand { get; }
 
         /// <summary>The snapshot shown now.</summary>
         public PaneSnapshot Snapshot => _snapshot;
@@ -158,12 +190,13 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
         {
             CanCheckNow = ShowNoModel = ShowNoFile = ShowSetup = ShowModel = ShowCounts = false;
             ShowBanner = BannerCanRetry = BannerOffersLink = ShowComparing = ShowUpToDate = ShowChanges = ShowMore = false;
-            ShowMissing = ShowProblems = ShowLastPull = ShowFooter = false;
+            ShowLastPull = ShowFooter = false;
+            CanApply = ShowApplyWaits = ShowApplied = AppliedSomething = ShowNotApplied = false;
             Where = When = NoFilePath = NoFileProblem = ProjectCode = ProjectName = LinkedLine = "";
             LinkedCount = LinkedLabel = WithoutIdCount = NotInProjectCount = "";
-            BannerTitle = BannerText = UpToDateText = ChangesTitle = MoreText = MissingText = ProblemsText = LastPullText = "";
+            BannerTitle = BannerText = UpToDateTitle = UpToDateText = ChangesTitle = MoreText = LastPullText = "";
+            ApplyWaitsText = AppliedTitle = AppliedDetail = NotAppliedTitle = "";
             WithoutIdColor = NotInProjectColor = "#0F1B2D";
-            Groups = new ChangeGroupView[0];
         }
 
         private void ShowWithoutModel()
@@ -248,6 +281,7 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
             }
 
             ShowFault(snapshot);
+            ShowAppliedBanner(snapshot);
             if (outcome.Data == null)
                 return;
 
@@ -268,6 +302,12 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
                 return;
             }
 
+            string waits = ApplyTexts.ApplyWaits(snapshot.Outcome.State, snapshot.IsReadOnly);
+            CanApply = waits == null;
+            bool relist = !ReferenceEquals(report, _listedReport) || CanApply != _listedCanApply;
+            _listedReport = report;
+            _listedCanApply = CanApply;
+
             ShowCounts = true;
             LinkedCount = Number(report.Counts.Linked.Count);
             LinkedLabel = PaneTexts.LinkedLabel(report.Counts.Linked.Count);
@@ -279,37 +319,68 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
             if (report.IsUpToDate)
             {
                 ShowUpToDate = true;
-                UpToDateText = PaneTexts.UpToDate(report, snapshot.NowUtc, snapshot.TimeZone);
+                UpToDateTitle = ApplyTexts.UpToDateTitle(report);
+                UpToDateText = report.HasBlockedDifferences
+                    ? ApplyTexts.BlockedDetail
+                    : PaneTexts.UpToDate(report, snapshot.NowUtc, snapshot.TimeZone);
             }
             else
             {
                 ShowChanges = true;
                 ChangesTitle = PaneTexts.ChangesTitle(report.ChangeCount).ToUpperInvariant();
-                Groups = GroupsUpTo(report, snapshot, out int listed);
-                int more = report.ChangeCount - listed;
+                ShowApplyWaits = !CanApply;
+                ApplyWaitsText = waits ?? "";
+                if (relist)
+                    Groups = GroupsUpTo(report, snapshot, CanApply);
+                int more = report.ChangeCount - Groups.Sum(group => group.Rows.Count);
                 ShowMore = more > 0;
-                MoreText = ShowMore ? "… and " + PaneTexts.Count(more, "more change", "more changes") + ", not listed here." : "";
+                MoreText = ShowMore
+                    ? "… and " + PaneTexts.Count(more, "more change", "more changes") + ", not listed here. Apply all applies them too."
+                    : "";
             }
 
-            MissingText = PaneTexts.Missing(report.MissingParameters);
-            ShowMissing = MissingText.Length > 0;
-            ProblemsText = PaneTexts.Problems(report.Problems);
-            ShowProblems = ProblemsText.Length > 0;
+            ShowNotApplied = report.NotApplied.Count > 0;
+            NotAppliedTitle = ApplyTexts.NotAppliedTitle(report.NotApplied.Count).ToUpperInvariant();
+            if (relist)
+                NotAppliedItems = report.NotApplied.Select(item => new NotAppliedView(item, CheckParametersCommand)).ToList();
         }
 
-        private IReadOnlyList<ChangeGroupView> GroupsUpTo(ChangeReport report, PaneSnapshot snapshot, out int listed)
+        // Whole cards only: a card's Apply writes all it has, so it must also show all of it.
+        private IReadOnlyList<ChangeGroupView> GroupsUpTo(ChangeReport report, PaneSnapshot snapshot, bool canApply)
         {
             var groups = new List<ChangeGroupView>();
-            listed = 0;
+            int listed = 0;
             foreach (ChangeGroup group in report.Groups)
             {
                 if (listed >= MaxRows)
                     break;
-                List<ChangeRow> rows = group.Rows.Take(MaxRows - listed).ToList();
-                listed += rows.Count;
-                groups.Add(new ChangeGroupView(group, rows, snapshot, _actions));
+                listed += group.Rows.Count;
+                groups.Add(new ChangeGroupView(group, snapshot, canApply, _actions));
             }
             return groups;
+        }
+
+        private void ShowAppliedBanner(PaneSnapshot snapshot)
+        {
+            if (snapshot.Applied == null)
+                return;
+            ShowApplied = true;
+            AppliedSomething = snapshot.Applied.Changes > 0;
+            AppliedTitle = ApplyTexts.AppliedTitle(snapshot.Applied);
+            AppliedDetail = ApplyTexts.AppliedDetail(snapshot.Applied, snapshot.AppliedAtUtc, snapshot.NowUtc, snapshot.TimeZone);
+        }
+
+        private void ApplyAll()
+        {
+            ChangeReport report = _snapshot == null ? null : _snapshot.Report;
+            if (report != null && CanApply && report.Groups.Count > 0)
+                _actions.Apply(report.Groups);
+        }
+
+        private void ToggleNotApplied()
+        {
+            _notAppliedOpen = !_notAppliedOpen;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(string.Empty));
         }
 
         private void Banner(string title, string text, bool canRetry, bool offersLink)
@@ -342,16 +413,19 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
     /// <summary>One object's or material's changes in the pane's list.</summary>
     public sealed class ChangeGroupView
     {
-        public ChangeGroupView(ChangeGroup group, IEnumerable<ChangeRow> rows, PaneSnapshot snapshot, IPaneActions actions)
+        public ChangeGroupView(ChangeGroup group, PaneSnapshot snapshot, bool canApply, IPaneActions actions)
         {
             Key = group.Key;
             Name = group.Name;
             Size = PaneTexts.GroupSize(group);
-            Rows = rows.Select(row => new ChangeRowView(row, snapshot)).ToList();
+            Rows = group.Rows.Select(row => new ChangeRowView(row, snapshot)).ToList();
             // A material isn't something a view can show; elements are.
             CanShow = !group.IsMaterial && group.ElementIds.Count > 0;
             IReadOnlyList<long> ids = group.ElementIds;
             ShowCommand = new RelayCommand(() => actions.Select(ids, true));
+            CanApply = canApply;
+            ApplyLabel = ApplyTexts.ApplyLabel(group.Rows.Count);
+            ApplyCommand = new RelayCommand(() => actions.Apply(new[] { group }));
         }
 
         public string Key { get; }
@@ -360,6 +434,50 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
         public IReadOnlyList<ChangeRowView> Rows { get; }
         public bool CanShow { get; }
         public ICommand ShowCommand { get; }
+        public bool CanApply { get; }
+        public string ApplyLabel { get; }
+        public ICommand ApplyCommand { get; }
+    }
+
+    /// <summary>One entry of the pane's "Not applied" list.</summary>
+    public sealed class NotAppliedView
+    {
+        private const string Lock = "M7,11 H17 A2,2 0 0 1 19,13 V19 A2,2 0 0 1 17,21 H7 A2,2 0 0 1 5,19 V13 A2,2 0 0 1 7,11 Z M8,11 V8 A4,4 0 0 1 16,8 V11";
+        private const string Pencil = "M4,20 H8 L19,9 L15,5 L4,16 Z";
+        private const string Warning = "M12,3 L2,20 H22 Z M12,10 V14 M12,17.5 V17.51";
+
+        public NotAppliedView(NotAppliedItem item, ICommand checkParameters)
+        {
+            Title = ApplyTexts.Title(item);
+            Detail = ApplyTexts.Detail(item);
+            OffersCheckParameters = item.Reason == NotAppliedReason.MissingParameter;
+            CheckParametersCommand = checkParameters;
+            switch (item.Reason)
+            {
+                case NotAppliedReason.Borrowed:
+                case NotAppliedReason.OutOfDate:
+                case NotAppliedReason.ReadOnly:
+                    Icon = Lock;
+                    IconColor = "#B7791F";
+                    break;
+                case NotAppliedReason.Placeholder:
+                case NotAppliedReason.MaterialReference:
+                    Icon = Pencil;
+                    IconColor = "#5B6578";
+                    break;
+                default:
+                    Icon = Warning;
+                    IconColor = "#B7791F";
+                    break;
+            }
+        }
+
+        public string Title { get; }
+        public string Detail { get; }
+        public string Icon { get; }
+        public string IconColor { get; }
+        public bool OffersCheckParameters { get; }
+        public ICommand CheckParametersCommand { get; }
     }
 
     /// <summary>One value in the pane's list: the parameter, who changed it and when, the model's value and the database's.</summary>

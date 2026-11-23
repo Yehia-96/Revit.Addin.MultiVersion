@@ -18,10 +18,11 @@ internal static class UlmData
     public static readonly LinkParameter Bauteil = new(103, new Guid("6f0c4b8e-0000-4000-8000-000000000103"), "Bauteil", "BAU", "KAT", "Bauteil", "String", null, LinkTarget.Object, GenericModels);
     public static readonly LinkParameter Teilelement = new(104, new Guid("6f0c4b8e-0000-4000-8000-000000000104"), "Teilelement", "BAU", "KAT", "Teilelement", "String", null, LinkTarget.Object, GenericModels);
     public static readonly LinkParameter BauteilId = new(97, new Guid("6f0c4b8e-0000-4000-8000-000000000097"), "Bauteil_ID", "IDE", "KAT", "Bauteil_ID", "String", null, LinkTarget.Object, GenericModels);
+    public static readonly LinkParameter Bauteilnummer = new(105, new Guid("6f0c4b8e-0000-4000-8000-000000000105"), "Bauteilnummer", "BAU", "KAT", "Bauteilnummer", "Integer", null, LinkTarget.Object, GenericModels);
     public static readonly LinkParameter MaterialId = new(34, new Guid("6f0c4b8e-0000-4000-8000-000000000034"), "Material-ID", "IDE", "KAT", "Material-ID", "String", null, LinkTarget.Material, Materials);
     public static readonly LinkParameter Festigkeit = new(120, new Guid("6f0c4b8e-0000-4000-8000-000000000120"), "Festigkeitsklasse", "MAT", "BET", "Festigkeitsklasse", "String", null, LinkTarget.Material, Materials);
 
-    public static readonly IReadOnlyList<LinkParameter> Dictionary = new[] { Dicke, Guete, Bewehrt, Bauteil, Teilelement, BauteilId, MaterialId, Festigkeit };
+    public static readonly IReadOnlyList<LinkParameter> Dictionary = new[] { Dicke, Guete, Bewehrt, Bauteil, Teilelement, BauteilId, Bauteilnummer, MaterialId, Festigkeit };
 
     public static readonly LinkProject Project = new(ProjectId, 1761, 1, "Ulm");
 

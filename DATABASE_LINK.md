@@ -11,9 +11,11 @@ request it gained Replace for Other GUID parameters, and the Database panel now 
 project's number with a green dot (walked, works), and Replace also takes parameters that schedules or
 view filters use, after a second warning. In his model Revit would delete other elements with every
 parameter, so Replace now lists those elements, says where each one is and can show them in a 3D view of
-their own, and deletes them only after he confirms. Yehia tried it: "everything is good" (da37289,
-pushed). **Step 5 (the MH Database pane and the change check) is built, deployed and committed. Yehia
-walked its first item on 2026-11-23 ("Perfect"); the rest of the walk is next.**
+their own, and deletes them only after a confirmation. Yehia's answer: "everything is good" (da37289,
+pushed). In Yehia's model none of those elements is one a view can show, so "Show them in a new view"
+couldn't be tried. Step 5 (the MH Database pane and the change check) is done: built, committed (1721f93)
+and walked on 2026-11-23. Step 6 (Apply and "Not applied") is done: built, committed and walked on
+2026-11-23. **Step 7 is next; after it come steps 8 and 9.**
 
 The live link from the MH database into Revit, inside the "Parameter Tools" add-in (MH.RevitTools),
 in `Revit.Addin.2027` only. It only reads from the database. This file holds the plan, the status, and
@@ -131,15 +133,19 @@ On Yehia's PC for development (LocalDB, Windows sign-in, no password):
 - **`Revit.Addin.2027`**: the Database panel, the pane and the dialogs (WPF, in the mockup's look). It
   turns database rows into the same `PlanungsdatenbankParseResult` the Excel reader produces, and applies
   values through an ExternalEvent.
-- **Reused, not rewritten:** `ElementKey` (matching by Bauteil_ID), `PlanungsdatenbankLayout.IsSkipped`
-  (placeholders), `ParamMetaData.ConvertValue` (invariant parsing and unit conversion, already used for
-  the Excel's Einheit).
-- **One refactor.** Today the value-writing loop sits inside `SeedProjectElementsParameters.AddParametersToElements`,
-  which also adds parameters to families. The link must never do that, so the loop moves into its own
-  method that Excel and database both call. The Excel path behaves exactly as before.
-- **One change to that loop.** With the database, a parameter is found by its GUID. The Excel path
-  keeps finding parameters by name. It also reports what it skipped instead of skipping silently, which
-  is what "Not applied" needs.
+- **Reused, not rewritten:** `ElementKey` (matching by Bauteil_ID), `ParamMetaData.ConvertValue` (invariant
+  parsing and unit conversion, already used for the Excel's Einheit). The placeholder rule has a Revit-free
+  copy in the library (`Placeholders`), as the library can't see `PlanungsdatenbankLayout.IsSkipped`: change
+  both together.
+- **One refactor (step 6).** The value-writing loop sat inside `SeedProjectElementsParameters.AddParametersToElements`,
+  which also adds parameters to families. The link must never do that, so the loop is now in
+  `Helpers\ElementValueWriter`, and Excel and database both call it, each with its own rules. The Excel
+  path behaves exactly as before.
+- **The rules.** The Excel path finds parameters by name; the database by GUID (`ParamMetaData.SharedGuid`),
+  on the element itself only. The database's values take the shape the Excel reader produces
+  (`PlanungsdatenbankParseResult`, made by `DatabaseParseResult`). The pane's list and Apply ask the same
+  class how a value compares and what Revit gets (`RevitValues`), so what's listed is what's written. What's
+  skipped is collected while comparing, which is what "Not applied" needs.
 
 ## Steps
 
@@ -324,6 +330,8 @@ after Yehia has walked it.
   ([Modeller], [ET], -, TBT, empty) and the Bauteil_ID itself are never changes. Numbers are compared in
   Revit's units, converted from the database's unit as the Excel route converts them, so 0.3 m and 300 mm
   match. One change is one parameter of one object, however many elements carry its Bauteil_ID.
+  Since step 6, Bauteilnummer and Bauteilunternummer are never changes either: the Excel import leaves
+  them out too, as families carry Bauteilnummer as their own parameter.
 - What it shows:
   - The header: a dot and "Connected", "Not reachable", "Project not found", "Not set up" or "Not
     linked"; the database ("CADSQL · MH_Database · read-only"); "Checked 14:32 · every minute" or
@@ -336,8 +344,7 @@ after Yehia has walked it.
     "12 elements") or material, each value as "model value → database value" with who changed it and
     when, from Studio's history; "Show in model" selects the object's elements and zooms to them. The
     most recently changed come first. Up to 300 values are listed, then "… and N more".
-  - A note when linked elements lack some of the database's parameters ("Dicke isn't in this model.
-    Check parameters adds them…"), and when values don't fit their parameter.
+  - What can't go into the model, under "Not applied" (step 6).
   - Not linked: the two steps, "Link the model…" and "Check parameters…". No connection file: where it's
     expected. Not reachable: the red banner with Revit's reason and Try again; the values stay as last read.
   - The footer: "Look for changes" every 30 seconds, minute, 5 minutes, or only when asked: each person's
@@ -380,13 +387,47 @@ after Yehia has walked it.
   Revit stays responsive the whole time.
 
 ### 6. Apply and "Not applied"
-- Apply all, or apply per object, through an ExternalEvent, with one undo step each.
-- "Not applied" lists:
+- **Apply all** over the list, **Apply** on each card (an object or a material), and **Apply changes** on
+  the ribbon, which asks first and can show the list instead. Each is one undo step, named in Revit's Undo
+  list ("MH database: 17 changes", "MH database: BT-1101-01").
+- Apply writes exactly what the pane lists, into the elements it lists, and compares again. A value the
+  database has changed since the list was made is left out and listed anew; so is an element that got its
+  Bauteil_ID since. While the database isn't reachable the list stays, but Apply
+  waits, so nothing outdated goes in.
+- It never adds parameters or touches families and types, never writes placeholders, and never writes what
+  identifies an element (Bauteil_ID, Bauteilnummer, Bauteilunternummer), like the Excel import.
+- A banner says what went in ("3 changes applied to 16 elements"), and what didn't and why. Undoing it
+  takes the banner back and lists the changes again.
+- **Workshared models:** Apply borrows the elements from central first, all in one go. Those someone else
+  has, or that changed in central, are left out and named.
+- **Not applied** lists, with the reason and what to do:
+  - elements someone else has borrowed, or with newer changes in central
+  - parameters that are read-only there, or sit on the element's type
+  - values that don't fit their parameter: text in a number, a number written with a comma, or a
+    measurement whose unit Revit can't convert
+  - IDs that several objects (or materials) share in the database with different values: none of them goes
+    in, so Apply never goes back and forth between them
+  - parameters that aren't in the model ("Check parameters…")
+  - materials that share a name: only the first is used
   - placeholders ([Modeller], [ET], -, TBT)
-  - elements someone else has borrowed
-  - missing or read-only parameters
-- **Walk** (needs a test model with a few Bauteil_IDs from 1761): Apply all → the values change →
-  Ctrl+Z undoes it. A borrowed element shows under "Not applied".
+  - an object's Material-ID and Materialnummer: in the dictionary they're parameters of materials, so
+    elements don't carry them. (The Excel import writes Material-ID to elements by name; step 7 will show it.)
+- **Walk** (the linked test model with BT-1101-01 on one Generic Model):
+  1. On the BT-1101-01 card click Apply: its values appear in the element's Properties, a green banner says
+     how many, and the button's dot turns green.
+  2. Ctrl+Z: the values and the banner go, and the changes are listed again. The Undo list shows
+     "MH database: BT-1101-01".
+  3. Ribbon, Apply changes: it asks "Apply N changes from the database?". "Show them first" opens the pane;
+     "Apply them" applies.
+  4. Units: in Studio set BT-1101-01's Dicke from [Modeller] to 0.3. The pane shows "(empty) → 0.3 m". Apply:
+     Properties shows 0.30 m (or 300 mm), not 0.30 ft. Set it back to [Modeller] afterwards.
+  5. Under "Not applied": the [Modeller] values; and Material-ID and Materialnummer, if the dictionary has them
+     as parameters of materials (not checked again here). Type a value into a [Modeller] parameter, then Apply:
+     it stays.
+  6. Only with a workshared model and a second user: elements the other one has borrowed are listed under
+     "Not applied" and stay as they are.
+  7. The Excel import, as its writing loop moved: run Add Parameters to Families with Planungsdatenbank.xlsx on
+     a test model, as before. Values and counts are the same as they always were.
 
 ### 7. Excel and database give the same result (the acceptance)
 - A temporary **Compare with Excel** button. It loads Planungsdatenbank.xlsx and project 1761 from the
@@ -440,11 +481,13 @@ mockup (https://claude.ai/artifact/BUxmo897HJTFcEt43wpcen) stays as it was.
 - **The Database button's second line** is the pane's state in the mockup ("3 changes", "Up to date",
   "Link model"). Here a linked model keeps its project number there, and the dot on the icon shows the
   state instead: green up to date, blue with the number of changes, red not reachable, grey while
-  checking (Yehia, 2026-11-22: "sounds good"). The dot sits inside the 32 px icon, as Revit's icons
-  can't reach past their edge.
-- **The pane (step 5)** leaves out what later steps bring: Apply all, Apply per object and "Not applied"
-  (step 6), the "Apply changes automatically" switch (later, phase 3), and the signed-in line and "Not
-  signed in" (step 8). An unlinked model's header says "Not linked" rather than "Connected", as nothing
+  checking (this session's proposal of 2026-11-22; Yehia on 2026-11-23, after the walk: "the buttons
+  meanings are good and are reflected"). The dot sits inside the 32 px icon, as Revit's icons can't reach past their edge.
+- **The pane** leaves out what later steps bring: the "Apply changes automatically" switch (later, phase
+  3), and the signed-in line and "Not signed in" (step 8). "Apply" on a card applies the whole card, as in
+  the mockup. When values differ but none can go in now, the green card says "Nothing to apply now" instead
+  of "Up to date". The ribbon's Apply changes asks before it applies, as the list may not be in sight. An
+  unlinked model's header says "Not linked" rather than "Connected", as nothing
   is checked for it. The model section's line says who linked the model and when. Material changes are
   listed too, by Material-ID and name. A value shows as Revit shows it on the left and as the database
   holds it, with its unit, on the right ("300 mm → 0.3 m" would be a real change; equal values aren't
@@ -801,7 +844,8 @@ Still open:
     categories and worksets, so isolating can't leave it empty; a failed zoom no longer says the view
     didn't open. (Its "ActiveView switches only later" point was wrong: that's RequestViewChange.)
   - 285 tests pass. Deployed with Revit closed.
-  - Yehia tried it: "everything is good". Committed and pushed with this entry.
+  - Yehia's answer: "everything is good", without saying what the list or the new view showed. Committed
+    and pushed with this entry.
   - He also asked whether the pane's changes come from Studio's history and activity, and so are the same
     across the database: yes. The stamp and each value's who/when come from AuditLogs in MH_Database,
     which every PC reads. The add-in never writes to the database, so what Revit applies doesn't appear
@@ -815,9 +859,10 @@ Still open:
     library (`Checking`, `Changes`) under tests. The Revit side reads the model, compares one value at a
     time and draws the pane (`DatabaseLink\Pane`).
   - The pane was drawn off screen in seven states (changes, up to date, not reachable with the last pull,
-    not linked, no connection file, project not found, no model) and matches the mockup. The button's
-    icons were drawn with each dot on a light and a dark ribbon.
-  - A C# review found nothing critical; it confirmed that only Revit's main thread touches Revit. Fixed:
+    not linked, no connection file, project not found, no model) and looks like the mockup, which has no
+    picture of the last two. The button's icons were drawn with each dot on a light and a dark ribbon.
+  - A C# review, reading the code only, found nothing critical and no place where another thread touches
+    Revit. Fixed (the one high point and four of the five medium ones, plus some low ones):
     - after switching to another database, a comparison of the first one's values could stay on screen:
       data versions now never repeat;
     - a kept pull now names the project number it was read for, is used only for that project, and goes
@@ -827,11 +872,35 @@ Still open:
     - an external event Revit turns down is asked for again a second later;
     - the comparison remembers elements and converted values, so big models compare faster;
     - a parameter that sits on the element's type counts, and text is compared without stray spaces.
-  - Checked, not changed: a renumbered project moves the stamp, as Studio's history records project
-    changes (dev MH_Database has 56 history rows for projects), so the next check reads everything and
-    notices it.
+  - Not changed, the fifth medium point: between full reads the check doesn't look at the project's number
+    again, so it notices a renumbering only when that moves the stamp. In Yehia's walk on 2026-11-23 the
+    pane did notice one. Not changed either (low): a damaged settings file loses its other keys.
   - 356 tests pass. Deployed with Revit closed; not walked, not committed.
-- **2026-11-23, walk item 1:** Yehia linked the model, typed BT-1101-01 into an element and clicked
-  Database: the pane opened on the right and listed the changes ("Perfect"). He first wondered whether
-  "click Database" meant Studio; it's the ribbon's Database button, which opens the pane. Committed and
-  pushed with this entry. Items 2 to 5 of the walk come next.
+- **2026-11-23, walk item 1, so far:** Yehia linked the model, typed BT-1101-01 into an element, and the
+  Database button opened the pane on the right. "Click Database" had read like opening Studio; it's the
+  ribbon's Database button. Asked what the pane showed, Yehia answered "Perfect commit and push". That
+  doesn't say whether it listed the changes, so item 1 stays open. Committed and pushed (1721f93).
+  - Corrected the same day: 1721f93's version of this file said that the pane had listed the changes, that
+    Yehia had tried the new view, and that Yehia had agreed to the dot's states. None of that was said.
+- **2026-11-23, step 5 walked:** Yehia walked around the pane. In Yehia's words: "the buttons meanings are
+  good and are reflected". Yehia changed a project's number and name in Studio: the pane turned red, said the
+  project had changed, and Change project… put it right. None of the elements Replace would delete is one a
+  view can show, so "Show them in a new view" stayed greyed out and couldn't be tried.
+- **2026-11-23, step 6 built:** Apply and "Not applied", as described under step 6.
+  - The brief fixes that the existing writers are reused, so the Excel import's value-writing loop moved to
+    `Helpers\ElementValueWriter` and the link uses the same one.
+  - What to write, what to leave out and every word about it sit in the library (`ChangeFinder`,
+    `NotApplied`, `ApplyPlan`, `ApplyResult`, `ApplyTexts`) under tests. The Revit side (`DatabaseLink\Apply`)
+    borrows, writes and counts.
+  - Found on the way: where several objects share a Bauteil_ID and disagree on a value, the link now applies
+    neither.
+  - The pane was drawn off screen with Apply, after an Apply, with several kinds of "Not applied", while the
+    database isn't reachable, and after a refusal.
+  - A C# review, reading the code only, found nothing critical or high and no difference in the Excel route.
+    Fixed: Apply now writes only into the elements the list named (it went by Bauteil_ID before); the plan
+    itself refuses placeholders, identity parameters and parameters of the wrong kind; the ribbon says what
+    happened when there was nothing left to apply. Left as it is (low): elements borrowed for an Apply that
+    Revit then refuses stay borrowed until the next synchronization.
+  - 359 tests pass. The 26 tests that need LocalDB weren't run: this session couldn't reach it. No SQL changed.
+- **2026-11-23, step 6 walked:** in Yehia's words, "I tested all yours steps and its working smoothly".
+  Committed and pushed with this entry.

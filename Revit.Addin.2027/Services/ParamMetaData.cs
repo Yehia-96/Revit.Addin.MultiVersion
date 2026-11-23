@@ -45,6 +45,11 @@ namespace Revit.Addin._2027.Services
         // could not treat them as lengths.
         public string Unit { get; set; }
 
+        // The parameter's GUID in the MH database's master shared parameter file. Only the
+        // database link sets it, and then finds the parameter by it, never by name. Null for
+        // both Excel formats, which keep finding parameters by name.
+        public Guid? SharedGuid { get; set; }
+
         public ParamMetaData(string name, string group, string type)
             {
                 Name = name;
@@ -291,7 +296,7 @@ namespace Revit.Addin._2027.Services
             }
 
         /// <summary>Revit unit for a workbook unit such as "[m]", or null when it is not one we convert from.</summary>
-        private static ForgeTypeId SourceUnit(string unit)
+        internal static ForgeTypeId SourceUnit(string unit)
             {
                 switch (Normalise(unit))
                 {

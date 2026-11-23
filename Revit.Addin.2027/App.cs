@@ -51,8 +51,8 @@ namespace Revit.Addin._2027
             // Laid out like the mockup: the big Database button, then three rows: Apply changes, Check
             // parameters, and the signed-in person. Database shows and hides the MH Database pane; it shows
             // the active model's project number, and a dot with what the pane's check found. Apply changes
-            // (step 6) and Sign in (step 8) stay greyed out until they're built. Test connection sits in the
-            // panel's slide-out, under the panel's arrow.
+            // applies what the pane lists. Sign in (step 8) stays greyed out until it's built. Test connection
+            // sits in the panel's slide-out, under the panel's arrow.
             PushButton database = AddDatabasePanel(panelDatabase, assemblyPath, assemblyName);
             _databaseButton = new DatabaseButton(database);
             _databaseButton.Hook(application);
@@ -187,10 +187,11 @@ namespace Revit.Addin._2027
                 LargeImage = LoadIcon(assemblyName, 32, "DatabaseLinkIcon.png"),
             });
 
-            var applyChanges = new PushButtonData("ApplyDatabaseChanges", "Apply changes", assemblyPath, Commands + "NotYetCommand")
+            var applyChanges = new PushButtonData("ApplyDatabaseChanges", "Apply changes", assemblyPath, Commands + "ApplyChangesCommand")
             {
-                ToolTip = "Applies the MH database's changes to this model. Comes with step 6 of the database link.",
-                AvailabilityClassName = Commands + "NotYetAvailable",
+                ToolTip = "Applies the MH database's changes to this model, after asking, in one undo step. The MH "
+                          + "Database pane lists them and can apply them one by one.",
+                AvailabilityClassName = Commands + "AvailableInProject",
                 Image = LoadIcon(assemblyName, 16, "ApplyChangesIcon.png"),
             };
             var checkParameters = new PushButtonData("CheckDatabaseParameters", "Check parameters", assemblyPath, Commands + "CheckParametersCommand")
