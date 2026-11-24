@@ -40,7 +40,7 @@ namespace MH.RevitTools.Database.Connection
                 // Microsoft.Data.SqlClient, its native part), which is what the test is for, but also
                 // odd cases such as an empty answer. Report them all; don't throw.
                 return ConnectionTestResult.Failed(settings, ConnectionProblems.DescribeDriverFailure(ex),
-                    ExceptionText.Describe(ex, null), watch.Elapsed);
+                    ExceptionText.Describe(ex, null), watch.Elapsed, false);
             }
         }
 
@@ -74,7 +74,8 @@ namespace MH.RevitTools.Database.Connection
                 return ConnectionTestResult.Failed(settings,
                     ConnectionProblems.DescribeSqlError(ex.Number, ex.Message, settings, timeoutSeconds),
                     ExceptionText.Describe(ex, "SQL error " + ex.Number + ", state " + ex.State + ", class " + ex.Class),
-                    watch.Elapsed);
+                    watch.Elapsed,
+                    ConnectionProblems.IsLoginRefused(ex.Number, ex.Message, settings));
             }
         }
 

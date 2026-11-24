@@ -177,7 +177,7 @@ namespace MH.RevitTools.Database.Checking
             switch (state.Value)
             {
                 case CheckState.NotSetUp:
-                    return "This computer has no connection file, so there's nothing to apply.";
+                    return "The connection file can't be used, so there's nothing to apply. The MH Database pane says why.";
                 case CheckState.NotSignedIn:
                     return "Nobody is signed in to the MH database. Sign in first (Sign in… in the Database panel); the MH Database pane then checks for changes.";
                 case CheckState.NotReachable:

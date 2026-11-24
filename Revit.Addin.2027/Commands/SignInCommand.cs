@@ -3,6 +3,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using MH.RevitTools.Database.Connection;
 using MH.RevitTools.Database.SigningIn;
+using Revit.Addin._2027.DatabaseLink;
 using Revit.Addin._2027.DatabaseLink.SignIn;
 using System;
 
@@ -25,7 +26,7 @@ namespace Revit.Addin._2027.Commands
         {
             try
             {
-                ConnectionFileResult file = ConnectionFile.Read(ConnectionFile.DefaultPath);
+                ConnectionFileResult file = ConnectionFiles.Read();
                 if (!file.IsLoaded)
                 {
                     var dialog = new TaskDialog(Title)
@@ -39,10 +40,12 @@ namespace Revit.Addin._2027.Commands
                     return Result.Cancelled;
                 }
 
-                SignedInPerson person = SignInGate.Session.PersonFor(file.Settings);
-                if (person == null)
-                    return SignInGate.Ask(application, file.Settings) ? Result.Succeeded : Result.Cancelled;
-                return OfferAnother(application, file.Settings, person);
+                ConnectionSettings settings = SignInGate.EnsurePassword(application, file);
+                if (settings == null)
+                    return Result.Cancelled;
+
+                SignedInPerson person = SignInGate.Session.PersonFor(settings);
+                return person == null ? Ask(application, settings) : OfferAnother(application, settings, person);
             }
             catch (Exception ex)
             {
@@ -50,6 +53,9 @@ namespace Revit.Addin._2027.Commands
                 return Result.Failed;
             }
         }
+
+        private static Result Ask(UIApplication application, ConnectionSettings settings) =>
+            SignInGate.Ask(application, settings) == null ? Result.Cancelled : Result.Succeeded;
 
         private static Result OfferAnother(UIApplication application, ConnectionSettings settings, SignedInPerson person)
         {
@@ -65,7 +71,7 @@ namespace Revit.Addin._2027.Commands
             switch (dialog.Show())
             {
                 case TaskDialogResult.CommandLink1:
-                    return SignInGate.Ask(application, settings) ? Result.Succeeded : Result.Cancelled;
+                    return Ask(application, settings);
                 case TaskDialogResult.CommandLink2:
                     SignInGate.Session.SignOut();
                     return Result.Succeeded;

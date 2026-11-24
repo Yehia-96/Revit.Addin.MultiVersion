@@ -40,17 +40,18 @@ namespace Revit.Addin._2027.Commands
                     return Result.Cancelled;
                 }
 
-                ConnectionFileResult file = ConnectionFile.Read(ConnectionFile.DefaultPath);
+                ConnectionFileResult file = ConnectionFiles.Read();
                 if (!file.IsLoaded)
                 {
                     Show("Can't use the connection file", file.Problem, TaskDialogIcon.TaskDialogIconWarning);
                     return Result.Cancelled;
                 }
 
-                if (!SignInGate.Ensure(application, file.Settings))
+                ConnectionSettings settings = SignInGate.Ensure(application, file);
+                if (settings == null)
                     return Result.Cancelled;
 
-                LinkProject chosen = AskForProject(application, document, new SqlLinkDatabase(file.Settings));
+                LinkProject chosen = AskForProject(application, document, ConnectionFiles.Open(settings));
                 if (chosen == null)
                     return Result.Cancelled;
 

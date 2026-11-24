@@ -3,19 +3,27 @@ namespace MH.RevitTools.Database.Connection
     /// <summary>The outcome of reading the connection file: the settings, or what's wrong in plain words.</summary>
     public sealed class ConnectionFileResult
     {
-        private ConnectionFileResult(string path, ConnectionSettings settings, string masterParameterFile, string problem)
+        private ConnectionFileResult(
+            string source, ConnectionSettings settings, string masterParameterFile, string problem, bool isSavedPasswordRefused)
         {
-            Path = path;
+            Source = source;
             Settings = settings;
             MasterParameterFile = masterParameterFile;
             Problem = problem;
+            IsSavedPasswordRefused = isSavedPasswordRefused;
         }
 
-        /// <summary>The file that was read.</summary>
-        public string Path { get; }
+        /// <summary>Which file was read: its path, or <see cref="ConnectionFile.BuiltIn"/>.</summary>
+        public string Source { get; }
 
-        /// <summary>The settings; null when <see cref="Problem"/> says why not.</summary>
+        /// <summary>
+        /// The settings; null when <see cref="Problem"/> says why not. They may still need the password
+        /// (<see cref="ConnectionSettings.NeedsPassword"/>).
+        /// </summary>
         public ConnectionSettings Settings { get; }
+
+        /// <summary>The server refused the password kept on this PC, so <see cref="Settings"/> need a new one.</summary>
+        public bool IsSavedPasswordRefused { get; }
 
         /// <summary>
         /// Where Studio writes the master shared parameter file for this database, with environment
@@ -23,15 +31,21 @@ namespace MH.RevitTools.Database.Connection
         /// </summary>
         public string MasterParameterFile { get; }
 
-        /// <summary>What's wrong, in plain words and naming the file; null when the file was read.</summary>
+        /// <summary>What's wrong, in plain words and saying which file; null when it was read.</summary>
         public string Problem { get; }
 
         public bool IsLoaded => Settings != null;
 
-        internal static ConnectionFileResult Loaded(string path, ConnectionSettings settings, string masterParameterFile) =>
-            new ConnectionFileResult(path, settings, masterParameterFile, null);
+        internal static ConnectionFileResult Loaded(string source, ConnectionSettings settings, string masterParameterFile) =>
+            new ConnectionFileResult(source, settings, masterParameterFile, null, false);
 
-        internal static ConnectionFileResult Failed(string path, string problem) =>
-            new ConnectionFileResult(path, null, null, problem);
+        internal static ConnectionFileResult Failed(string source, string problem) =>
+            new ConnectionFileResult(source, null, null, problem, false);
+
+        internal ConnectionFileResult WithPassword(string password) =>
+            new ConnectionFileResult(Source, Settings.WithPassword(password), MasterParameterFile, null, false);
+
+        internal ConnectionFileResult WithRefusedPassword() =>
+            new ConnectionFileResult(Source, Settings, MasterParameterFile, null, true);
     }
 }

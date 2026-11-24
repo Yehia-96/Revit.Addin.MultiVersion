@@ -69,6 +69,20 @@ public sealed class ConnectionStringFactoryTests
     }
 
     [Fact]
+    public void AnEnteredPassword_IsPassedOn()
+    {
+        var builder = Build(ConnectionSettings.WithoutPassword("s", "d", "revit_reader", true, false).WithPassword(FakePassword));
+
+        Assert.Equal("revit_reader", builder.UserID);
+        Assert.Equal(FakePassword, builder.Password);
+    }
+
+    // Nobody gets to connect with an empty password by accident.
+    [Fact]
+    public void WithoutThePassword_ThereIsNoConnection() =>
+        Assert.Throws<InvalidOperationException>(() => Build(ConnectionSettings.WithoutPassword("s", "d", "revit_reader", true, false)));
+
+    [Fact]
     public void Timeout_BecomesTheConnectTimeout()
     {
         var builder = Build(new ConnectionSettings("s", "d", true, null, null, true, false), timeoutSeconds: 7);

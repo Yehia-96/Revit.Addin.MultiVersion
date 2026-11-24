@@ -5,6 +5,7 @@ using MH.RevitTools.Database.Checking;
 using MH.RevitTools.Database.Connection;
 using MH.RevitTools.Database.Link;
 using MH.RevitTools.Database.Linking;
+using MH.RevitTools.Database.SigningIn;
 
 namespace MH.RevitTools.Database.Tests.Checking;
 
@@ -17,6 +18,9 @@ public sealed class LinkCheckerTests : IDisposable
     private readonly string _folder = Path.Combine(Path.GetTempPath(), "MH.RevitTools.Database.Tests", Guid.NewGuid().ToString("N"));
     private DateTime _now = new(2026, 11, 22, 13, 32, 0, DateTimeKind.Utc);
     private ConnectionFileResult _file = ConnectionFileResult.Loaded("database.json", Dev, null);
+    private static readonly ConnectionSettings OfficeWithoutPassword =
+        ConnectionSettings.WithoutPassword("CADSQL.mh-frlg.local,1433", "MH_Database", "reader", true, true);
+
     private Func<ConnectionSettings, bool> _isSignedIn = _ => true;
 
     public void Dispose()
@@ -25,7 +29,8 @@ public sealed class LinkCheckerTests : IDisposable
             Directory.Delete(_folder, recursive: true);
     }
 
-    private LinkChecker Checker(ILinkDatabase database) => new(() => _file, _ => database, settings => _isSignedIn(settings), _folder, () => _now);
+    private LinkChecker Checker(ILinkDatabase database) =>
+        new(() => _file, _ => database, settings => _isSignedIn(settings), _folder, () => _now);
 
     private static FakeLinkDatabase Database(LinkProjectData data) => new(new[] { UlmData.Project }, new[] { data });
 
@@ -98,15 +103,15 @@ public sealed class LinkCheckerTests : IDisposable
     }
 
     [Fact]
-    public void WithoutAConnectionFile_ItsNotSetUp()
+    public void WithoutAConnectionFileItCanUse_ItsNotSetUp()
     {
-        _file = ConnectionFileResult.Failed("C:\\ProgramData\\MH\\RevitTools\\database.json", "No connection file at C:\\ProgramData\\MH\\RevitTools\\database.json.");
+        _file = ConnectionFileResult.Failed("C:\\ProgramData\\MH\\RevitTools\\database.json", "The connection file C:\\ProgramData\\MH\\RevitTools\\database.json is empty.");
         var database = new CountingDatabase(Database(UlmData.Bodenplatte(7)));
 
         CheckOutcome outcome = Checker(database).Check(UlmLink);
 
         Assert.Equal(CheckState.NotSetUp, outcome.State);
-        Assert.StartsWith("No connection file at", outcome.Problem);
+        Assert.Equal(_file.Problem, outcome.Problem);
         Assert.Null(outcome.Data);
         Assert.Equal(0, database.DataReads + database.StampReads);
     }
@@ -199,7 +204,7 @@ public sealed class LinkCheckerTests : IDisposable
     [Fact]
     public void SigningOut_WithoutAConnectionFile_ChangesNothing()
     {
-        _file = ConnectionFileResult.Failed("database.json", "No connection file at database.json.");
+        _file = ConnectionFileResult.Failed("database.json", "The connection file database.json is empty.");
         CheckOutcome notSetUp = Checker(Database(UlmData.Bodenplatte(7))).Check(UlmLink);
 
         Assert.Same(notSetUp, notSetUp.SignedOut(_now));
@@ -220,10 +225,103 @@ public sealed class LinkCheckerTests : IDisposable
     }
 
     [Fact]
+    public void WithoutTheDatabasePassword_NothingIsAsked_WhoeverIsSignedIn()
+    {
+        _file = ConnectionFileResult.Loaded("database.json", OfficeWithoutPassword, null);
+        var database = new CountingDatabase(Database(UlmData.Bodenplatte(7)));
+
+        CheckOutcome outcome = Checker(database).Check(UlmLink);
+
+        Assert.Equal(CheckState.NotSignedIn, outcome.State);
+        Assert.Equal(PasswordTexts.CardMissing, outcome.Problem);
+        Assert.Equal("CADSQL · MH_Database", outcome.Where);
+        Assert.Equal(0, database.Calls);
+    }
+
+    [Fact]
+    public void WithTheDatabasePassword_OnlyTheSignInIsMissing()
+    {
+        _file = ConnectionFileResult.Loaded("database.json", OfficeWithoutPassword.WithPassword("fake-password-for-tests"), null);
+        _isSignedIn = _ => false;
+
+        CheckOutcome outcome = Checker(Database(UlmData.Bodenplatte(7))).Check(UlmLink);
+
+        Assert.Equal(CheckState.NotSignedIn, outcome.State);
+        Assert.Null(outcome.Problem);
+    }
+
+    // Trying it again doesn't make it right, and every PC would fill the server's log with it.
+    [Fact]
+    public void ARefusedDatabasePassword_IsNotTriedAgain_AndAskedForInstead()
+    {
+        _file = ConnectionFileResult.Loaded("database.json", OfficeWithoutPassword.WithPassword("fake-password-for-tests"), null);
+        var database = new CountingDatabase(Database(UlmData.Bodenplatte(7))) { RefusesLogin = true };
+        LinkChecker checker = Checker(database);
+
+        CheckOutcome refused = checker.Check(UlmLink);
+        _file = ConnectionFileResult.Loaded("database.json", OfficeWithoutPassword, null).WithRefusedPassword();
+        int asked = database.Calls;
+        CheckOutcome later = checker.Check(UlmLink);
+
+        Assert.Equal(CheckState.NotSignedIn, refused.State);
+        Assert.Equal(PasswordTexts.CardRefused, refused.Problem);
+        Assert.Equal(1, asked);
+        Assert.Equal(CheckState.NotSignedIn, later.State);
+        Assert.Equal(PasswordTexts.CardRefused, later.Problem);
+        Assert.Equal(asked, database.Calls);
+    }
+
+    [Fact]
+    public void ARefusedDatabasePassword_LeavesTheValuesOnShow()
+    {
+        _file = ConnectionFileResult.Loaded("database.json", OfficeWithoutPassword.WithPassword("fake-password-for-tests"), null);
+        var database = new CountingDatabase(Database(UlmData.Bodenplatte(7)));
+        LinkChecker checker = Checker(database);
+        CheckOutcome before = checker.Check(UlmLink);
+
+        database.RefusesLogin = true;
+        CheckOutcome refused = checker.Check(UlmLink);
+
+        Assert.Equal(CheckState.NotSignedIn, refused.State);
+        Assert.Equal(before.DataVersion, refused.DataVersion);
+        Assert.Same(before.Data, refused.Data);
+    }
+
+    // Nobody can enter another one for a file that holds its own.
+    [Fact]
+    public void ARefusedPasswordOfTheFiles_IsNotReachable()
+    {
+        _file = ConnectionFileResult.Loaded("database.json", Office, null);
+        var database = new CountingDatabase(Database(UlmData.Bodenplatte(7))) { RefusesLogin = true };
+
+        CheckOutcome outcome = Checker(database).Check(UlmLink);
+
+        Assert.Equal(CheckState.NotReachable, outcome.State);
+    }
+
+    [Fact]
+    public void AnUnreachableDatabase_IsNoReasonToAskForThePassword()
+    {
+        _file = ConnectionFileResult.Loaded("database.json", OfficeWithoutPassword.WithPassword("fake-password-for-tests"), null);
+        var database = new CountingDatabase(Database(UlmData.Bodenplatte(7))) { Fails = true };
+
+        Assert.Equal(CheckState.NotReachable, Checker(database).Check(UlmLink).State);
+    }
+
+    [Fact]
+    public void SigningOut_KeepsWhatTheSignInIsWaitingFor()
+    {
+        _file = ConnectionFileResult.Loaded("database.json", OfficeWithoutPassword, null).WithRefusedPassword();
+        CheckOutcome refused = Checker(Database(UlmData.Bodenplatte(7))).Check(UlmLink);
+
+        Assert.Same(refused, refused.SignedOut(_now.AddSeconds(1)));
+    }
+
+    [Fact]
     public void WithoutAConnectionFile_NobodysSignInMatters()
     {
         _isSignedIn = _ => throw new InvalidOperationException("There's no database to be signed in to.");
-        _file = ConnectionFileResult.Failed("database.json", "No connection file at database.json.");
+        _file = ConnectionFileResult.Failed("database.json", "The connection file database.json is empty.");
 
         Assert.Equal(CheckState.NotSetUp, Checker(Database(UlmData.Bodenplatte(7))).Check(UlmLink).State);
     }
@@ -391,6 +489,10 @@ public sealed class LinkCheckerTests : IDisposable
 
         public bool Fails { get; set; }
 
+        public bool RefusesLogin { get; set; }
+
+        public int Calls { get; private set; }
+
         public int StampReads { get; private set; }
 
         public int DataReads { get; private set; }
@@ -426,6 +528,9 @@ public sealed class LinkCheckerTests : IDisposable
 
         private void FailIfAsked()
         {
+            Calls++;
+            if (RefusesLogin)
+                throw new LinkDatabaseException("The server refused the login.", new InvalidOperationException(), true);
             if (Fails)
                 throw new LinkDatabaseException("The server doesn't answer.");
         }

@@ -49,14 +49,15 @@ namespace Revit.Addin._2027.Commands
                     return Result.Cancelled;
                 }
 
-                ConnectionFileResult file = ConnectionFile.Read(ConnectionFile.DefaultPath);
+                ConnectionFileResult file = ConnectionFiles.Read();
                 if (!file.IsLoaded)
                 {
                     Show("Can't use the connection file", file.Problem, TaskDialogIcon.TaskDialogIconWarning);
                     return Result.Cancelled;
                 }
 
-                if (!SignInGate.Ensure(application, file.Settings))
+                ConnectionSettings settings = SignInGate.Ensure(application, file);
+                if (settings == null)
                     return Result.Cancelled;
 
                 MasterFileCopies.RemoveOld(CopyFolder, DateTime.UtcNow, OldCopy);
@@ -82,7 +83,7 @@ namespace Revit.Addin._2027.Commands
                     AskAboutUses,
                     category => CategoryLabel(document, category));
                 var window = new CheckParametersWindow(
-                    new SqlLinkDatabase(file.Settings), file.MasterParameterFile, localCopy, ModelParameterScan.Read(document), actions);
+                    ConnectionFiles.Open(settings), file.MasterParameterFile, localCopy, ModelParameterScan.Read(document), actions);
                 new WindowInteropHelper(window).Owner = application.MainWindowHandle;
                 window.ShowDialog();
 

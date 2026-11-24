@@ -26,6 +26,8 @@ namespace MH.RevitTools.Database.Connection
                 throw new ArgumentNullException(nameof(settings));
             if (timeoutSeconds < 1)
                 throw new ArgumentOutOfRangeException(nameof(timeoutSeconds), timeoutSeconds, "The timeout must be at least one second.");
+            if (settings.NeedsPassword)
+                throw new InvalidOperationException("The database password hasn't been entered on this computer yet.");
 
             var builder = new SqlConnectionStringBuilder
             {

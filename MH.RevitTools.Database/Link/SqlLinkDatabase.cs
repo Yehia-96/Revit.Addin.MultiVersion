@@ -116,7 +116,8 @@ namespace MH.RevitTools.Database.Link
             catch (SqlException ex)
             {
                 throw new LinkDatabaseException(
-                    ConnectionProblems.DescribeSqlError(ex.Number, ex.Message, _settings, TimeoutSeconds), ex);
+                    ConnectionProblems.DescribeSqlError(ex.Number, ex.Message, _settings, TimeoutSeconds), ex,
+                    ConnectionProblems.IsLoginRefused(ex.Number, ex.Message, _settings));
             }
             catch (InvalidCastException ex)
             {

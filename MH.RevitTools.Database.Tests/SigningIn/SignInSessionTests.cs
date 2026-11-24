@@ -6,6 +6,37 @@ namespace MH.RevitTools.Database.Tests.SigningIn;
 
 public sealed class SignInSessionTests
 {
+    private static readonly ConnectionSettings WithoutPassword =
+        ConnectionSettings.WithoutPassword("CADSQL.mh-frlg.local,1433", "MH_Database", "revit_reader", true, true);
+
+    // After the server refused the password, a new one means signing in anew; a sign-out that arrives late can't undo it.
+    [Fact]
+    public void ItHoldsForTheDatabasePasswordItWasMadeWith()
+    {
+        ConnectionSettings older = WithoutPassword.WithPassword("olderFakePassword"), newer = WithoutPassword.WithPassword("newerFakePassword");
+        var session = new SignInSession();
+        session.SignIn(new SignedInPerson("Anna Wagner", "Editor", older));
+
+        Assert.NotNull(session.PersonFor(older));
+        Assert.NotNull(session.PersonFor(WithoutPassword.WithPassword("olderFakePassword")));
+        Assert.Null(session.PersonFor(newer));
+        Assert.Null(session.PersonFor(WithoutPassword));
+
+        session.SignIn(new SignedInPerson("Anna Wagner", "Editor", newer));
+        Assert.NotNull(session.PersonFor(newer));
+        Assert.Null(session.PersonFor(older));
+    }
+
+    [Fact]
+    public void WhoeverSignedInWithWindows_NeedsNoPassword()
+    {
+        var dev = new ConnectionSettings("(localdb)\\MSSQLLocalDB", "MH_Database", true, null, null, false, false);
+        var session = new SignInSession();
+        session.SignIn(new SignedInPerson("Anna Wagner", "Editor", dev));
+
+        Assert.NotNull(session.PersonFor(new ConnectionSettings("(localdb)\\MSSQLLocalDB", "MH_Database", true, null, null, false, false)));
+    }
+
     private static readonly ConnectionSettings Office = new("CADSQL.mh-frlg.local,1433", "MH_Database", false, "reader", "fake-password-for-tests", true, true);
     private static readonly ConnectionSettings Dev = new("(localdb)\\MSSQLLocalDB", "MH_Database", true, null, null, false, false);
 

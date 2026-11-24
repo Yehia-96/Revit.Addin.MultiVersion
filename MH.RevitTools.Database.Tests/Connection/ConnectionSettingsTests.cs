@@ -37,6 +37,75 @@ public sealed class ConnectionSettingsTests
         Assert.Null(settings.Password);
     }
 
+    [Fact]
+    public void WithoutPassword_NeedsOne()
+    {
+        ConnectionSettings settings = ConnectionSettings.WithoutPassword(" sql.example.local ", " MH_Database ", " revit_reader ", true, true);
+
+        Assert.True(settings.NeedsPassword);
+        Assert.False(settings.HasEnteredPassword);
+        Assert.Null(settings.Password);
+        Assert.Equal(("sql.example.local", "MH_Database", "revit_reader"), (settings.Server, settings.Database, settings.Login));
+        Assert.Equal((false, true, true), (settings.WindowsSignIn, settings.Encrypt, settings.TrustServerCertificate));
+    }
+
+    [Fact]
+    public void WithPassword_IsTheSameConnection_AndKnowsItWasEntered()
+    {
+        ConnectionSettings without = ConnectionSettings.WithoutPassword("sql.example.local", "MH_Database", "revit_reader", true, false);
+
+        ConnectionSettings settings = without.WithPassword(FakePassword);
+
+        Assert.Equal(FakePassword, settings.Password);
+        Assert.False(settings.NeedsPassword);
+        Assert.True(settings.HasEnteredPassword);
+        Assert.Equal((without.Server, without.Database, without.Login), (settings.Server, settings.Database, settings.Login));
+        Assert.Equal((without.Encrypt, without.TrustServerCertificate), (settings.Encrypt, settings.TrustServerCertificate));
+        Assert.True(without.NeedsPassword);
+        Assert.DoesNotContain(FakePassword, settings.ToString());
+    }
+
+    [Fact]
+    public void AnotherPassword_TakesTheEnteredOnesPlace()
+    {
+        ConnectionSettings settings = ConnectionSettings.WithoutPassword("s", "d", "l", true, false).WithPassword("first").WithPassword("second");
+
+        Assert.Equal("second", settings.Password);
+        Assert.True(settings.HasEnteredPassword);
+    }
+
+    [Fact]
+    public void APasswordFromTheFile_WasNotEntered()
+    {
+        var settings = new ConnectionSettings("s", "d", false, "revit_reader", FakePassword, true, false);
+
+        Assert.False(settings.NeedsPassword);
+        Assert.False(settings.HasEnteredPassword);
+    }
+
+    [Fact]
+    public void WindowsSignIn_NeedsAndTakesNoPassword()
+    {
+        var settings = new ConnectionSettings("s", "d", true, null, null, true, false);
+
+        Assert.False(settings.NeedsPassword);
+        Assert.False(settings.HasEnteredPassword);
+        Assert.Throws<InvalidOperationException>(() => settings.WithPassword(FakePassword));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    public void WithPassword_RejectsNone(string password) =>
+        Assert.Throws<ArgumentException>(() => ConnectionSettings.WithoutPassword("s", "d", "l", true, false).WithPassword(password));
+
+    [Theory]
+    [InlineData(" ", "d", "l")]
+    [InlineData("s", null, "l")]
+    [InlineData("s", "d", "")]
+    public void WithoutPassword_RejectsIncompleteSettings(string server, string database, string login) =>
+        Assert.Throws<ArgumentException>(() => ConnectionSettings.WithoutPassword(server, database, login, true, false));
+
     [Theory]
     [InlineData(null, "d", true, null, null)]
     [InlineData(" ", "d", true, null, null)]

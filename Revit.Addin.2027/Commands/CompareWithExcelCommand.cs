@@ -42,11 +42,12 @@ namespace Revit.Addin._2027.Commands
                 ModelLink link = ProjectLinkStorage.Read(document);
                 if (link == null)
                     return Tell("Link the model first", "The comparison uses the project the model is linked to. Link it in the MH Database pane.");
-                ConnectionFileResult file = ConnectionFile.Read(ConnectionFile.DefaultPath);
+                ConnectionFileResult file = ConnectionFiles.Read();
                 if (!file.IsLoaded)
                     return Tell("Can't use the connection file", file.Problem);
 
-                if (!SignInGate.Ensure(application, file.Settings))
+                ConnectionSettings settings = SignInGate.Ensure(application, file);
+                if (settings == null)
                     return Result.Cancelled;
 
                 string path = AskForWorkbook();
@@ -58,7 +59,7 @@ namespace Revit.Addin._2027.Commands
                 LoadComparison comparison;
                 try
                 {
-                    comparison = Compare(path, new LoadedValues(document), file.Settings, link);
+                    comparison = Compare(path, new LoadedValues(document), settings, link);
                 }
                 catch (LinkDatabaseException ex)
                 {
@@ -99,7 +100,7 @@ namespace Revit.Addin._2027.Commands
         // The project the model is linked to, if the saved id still means it.
         private static LinkProjectData ReadProject(ConnectionSettings settings, ModelLink link)
         {
-            var database = new SqlLinkDatabase(settings);
+            ILinkDatabase database = ConnectionFiles.Open(settings);
             if (link.Check(database.GetProjects()).Status != ModelLinkStatus.Matches)
                 throw new LinkDatabaseException("This database doesn't have the project " + link.Describe()
                     + " under the model's id any more. The MH Database pane says more.");

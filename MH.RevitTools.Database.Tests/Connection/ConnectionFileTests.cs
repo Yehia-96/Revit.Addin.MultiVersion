@@ -50,7 +50,7 @@ public sealed class ConnectionFileTests : IDisposable
 
         Assert.True(result.IsLoaded);
         Assert.Null(result.Problem);
-        Assert.Equal(path, result.Path);
+        Assert.Equal(path, result.Source);
         ConnectionSettings settings = result.Settings;
         Assert.Equal("sql.example.local,1433", settings.Server);
         Assert.Equal("MH_Database", settings.Database);
@@ -208,7 +208,6 @@ public sealed class ConnectionFileTests : IDisposable
     [InlineData("""{ "server": "s", "windowsSignIn": true }""", "\"database\"")]
     [InlineData("""{ "server": "s", "database": "d" }""", "\"login\"")]
     [InlineData("""{ "server": "s", "database": "d", "windowsSignIn": false, "password": "x" }""", "\"login\"")]
-    [InlineData("""{ "server": "s", "database": "d", "login": "revit_reader" }""", "\"password\"")]
     public void Read_MissingKey_NamesTheKey(string json, string expectedKey)
     {
         string path = WriteFile(json);
@@ -217,6 +216,23 @@ public sealed class ConnectionFileTests : IDisposable
 
         Assert.False(result.IsLoaded);
         Assert.Contains(expectedKey, result.Problem);
+    }
+
+    // As it ships with the add-in: Revit asks for the password.
+    [Theory]
+    [InlineData("""{ "server": "s", "database": "d", "login": "revit_reader" }""")]
+    [InlineData("""{ "server": "s", "database": "d", "login": "revit_reader", "password": "" }""")]
+    [InlineData("""{ "server": "s", "database": "d", "login": "revit_reader", "password": null }""")]
+    public void Read_LoginWithoutAPassword_NeedsOne(string json)
+    {
+        ConnectionFileResult result = ConnectionFile.Read(WriteFile(json));
+
+        Assert.True(result.IsLoaded);
+        Assert.Null(result.Problem);
+        Assert.True(result.Settings.NeedsPassword);
+        Assert.Equal("revit_reader", result.Settings.Login);
+        Assert.True(result.Settings.Encrypt);
+        Assert.False(result.IsSavedPasswordRefused);
     }
 
     [Fact]

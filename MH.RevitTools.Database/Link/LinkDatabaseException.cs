@@ -17,5 +17,14 @@ namespace MH.RevitTools.Database.Link
             : base(message, innerException)
         {
         }
+
+        public LinkDatabaseException(string message, Exception innerException, bool isLoginRefused)
+            : base(message, innerException)
+        {
+            IsLoginRefused = isLoginRefused;
+        }
+
+        /// <summary>The server answered, but doesn't take the connection's login with this password.</summary>
+        public bool IsLoginRefused { get; }
     }
 }

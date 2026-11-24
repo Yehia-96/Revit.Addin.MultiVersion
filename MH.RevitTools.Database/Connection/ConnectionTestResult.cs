@@ -18,7 +18,8 @@ namespace MH.RevitTools.Database.Connection
             string serverVersion,
             TimeSpan elapsed,
             string problem,
-            string details)
+            string details,
+            bool isLoginRefused)
         {
             Succeeded = succeeded;
             Server = server;
@@ -28,6 +29,7 @@ namespace MH.RevitTools.Database.Connection
             Elapsed = elapsed;
             Problem = problem;
             Details = details;
+            IsLoginRefused = isLoginRefused;
         }
 
         public bool Succeeded { get; }
@@ -51,14 +53,17 @@ namespace MH.RevitTools.Database.Connection
         /// <summary>The technical side of a failure, for a details section; null on success.</summary>
         public string Details { get; }
 
+        /// <summary>The server answered, but doesn't take the login with this password.</summary>
+        public bool IsLoginRefused { get; }
+
         internal static ConnectionTestResult Connected(
             ConnectionSettings settings, string database, string signedInAs, string serverVersion, TimeSpan elapsed) =>
-            new ConnectionTestResult(true, settings.Server, database, signedInAs, serverVersion, elapsed, null, null);
+            new ConnectionTestResult(true, settings.Server, database, signedInAs, serverVersion, elapsed, null, null, false);
 
         internal static ConnectionTestResult Failed(
-            ConnectionSettings settings, string problem, string details, TimeSpan elapsed) =>
+            ConnectionSettings settings, string problem, string details, TimeSpan elapsed, bool isLoginRefused) =>
             new ConnectionTestResult(false, settings.Server, settings.Database, null, null, elapsed,
-                Hide(problem, settings.Password), Hide(details, settings.Password));
+                Hide(problem, settings.Password), Hide(details, settings.Password), isLoginRefused);
 
         // SqlClient's messages don't quote the password, but a dialog is the wrong place to find out
         // the hard way that one does.

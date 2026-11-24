@@ -45,3 +45,7 @@ $RECYCLE.BIN/
 
 # Handover packages produced by Scripts/New-Package.ps1
 artifacts/
+
+# A connection file can hold a password. The one that ships with the add-in never does (a test sees to it).
+database.json
+!Revit.Addin.2027/database.json

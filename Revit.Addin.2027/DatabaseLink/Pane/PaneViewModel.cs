@@ -71,7 +71,7 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
             ToggleNotAppliedCommand = new RelayCommand(ToggleNotApplied);
             Groups = new ChangeGroupView[0];
             NotAppliedItems = new NotAppliedView[0];
-            Show(new PaneSnapshot(false, null, null, null, null, null, null, false, null, DateTime.MinValue, null, DateTime.UtcNow, TimeZoneInfo.Local));
+            Show(new PaneSnapshot(false, null, null, null, null, null, false, null, DateTime.MinValue, null, DateTime.UtcNow, TimeZoneInfo.Local));
         }
 
         public event PropertyChangedEventHandler PropertyChanged;
@@ -88,11 +88,10 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
         // ---- Cards ----
         public bool ShowSignIn { get; private set; }
         public string SignInCardTitle => SignInTexts.CardTitle;
-        public string SignInCardText => SignInTexts.CardText;
+        public string SignInCardText { get; private set; }
         public bool ShowNoModel { get; private set; }
-        public bool ShowNoFile { get; private set; }
-        public string NoFilePath { get; private set; }
-        public string NoFileProblem { get; private set; }
+        public bool ShowFileProblem { get; private set; }
+        public string FileProblem { get; private set; }
         public bool ShowSetup { get; private set; }
 
         // ---- This model ----
@@ -201,11 +200,11 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
 
         private void Clear()
         {
-            CanCheckNow = ShowNoModel = ShowNoFile = ShowSignIn = ShowSetup = ShowModel = ShowCounts = false;
+            CanCheckNow = ShowNoModel = ShowFileProblem = ShowSignIn = ShowSetup = ShowModel = ShowCounts = false;
             ShowBanner = BannerCanRetry = BannerOffersLink = ShowComparing = ShowUpToDate = ShowChanges = ShowMore = false;
             ShowLastPull = ShowFooter = false;
             CanApply = ShowApplyWaits = ShowApplied = AppliedSomething = ShowNotApplied = false;
-            Where = When = NoFilePath = NoFileProblem = ProjectCode = ProjectName = LinkedLine = "";
+            Where = When = FileProblem = SignInCardText = ProjectCode = ProjectName = LinkedLine = "";
             LinkedCount = LinkedLabel = WithoutIdCount = NotInProjectCount = "";
             BannerTitle = BannerText = UpToDateTitle = UpToDateText = ChangesTitle = MoreText = LastPullText = "";
             ApplyWaitsText = AppliedTitle = AppliedDetail = NotAppliedTitle = "";
@@ -256,15 +255,10 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
                     DotColor = Grey;
                     Title = "Not set up";
                     Where = "This computer";
-                    When = "No connection file found.";
+                    When = "Nothing is checked.";
                     ShowModel = false;
-                    ShowNoFile = true;
-                    NoFilePath = snapshot.ConnectionFilePath;
-                    // A missing file is what the card already says; anything else (can't read it, a mistake
-                    // in it) is worth its own line.
-                    NoFileProblem = outcome.Problem == null || outcome.Problem.StartsWith("No connection file at", StringComparison.Ordinal)
-                        ? ""
-                        : outcome.Problem;
+                    ShowFileProblem = true;
+                    FileProblem = outcome.Problem ?? "";
                     ShowFooter = false;
                     break;
                 case CheckState.NotSignedIn:
@@ -273,6 +267,7 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
                     Where = outcome.Where;
                     When = PaneTexts.NotSignedIn(outcome.DataReadAtUtc, snapshot.NowUtc, snapshot.TimeZone);
                     ShowSignIn = true;
+                    SignInCardText = outcome.Problem ?? SignInTexts.CardText;
                     CanCheckNow = false;
                     ShowFooter = false;
                     break;

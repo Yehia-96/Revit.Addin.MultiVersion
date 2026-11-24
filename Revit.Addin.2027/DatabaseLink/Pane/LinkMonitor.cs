@@ -64,8 +64,8 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
             _settle.Tick += OnModelSettled;
             _revit = new RevitQueue(dispatcher);
             var checker = new LinkChecker(
-                () => ConnectionFile.Read(ConnectionFile.DefaultPath),
-                settings => new SqlLinkDatabase(settings),
+                ConnectionFiles.Read,
+                ConnectionFiles.Open,
                 settings => SignInGate.Session.PersonFor(settings) != null,
                 PullCache.DefaultFolder,
                 () => DateTime.UtcNow);
@@ -211,10 +211,10 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
         // Signing in only starts the check; what there is to apply is known once it's done.
         private static Result SignInBeforeApplying(UIApplication application)
         {
-            ConnectionFileResult file = ConnectionFile.Read(ConnectionFile.DefaultPath);
+            ConnectionFileResult file = ConnectionFiles.Read();
             if (!file.IsLoaded)
                 Tell("Can't use the connection file", file.Problem, TaskDialogIcon.TaskDialogIconWarning);
-            else if (SignInGate.Ensure(application, file.Settings))
+            else if (SignInGate.Ensure(application, file) != null)
                 Tell("Signed in", "The MH Database pane checks for changes now. Apply them once it lists them.", TaskDialogIcon.TaskDialogIconInformation);
             return Result.Cancelled;
         }
@@ -393,6 +393,9 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
             // Someone signed out while it was being read; the check that says so is on its way.
             if (outcome.State == CheckState.Answered && SignInGate.Session.Person == null)
                 return;
+            // As after a refused database password: the ribbon shouldn't go on showing a name.
+            if (outcome.State == CheckState.NotSignedIn && SignInGate.Session.Person != null)
+                _revit.Run("signing out", application => SignInGate.SignOutIfStale());
             _outcome = outcome;
             _checkFault = null;
             if (outcome.CacheProblem != null)
@@ -422,7 +425,7 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
         private void Render()
         {
             SignedInPerson person = SignInGate.Session.Person;
-            var snapshot = new PaneSnapshot(_document != null, _link, ConnectionFile.DefaultPath, person == null ? null : person.Name, _outcome,
+            var snapshot = new PaneSnapshot(_document != null, _link, person == null ? null : person.Name, _outcome,
                 _compareFault ?? _checkFault, _report, _isReadOnlyFile, _applied, _appliedAtUtc, _settings.Interval, DateTime.UtcNow, TimeZoneInfo.Local);
             _view.Show(snapshot);
 

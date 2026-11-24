@@ -15,7 +15,7 @@ namespace MH.RevitTools.Database.SigningIn
         public const string Subtitle = "With your MH Database Studio account. Once each time Revit starts; nothing is saved.";
 
         public const string ConnectionNote =
-            "From this computer's connection file, set by the installer. The link only reads: nothing in the database can be changed from Revit.";
+            "From the connection file. The link only reads: nothing in the database can be changed from Revit.";
 
         public const string Footer = "Every active Studio account can sign in.";
 

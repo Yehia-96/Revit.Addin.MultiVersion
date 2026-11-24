@@ -48,10 +48,34 @@ public sealed class ConnectionTesterTests
         var settings = new ConnectionSettings("s", "d", false, "revit_reader", FakePassword, true, false);
 
         ConnectionTestResult result = ConnectionTestResult.Failed(
-            settings, "problem " + FakePassword, "details " + FakePassword, TimeSpan.FromSeconds(1));
+            settings, "problem " + FakePassword, "details " + FakePassword, TimeSpan.FromSeconds(1), false);
 
         Assert.DoesNotContain(FakePassword, result.Problem);
         Assert.DoesNotContain(FakePassword, result.Details);
+    }
+
+    [Fact]
+    public void Run_NothingListening_DoesntBlameThePassword()
+    {
+        ConnectionSettings settings = ConnectionSettings.WithoutPassword("tcp:127.0.0.1,1", "MH_Database", "revit_reader", true, false)
+            .WithPassword(FakePassword);
+
+        ConnectionTestResult result = ConnectionTester.Run(settings, 3);
+
+        Assert.False(result.Succeeded);
+        Assert.False(result.IsLoginRefused);
+    }
+
+    // The caller asks for the password first; forgetting that is reported, not thrown.
+    [Fact]
+    public void Run_WithoutThePassword_FailsWithoutConnecting()
+    {
+        ConnectionTestResult result = ConnectionTester.Run(
+            ConnectionSettings.WithoutPassword("tcp:127.0.0.1,1", "MH_Database", "revit_reader", true, false), 3);
+
+        Assert.False(result.Succeeded);
+        Assert.False(result.IsLoginRefused);
+        Assert.Contains("password", result.Problem);
     }
 
     /// <summary>

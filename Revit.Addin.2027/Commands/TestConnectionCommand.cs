@@ -3,13 +3,15 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using MH.RevitTools.Database.Connection;
 using MH.RevitTools.Database.Diagnostics;
+using Revit.Addin._2027.DatabaseLink;
+using Revit.Addin._2027.DatabaseLink.SignIn;
 using System;
 using System.Globalization;
 
 namespace Revit.Addin._2027.Commands
 {
     /// <summary>
-    /// Database → Test connection. Reads this PC's connection file, connects to the MH database,
+    /// Database → Test connection. Reads the connection file, connects to the MH database,
     /// runs one read-only query and says what happened. It is the database link's first step: it
     /// proves the database driver loads and connects inside Revit, and its details show which
     /// driver files Revit actually used. Later this button opens the MH Database pane.
@@ -23,16 +25,22 @@ namespace Revit.Addin._2027.Commands
         {
             try
             {
-                ConnectionFileResult file = ConnectionFile.Read(ConnectionFile.DefaultPath);
+                ConnectionFileResult file = ConnectionFiles.Read();
                 if (!file.IsLoaded)
                 {
                     Show("Can't use the connection file", file.Problem, null, TaskDialogIcon.TaskDialogIconWarning);
                     return Result.Succeeded;
                 }
 
-                ConnectionTestResult result = ConnectionTester.Run(file.Settings, ConnectionTester.DefaultTimeoutSeconds);
-                string background = "Connection file: " + file.Path + Environment.NewLine
-                    + "Encryption: " + file.Settings.DescribeEncryption() + Environment.NewLine
+                ConnectionSettings settings = SignInGate.EnsurePassword(commandData.Application, file);
+                if (settings == null)
+                    return Result.Cancelled;
+
+                ConnectionTestResult result = ConnectionTester.Run(settings, ConnectionTester.DefaultTimeoutSeconds);
+                if (result.IsLoginRefused)
+                    SignInGate.RefusePassword(settings);
+                string background = "Connection file: " + file.Source + Environment.NewLine
+                    + "Encryption: " + settings.DescribeEncryption() + Environment.NewLine
                     + SqlClientInfo.Describe();
 
                 if (result.Succeeded)

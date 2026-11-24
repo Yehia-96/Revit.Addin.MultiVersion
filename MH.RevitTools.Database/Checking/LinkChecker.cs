@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using MH.RevitTools.Database.Connection;
 using MH.RevitTools.Database.Link;
 using MH.RevitTools.Database.Linking;
+using MH.RevitTools.Database.SigningIn;
 
 namespace MH.RevitTools.Database.Checking
 {
@@ -13,7 +14,7 @@ namespace MH.RevitTools.Database.Checking
     /// has moved. Every full read is kept on the PC (<see cref="PullCache"/>), so a later session that can't
     /// reach the database still has the values and knows when they were read. It reads the connection file
     /// each time, so a file put right, or taken away, counts at the next check. It only ever reads the
-    /// database, and only while someone is signed in to it. Not thread-safe: one check at a time, which the
+    /// database, and only with its password known and someone signed in to it. Not thread-safe: one check at a time, which the
     /// pane's own check thread guarantees.
     /// </summary>
     public sealed class LinkChecker
@@ -30,8 +31,12 @@ namespace MH.RevitTools.Database.Checking
         // again whenever the version it compared is no longer the one shown.
         private long _lastVersion;
 
-        /// <param name="readConnectionFile">Reads the PC's connection file, e.g. <c>() =&gt; ConnectionFile.Read(ConnectionFile.DefaultPath)</c>.</param>
-        /// <param name="openDatabase">The database for those settings, e.g. <c>s =&gt; new SqlLinkDatabase(s)</c>.</param>
+        /// <param name="readConnectionFile">Reads the connection file that counts (see <see cref="ConnectionFile"/>).</param>
+        /// <param name="openDatabase">
+        /// The database for those settings, e.g. a <see cref="SqlLinkDatabase"/>. With a password that was entered on this PC,
+        /// inside a <see cref="PasswordWatch"/> that has a refused one forgotten. Otherwise every check would try it again: that
+        /// doesn't make it right, and every PC would fill the server's log with it.
+        /// </param>
         /// <param name="isSignedIn">Whether someone is signed in to that database; asked at every check.</param>
         /// <param name="cacheFolder">Where the last pulls are kept; null keeps none.</param>
         /// <param name="utcNow">The clock.</param>
@@ -74,10 +79,10 @@ namespace MH.RevitTools.Database.Checking
             ProjectCheckState project = StateFor(link.ProjectId);
             PullCache cache = _cacheFolder == null ? null : new PullCache(_cacheFolder, file.Settings);
             string where = DatabaseLabel.For(file.Settings);
-            if (!_isSignedIn(file.Settings))
+            if (file.Settings.NeedsPassword || !_isSignedIn(file.Settings))
             {
                 ShowLastPull(link, project, cache);
-                return CheckOutcome.NotSignedIn(link.ProjectId, where, now, project);
+                return CheckOutcome.NotSignedIn(link.ProjectId, where, AlsoNeeded(file), now, project);
             }
 
             try
@@ -99,8 +104,18 @@ namespace MH.RevitTools.Database.Checking
             catch (LinkDatabaseException ex)
             {
                 ShowLastPull(link, project, cache);
-                return CheckOutcome.NotReachable(link.ProjectId, where, ex.Message, now, project);
+                return ex.IsLoginRefused && file.Settings.HasEnteredPassword
+                    ? CheckOutcome.NotSignedIn(link.ProjectId, where, PasswordTexts.CardRefused, now, project)
+                    : CheckOutcome.NotReachable(link.ProjectId, where, ex.Message, now, project);
             }
+        }
+
+        // What signing in asks for besides the Studio account; null for nothing.
+        private static string AlsoNeeded(ConnectionFileResult file)
+        {
+            if (!file.Settings.NeedsPassword)
+                return null;
+            return file.IsSavedPasswordRefused ? PasswordTexts.CardRefused : PasswordTexts.CardMissing;
         }
 
         // Nothing read yet this session: the pull kept from an earlier one still shows the values, if it was kept

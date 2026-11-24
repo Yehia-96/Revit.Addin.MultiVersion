@@ -20,6 +20,13 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <!-- The connection file that ships inside the add-in, built in as there, so the tests can see that it can be read, what it
+       says and that it holds no password; and the add-in's project, to see that it's built in there. -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\Revit.Addin.2027\database.json" LogicalName="database.json" />
+    <None Include="..\Revit.Addin.2027\Revit.Addin.2027.csproj" Link="Connection\Revit.Addin.2027.csproj" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <!-- SQL scripts the LocalDB tests run in their throwaway databases -->
   <ItemGroup>
     <None Update="Link\*.sql" CopyToOutputDirectory="PreserveNewest" />

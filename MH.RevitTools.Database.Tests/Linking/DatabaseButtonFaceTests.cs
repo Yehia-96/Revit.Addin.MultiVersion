@@ -46,7 +46,7 @@ public sealed class DatabaseButtonFaceTests
     [Theory]
     [InlineData(LinkCondition.NotReachable, ButtonDot.Red, "The database isn't reachable")]
     [InlineData(LinkCondition.ProjectProblem, ButtonDot.Red, "no longer has this model's project")]
-    [InlineData(LinkCondition.NotSetUp, ButtonDot.Grey, "no connection file")]
+    [InlineData(LinkCondition.NotSetUp, ButtonDot.Grey, "connection file can't be used")]
     [InlineData(LinkCondition.NotSignedIn, ButtonDot.Grey, "Nobody is signed in")]
     [InlineData(LinkCondition.Checking, ButtonDot.Grey, "Checking the database")]
     public void OtherStates_HaveTheirDot_AndSaySo(LinkCondition condition, ButtonDot dot, string said)

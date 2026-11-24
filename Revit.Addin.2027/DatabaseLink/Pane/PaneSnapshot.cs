@@ -15,7 +15,6 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
         public PaneSnapshot(
             bool hasProjectModel,
             ModelLink link,
-            string connectionFilePath,
             string signedInAs,
             CheckOutcome outcome,
             string fault,
@@ -29,7 +28,6 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
         {
             HasProjectModel = hasProjectModel;
             Link = hasProjectModel ? link : null;
-            ConnectionFilePath = connectionFilePath ?? "";
             Outcome = Link == null ? null : outcome;
             // Signed in to another database than the connection file names now is not signed in.
             bool isSignedOut = Outcome != null && (Outcome.State == CheckState.NotSignedIn || Outcome.State == CheckState.NotSetUp);
@@ -49,9 +47,6 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
 
         /// <summary>The project the active model is linked to; null when it isn't.</summary>
         public ModelLink Link { get; }
-
-        /// <summary>Where the connection file is expected, for the "not set up" card.</summary>
-        public string ConnectionFilePath { get; }
 
         /// <summary>The name of who is signed in; null when nobody is.</summary>
         public string SignedInAs { get; }

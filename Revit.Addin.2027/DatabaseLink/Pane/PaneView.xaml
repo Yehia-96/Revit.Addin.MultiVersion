@@ -247,22 +247,20 @@
                                Text="Open a project model, or switch to one of its views: the pane then shows its link to the MH database and the database's changes."/>
                 </StackPanel>
 
-                <!-- No connection file -->
-                <StackPanel Margin="14,18" Visibility="{Binding ShowNoFile, Converter={StaticResource Visible}}">
-                    <TextBlock Style="{StaticResource CardTitle}" Text="This computer has no connection file"/>
+                <!-- The connection file can't be used -->
+                <StackPanel Margin="14,18" Visibility="{Binding ShowFileProblem, Converter={StaticResource Visible}}">
+                    <TextBlock Style="{StaticResource CardTitle}" Text="The connection file can't be used"/>
                     <TextBlock Style="{StaticResource MutedText}" Margin="0,6,0,0" FontSize="13"
-                               Text="The link needs the file the MH.RevitTools installer puts on each computer. Revit itself keeps working as usual."/>
+                               Text="It says where the MH database is, so nothing can be checked without it. Revit itself keeps working as usual."/>
                     <Border Margin="0,14,0,0" Padding="12" CornerRadius="8" BorderThickness="1"
                             BorderBrush="{StaticResource Line}" Background="{StaticResource Soft}">
                         <StackPanel>
-                            <TextBlock Text="Expected here" FontSize="12" FontWeight="SemiBold" Foreground="#3F4855"/>
-                            <TextBlock Text="{Binding NoFilePath}" Margin="0,6,0,0" FontFamily="{StaticResource CodeFont}" FontSize="12"
+                            <TextBlock Text="What's wrong" FontSize="12" FontWeight="SemiBold" Foreground="#3F4855"/>
+                            <TextBlock Text="{Binding FileProblem}" Margin="0,6,0,0" FontSize="12"
                                        Foreground="{StaticResource Strong}" TextWrapping="Wrap"/>
                         </StackPanel>
                     </Border>
-                    <TextBlock Style="{StaticResource MutedText}" Margin="0,10,0,0" Text="{Binding NoFileProblem}"/>
-                    <TextBlock Style="{StaticResource MutedText}" Margin="0,10,0,0"
-                               Text="Ask whoever installs the add-in on this computer to run the installer again. The pane finds the file at its next check."/>
+                    <TextBlock Style="{StaticResource MutedText}" Margin="0,10,0,0" Text="The pane looks again at its next check."/>
                 </StackPanel>
 
                 <!-- Nobody signed in since Revit started -->

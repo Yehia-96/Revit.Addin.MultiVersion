@@ -16,6 +16,21 @@ namespace MH.RevitTools.Database.Connection
             string password,
             bool encrypt,
             bool trustServerCertificate)
+            : this(server, database, windowsSignIn, login, password, false, encrypt, trustServerCertificate)
+        {
+            if (!windowsSignIn && string.IsNullOrEmpty(password))
+                throw new ArgumentException("A password is required unless Windows sign-in is used.", nameof(password));
+        }
+
+        private ConnectionSettings(
+            string server,
+            string database,
+            bool windowsSignIn,
+            string login,
+            string password,
+            bool hasEnteredPassword,
+            bool encrypt,
+            bool trustServerCertificate)
         {
             if (string.IsNullOrWhiteSpace(server))
                 throw new ArgumentException("A server is required.", nameof(server));
@@ -23,16 +38,33 @@ namespace MH.RevitTools.Database.Connection
                 throw new ArgumentException("A database is required.", nameof(database));
             if (!windowsSignIn && string.IsNullOrWhiteSpace(login))
                 throw new ArgumentException("A login is required unless Windows sign-in is used.", nameof(login));
-            if (!windowsSignIn && string.IsNullOrEmpty(password))
-                throw new ArgumentException("A password is required unless Windows sign-in is used.", nameof(password));
 
             Server = server.Trim();
             Database = database.Trim();
             WindowsSignIn = windowsSignIn;
             Login = windowsSignIn ? null : login.Trim();
-            Password = windowsSignIn ? null : password;
+            Password = windowsSignIn || string.IsNullOrEmpty(password) ? null : password;
+            HasEnteredPassword = hasEnteredPassword && Password != null;
             Encrypt = encrypt;
             TrustServerCertificate = trustServerCertificate;
+        }
+
+        /// <summary>
+        /// A connection whose file doesn't hold the password: the person enters it once, and
+        /// <see cref="WithPassword"/> completes it. Until then it can't be used to connect.
+        /// </summary>
+        public static ConnectionSettings WithoutPassword(
+            string server, string database, string login, bool encrypt, bool trustServerCertificate) =>
+            new ConnectionSettings(server, database, false, login, null, false, encrypt, trustServerCertificate);
+
+        /// <summary>The same connection with the password the person entered.</summary>
+        public ConnectionSettings WithPassword(string password)
+        {
+            if (WindowsSignIn)
+                throw new InvalidOperationException("Windows sign-in takes no password.");
+            if (string.IsNullOrEmpty(password))
+                throw new ArgumentException("A password is required.", nameof(password));
+            return new ConnectionSettings(Server, Database, false, Login, password, true, Encrypt, TrustServerCertificate);
         }
 
         /// <summary>The SQL Server, e.g. <c>CADSQL.mh-frlg.local,1433</c> or <c>(localdb)\MSSQLLocalDB</c>.</summary>
@@ -49,8 +81,16 @@ namespace MH.RevitTools.Database.Connection
         /// <summary>The read-only SQL login; null with Windows sign-in.</summary>
         public string Login { get; }
 
-        /// <summary>The login's password; null with Windows sign-in. Never show or log it.</summary>
+        /// <summary>
+        /// The login's password; null with Windows sign-in, and while the person hasn't entered it. Never show or log it.
+        /// </summary>
         public string Password { get; }
+
+        /// <summary>The file doesn't hold the password and the person hasn't entered it: there's nothing to connect with.</summary>
+        public bool NeedsPassword => !WindowsSignIn && Password == null;
+
+        /// <summary>The person entered the password; it isn't from the connection file.</summary>
+        public bool HasEnteredPassword { get; }
 
         public bool Encrypt { get; }
 

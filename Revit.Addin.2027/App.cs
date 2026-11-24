@@ -223,7 +223,7 @@ namespace Revit.Addin._2027
             panel.AddSlideOut();
             panel.AddItem(new PushButtonData("TestDatabaseConnection", "Test\nconnection", assemblyPath, Commands + "TestConnectionCommand")
             {
-                ToolTip = "Checks that Revit can reach the MH database with this PC's connection file.",
+                ToolTip = "Checks that Revit can reach the MH database, and says which connection file it uses.",
                 AvailabilityClassName = Commands + "AvailableWithoutModel",
                 Image = LoadIcon(assemblyName, 32, "DatabaseIcon.png"),
                 LargeImage = LoadIcon(assemblyName, 32, "DatabaseIcon.png"),

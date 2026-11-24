@@ -16,7 +16,10 @@ pushed). In Yehia's model none of those elements is one a view can show, so "Sho
 couldn't be tried. Step 5 (the MH Database pane and the change check) is done: built, committed (1721f93)
 and walked on 2026-11-23. Step 6 (Apply and "Not applied") is done: built, committed and walked on
 2026-11-23. Step 7 (Compare with Excel) is done: built, committed and walked on 2026-11-23. Step 8 (Sign in) is
-done: built, committed and walked on 2026-11-23. **Step 9 is next.**
+done: built, committed and walked on 2026-11-23. **Step 9 (publish it for colleagues) is under way: the
+connection file is built into the add-in, and Revit asks each person once for the database password (Yehia, 2026-11-24).
+The add-in's half is built and committed; Yehia walks it once the office can be reached. The database session's half is
+prepared; CADSQL can't be reached for now, so the login isn't made yet. Then 10 and 11 (materials),** planned, not started.
 
 The live link from the MH database into Revit, inside the "Parameter Tools" add-in (MH.RevitTools),
 in `Revit.Addin.2027` only. It only reads from the database. This file holds the plan, the status, and
@@ -35,10 +38,12 @@ after it are listed next.
     hash, TheAdmin's included.
   - The file lives at `C:\ProgramData\MH\RevitTools\database.json`, not in the add-in folder. That gives
     one file per PC for every Revit year. Add-in updates never touch it, and it can never end up in the
-    build output or on the share. Its format is under "The connection file" below.
+    build output or on the share. Its format is under "The connection file" below. (Not for now: see the
+    decisions of 2026-11-24.)
   - Every active Studio account may sign in. There's no role check.
   - Encrypting the password for the PC (Windows DPAPI, machine scope) may come later. For now the file
-    holds it as plain text, so anyone who can open the file on that PC can read it.
+    holds it as plain text, so anyone who can open the file on that PC can read it. (Not any more: see the
+    decisions of 2026-11-24.)
 - **Project suggestion.** Models write the Project Number (Project Information) as `1761` without a
   sub-number and `1761-01` with one. The first 4 digits are the project number.
   - With a sub-number (`-01` means 1), the add-in suggests the project with that number and sub-number.
@@ -69,24 +74,51 @@ after it are listed next.
   Bauteil_ID by hand, and that's the unique ID. Only the Bauteil_ID itself is never written.
 - **What the views don't give stays unfilled for now** (Yehia, 2026-11-23, step 7): the 14 material parameters,
   the two object ones and the global materials under "Needs from the database", item 5.
+- **Materials on objects** (Yehia, 2026-11-23: "Yes, plan it"): the link is to assign materials to objects, as the
+  Excel import does. Planned as steps 10 and 11.
 - **Parameter definitions come from Studio's master file** (Yehia, 2026-11-20, step 4), as in the
   mockup. The connection file names the file, so each PC pairs a database with its own file, and the
   add-in refuses a file that holds none of the database's GUIDs.
+- **For now without the lock and the hand-over** (Yehia, 2026-11-24). Yehia is in Egypt and the office is in Germany; the
+  link is to be published so that colleagues can install it themselves.
+  - Lifted: the connection file handed over by stick, administrator rights to install it, the locked folder. It goes along with
+    the add-in instead (step 9).
+  - Kept, as it's in nobody's way: a login of its own that can only read the `revit` views and call the sign-in procedures,
+    never Studio's; the sign-in with the Studio account; the encrypted connection; no password in Git, chat or logs.
+  - The installer that locks the file is built (`Scripts\ConnectionFile`), but not used: see the next decision. It stays in the
+    repo (Yehia: "Leave it for now").
+- **Each person enters the database password once** (Yehia, 2026-11-24). Yehia's idea: the connection file ships without it, and
+  Yehia sends it to each colleague in a private Teams message. Revit asks for it in a window and keeps it encrypted, instead of
+  colleagues editing the file (this session's proposal; Yehia: "Good go with your suggestion then"). So the package, the ZIP and
+  the Teams folder hold nothing secret.
+- **CADSQL can't be reached for now** (Yehia, 2026-11-24): the database session prepares everything it can until it can be again.
+- **Revit uses the connection file that ships with the add-in** (Yehia, 2026-11-24: "we don't want a global file that everyone can
+  access through share"). It's built into the add-in's DLL (this session's way): Check for Updates copies DLLs only, so a separate
+  file beside the add-in wouldn't reach whoever updates that way. A PC's own file still wins, as Yehia's PC needs it for dev;
+  colleagues have none.
 
 ## The connection file
 
-`C:\ProgramData\MH\RevitTools\database.json`, one per PC, written by the installer (step 9). It's never
-in the repo, the build output or on the share. Everyone on the PC can read it; the add-in only reads it.
+`database.json`. The add-in only reads it, at every check. Which one Revit 2027 uses:
 
-In the office. The values in angle brackets come from the database session's login script and from the
-installer; no real password is ever written here:
+1. `C:\ProgramData\MH\RevitTools\database.json`: the PC's own, for every Revit year, as on a developer's PC. If it's there, it's
+   the only one that counts, good or broken: a mistake in a developer's file must never lead to the office's database.
+   Colleagues have none.
+2. Otherwise the one built into the add-in (`Revit.Addin.2027.dll`). It comes with every version, whichever way that reaches the
+   PC, and it's always the one of the version that runs. Nothing lies on the PC or on the share to open or change.
+   Check for Updates wouldn't bring a separate file: it copies only DLLs, and it's the version before that does the copying.
+
+To change it takes a new version of the add-in; for one PC, a file of its own.
+
+The office's is `Revit.Addin.2027\database.json` in the repo. Whoever has the add-in could read it, so it never holds a
+password; tests see to that, to its six values, and that it's built in. `.gitignore` leaves out any other `database.json`. The
+database session confirmed the six values on 2026-11-24:
 
 ```json
 {
   "server": "CADSQL.mh-frlg.local,1433",
   "database": "MH_Database",
-  "login": "<read-only login>",
-  "password": "<written by the installer>",
+  "login": "revit_reader",
   "encrypt": true,
   "trustServerCertificate": true,
   "masterParameterFile": "\\\\CADSQL.mh-frlg.local\\PLDB\\01.Datenbank\\MH_Parameter.txt"
@@ -108,14 +140,23 @@ On Yehia's PC for development (LocalDB, Windows sign-in, no password):
   database. Environment variables such as `%LOCALAPPDATA%` are filled in for the user running Revit.
   Without it, Check parameters lists but can't add.
 
-- `encrypt` and `trustServerCertificate` are whatever CADSQL needs, the same as Studio uses (asked for
-  under "Needs from the database"). `"trustServerCertificate": true` means the server's certificate
+- `encrypt` and `trustServerCertificate` are what Studio's connection to the office does today (the database
+  session, 2026-11-24). `"trustServerCertificate": true` means the server's certificate
   isn't checked, which puts the shared password at risk on the network. A certificate the PCs trust
-  avoids that.
+  avoids that. If the first contact with CADSQL shows that Yehia's PC trusts its certificate, Yehia says so; only then
+  is `false` worth trying, and before the package is published.
 - This file doesn't hold anyone's own settings:
   - how often to check and auto-apply: `%APPDATA%\MH\RevitTools\settings.json`
   - the last pull: `%LOCALAPPDATA%\MH\RevitTools\`
-- If DPAPI comes later, an encrypted `protectedPassword` replaces `password`.
+- **The password.** A file may hold one (`"password"`), as a PC's own file does if it has a login. Without one, Revit asks
+  for it and keeps it in `%LOCALAPPDATA%\MH\RevitTools\Passwords`, encrypted by Windows for that person on that PC (DPAPI).
+  There's one per server, database and login, and only that connection gets it: a file changed to name another server
+  doesn't.
+  - It's never written into a connection file, and an update of the add-in doesn't touch it. So each person enters it once per
+    PC, and not again with an update.
+  - Revit asks again when the server refuses it (there's a new one), on another PC or Windows account, when a new version
+    names another server, database or login, and when Windows can't read it any more (the profile was made anew, or an
+    administrator reset the Windows password of a local account).
 
 ## How the code is split
 
@@ -125,6 +166,7 @@ On Yehia's PC for development (LocalDB, Windows sign-in, no password):
   - the cache of the last pull
   - the project-number rule and what the Link dialog says (`Linking`)
   - the Studio password hashing
+  - the database passwords kept on the PC (`SavedPasswords`; Windows' encryption comes with SqlClient's own packages)
 
   It targets net48 and net10.0, so 2024 and 2028 only need to add a reference. It uses only packages
   already in the repo (Microsoft.Data.SqlClient 5.2.2, Newtonsoft.Json 13.0.3). All database access
@@ -351,7 +393,8 @@ after Yehia has walked it.
     most recently changed come first. Up to 300 values are listed, then "… and N more".
   - What can't go into the model, under "Not applied" (step 6).
   - Not linked: the two steps, "Link the model…" and "Check parameters…". No connection file: where it's
-    expected. Not reachable: the red banner with Revit's reason and Try again; the values stay as last read.
+    expected (since step 9: the connection file can't be used, and what's wrong with it). Not reachable: the red banner
+    with Revit's reason and Try again; the values stay as last read.
   - The footer: "Look for changes" every 30 seconds, minute, 5 minutes, or only when asked: each person's
     choice, in `%APPDATA%\MH\RevitTools\settings.json`.
 - **The check** runs on a thread of its own, so Revit never waits for the database. It checks the active
@@ -386,7 +429,8 @@ after Yehia has walked it.
      minute (or at once with Check now) its row shows the new value, your name and the time, at the top.
   3. Click "Show in model": the element is selected and zoomed to. Click "1 element linked": it's selected.
   4. Rename the connection file: at the next check the pane says "Not set up"; rename it back and click
-     Check now: "Connected" again. To see "Not reachable", put a wrong server name into the file instead.
+     Check now: "Connected" again. To see "Not reachable", put a wrong server name into the file instead. (Since
+     step 9, with the PC's own file renamed, the add-in's counts.)
   5. Open an unlinked model, or switch to one: the pane shows the two steps, and the button "Link model".
 
   Revit stays responsive the whole time.
@@ -503,16 +547,139 @@ after Yehia has walked it.
      down from 30 s.
   7. Restart Revit: it asks again.
 
-### 9. Installer
-- `Install.ps1` writes `C:\ProgramData\MH\RevitTools\database.json` from a file Yehia keeps next to the
-  package. That file is never in the repo or on the share.
-- It also locks the folder and the file: Administrators and SYSTEM full control, Users read only,
-  inheritance off. By default any user may create files under `C:\ProgramData`. Without the lock, anyone
-  could put a file there before the installer runs, or own the folder, and point Revit at another
-  server. The add-in folder `Addins\2027\MH.RevitTools` has the same default (users can add files), so
-  lock it the same way.
-- **Walk:** run the package on a second PC → Test connection (in the Database panel's slide-out) works
-  there.
+### 9. Publish it for colleagues (installer)
+- Yehia, 2026-11-23: step 9 comes before 10 and 11, and its scripts follow the way Release Manager does installation
+  and the share (`C:\Yehia\ReleaseManager`, which runs each project's own scripts). Yehia, 2026-11-24: for now without the
+  lock and the hand-over.
+- **Two halves.** The database session makes the read-only login and its password ("Needs from the database", item 4):
+  prepared, see "What the database session built". The connection file, and asking for the password, is this session's.
+- **The connection file is built into the add-in** ("The connection file"). `New-Package.ps1`, `Publish-ToShare.ps1`, `Install.ps1`,
+  Check for Updates and Release Manager bring it along without knowing, and none of them is changed. Colleagues only install
+  or update the add-in, without administrator rights. Neither the package nor the share has a separate file.
+- **Revit asks for the database password** where the sign-in is, before the Studio account: the first time, and again when the
+  server refuses the one that was kept. Test connection asks too. The window shows which server and database it's for. One
+  click on Continue is one try, in the background; spaces and line breaks around a pasted password don't count. Only one that
+  works is kept ("The connection file", The password).
+  - **A refused password is never tried again by itself:** that doesn't make it right, and every PC would fill the server's log
+    with it. (It can't lock the login: the office's has no lockout.) The pane's check then says "Not signed in" and why, and signs
+    the person out; Sign in… asks for the new password, then for the account. After a restart the old one is tried once more,
+    with the sign-in, as a refusal may have been the server's fault.
+  - A server that can't be reached, a timeout, a missing database, a disabled or locked login or a certificate problem is never
+    taken for a wrong password. With the login disabled, the pane says what the server said and tries again at its next check.
+  - For a new password (or when a colleague leaves): the database session's script makes one, and the old one stops at once. An
+    open Revit notices at its next check. Yehia sends the new one, and Revit asks for it.
+- **Publishing,** from wherever Yehia is:
+  1. The database session's half, by its checklist (`MH.DatabaseStudio\RevitLogin\CHECKLIST.md` in ProjectsApp), with the VPN:
+     Studio's release with the views and the sign-in, the login, the check. Yehia runs all of it.
+  2. **Only once Yehia says that `Test-RevitLogin.ps1` said "All right":** Release Manager, Revit Tools 2027 (MultiVersion), in Live
+     mode: Check readiness, Update version, Build add-in, Install for testing, I tested this build, Create installation files
+     (the ZIP), Preview publication, Publish add-in, Verify shared files. It builds what's in the working folder, so
+     `database-link` for now. (Release and Promote are Database Studio's.) The version has to change: Check for Updates offers
+     nothing while the share's is the installed one's (5.2.2.0).
+  3. Yehia sends each colleague the password in a private Teams message.
+  4. Colleagues: Check for Updates, or `Install.cmd` from the ZIP, run as themselves and not as another administrator (Revit
+     2027 reads the manifest from the person's own `%APPDATA%`). Then Sign in…: the database password once, then their Studio
+     account.
+- **Walk:**
+  1. On your PC, now, without the office, VPN off:
+     1. With your own file, nothing has changed: Sign in… asks for the account only, the pane checks, and Test connection's
+        details name `C:\ProgramData\MH\RevitTools\database.json`.
+     2. Rename that file to `database.dev.json`, then Check now in the pane: "Not signed in · CADSQL · MH_Database", you're signed
+        out, and the card says that Revit also asks for the database password.
+     3. Sign in… opens the password window, for CADSQL. Continue without anything: it asks for the password. With any made-up
+        text: it can't be checked, as CADSQL can't be reached, and isn't kept (there's no
+        `%LOCALAPPDATA%\MH\RevitTools\Passwords`). Cancel: nothing else opens.
+     4. Test connection, Link, Check parameters and Compare with Excel ask for it first, too; Cancel: nothing opens.
+     5. Rename the file back, then Sign in…: your account only, and the pane shows dev again.
+     6. Take a comma out of the file, then Check now: "Not set up", with the line of the mistake, and nothing about CADSQL. Put it
+        back, Check now: as before.
+  2. Also without the office, if you like: **the whole way of the password, on dev.** It needs the login on your LocalDB, which is
+     yours and the database session's to make (`New-RevitLogin.ps1` takes `-Server '(localdb)\MSSQLLocalDB' -WindowsSignIn` and
+     a `-PasswordFile` of its own, so that the office's isn't mixed up with it). Then, in your own file, `"login": "revit_reader"`
+     instead of `"windowsSignIn": true`:
+     1. A wrong password is refused and isn't kept; the right one is, and the account follows. Restart: only the account.
+     2. `-NewPassword` while Revit is open: its next check says that the server refused the password, and signs you out. Sign in…
+        takes the new one. The old one is refused.
+     3. The login disabled: the pane says so and doesn't ask for a password. Enabled again: the next check works.
+     4. Your file as before.
+  3. On your PC, with VPN, once the login exists: 1.2 and 1.3 with the right password: the sign-in follows, then Link lists
+     the office's projects. Use a test model that isn't set up on dev: the office's parameters have GUIDs of their own. Restart
+     Revit: it asks for the account only. Test connection's details say "built into the add-in". Rename the file back.
+  4. Publish. One colleague in the office updates with Check for Updates: Sign in… asks for the password once, and Test
+     connection's details say "built into the add-in".
+  5. A colleague installs from the ZIP with `Install.cmd`: the same.
+
+**Not used: the lock** (`Revit.Addin.2027\Scripts\ConnectionFile`, with a README of its own; built 2026-11-24). It was for a
+connection file that holds the password. As the PC's own file wins, it could still come without a change to the add-in.
+- **Separate from `Install.ps1`,** unlike first planned (2026-11-23):
+  - A PC that already has the add-in needs only the file, once. Check for Updates brings later versions and never touches it.
+  - It needs administrator rights. Revit 2027 reads the add-in's manifest from the person's own `%APPDATA%`, so the add-in's
+    installer has to run as that person, not as another administrator.
+  - The add-in's package and ZIP never hold the password.
+  - `Install.ps1`, `New-Package.ps1` and the others stay identical in 2024, 2026, 2027 and ProjectsApp.
+- **`New-ConnectionFilePackage.ps1`** (developer side) makes the folder to hand over,
+  `C:\Yehia\ProjectsApps\Revit.Addin\ConnectionFile`, from `C:\Yehia\ProjectsApps\Revit.Addin\database.json`. Only Yehia and
+  administrators can open it. Never in a repository, OneDrive, a network folder or the share, and never a ZIP.
+- **`Install-ConnectionFile.ps1`** (on each PC, as administrator, by double-click on `Install connection file.cmd`) writes
+  `C:\ProgramData\MH\RevitTools\database.json` and locks `MH` and `MH\RevitTools`: administrators and SYSTEM full control,
+  users read only, nothing inherited, owned by the administrators. By default any user may create files under
+  `C:\ProgramData`. Without the lock, anyone could put a file there before the installer runs, or own the folder, and point
+  Revit at another server. So an `MH` that's there is never taken over: a new one is built beside it, locked from the start
+  and with the file in it, and takes its place. An unlocked one is kept as `MH.before-<time>`.
+  - It stops, and changes nothing, when the file is a template, isn't complete or is a developer's; when the PC's file is for
+    another database (`-Force` replaces it); when a folder is a link; or when an open `MH` holds something else.
+  - It never shows the password.
+- **The add-in's folder isn't locked,** unlike first planned: Check for Updates writes there without administrator rights.
+- As in Release Manager: named parameters and no questions, a preview that writes nothing (`-WhatIfOnly`), a check read back
+  from Windows, an exit code. Release Manager itself isn't changed.
+- **Walk, when it's used:**
+  1. On your PC: `New-ConnectionFilePackage.ps1 -WhatIfOnly`, then without it. The folder is there.
+  2. On a second PC with the add-in: "Install connection file.cmd", Run as administrator. Then Test connection (in the Database
+     panel's slide-out) works, and the pane asks to sign in.
+  3. There, as a normal user, try to change or delete the file: Windows refuses.
+
+### 10. Create the project's missing materials (planned, not started)
+Today the link only fills parameters of materials that are already in the model. The Excel import's Automate Material
+Creation also creates them and sets their fill patterns. This step does the same from the database. It needs nothing
+from the database session.
+- **The pane** gets a section "Not in this model · 38 materials", with the names and **Create…**. It asks first, and
+  creates them all in one undo step, with their values. Apply all doesn't create materials.
+- **Which:** the project's own materials (`revit.Materials`) whose Materialname the model doesn't have, as the Excel
+  import does. Two with the same name: the first, as everywhere. Global materials aren't in the views.
+- **What they get:** the Materialname, the material class by the group (Beton → Concrete, …) and a look copied from a
+  material of the same kind in the model, both with the Excel import's own code; the fill patterns; the parameter
+  values.
+- **Fill patterns,** also of materials that are there: "Surface pattern" and "Cut pattern" become rows on the
+  material's card, and Apply sets them. An empty one in the database leaves the material's as it is.
+  - Only patterns the model has (and Solid). Others are listed under "Not applied". The Excel import copies missing
+    ones from a model file whose path is fixed to Yehia's PC (`Services\FillPattern.cs`), so on other PCs it can't.
+    A file for the office could come later, named in the connection file like the master parameter file.
+- A material renamed in Studio is another material to Revit, as materials meet by name: it's offered as missing.
+- **Walk:**
+  1. The pane says how many of 1761's materials aren't in the model. Create… asks; they appear in Revit's Materials with
+     class, look, patterns and values. Ctrl+Z takes them all back.
+  2. Change a material's pattern in Studio to one the model has: it's listed, and Apply sets it.
+  3. A pattern the model doesn't have is listed under "Not applied".
+
+### 11. Assign materials to objects (planned, not started)
+- **It needs a view:** `revit.ObjectMaterials` ("Needs from the database", item 6). Since 2026-11-11 Studio keeps an
+  object's material in a field of its own (`ProjectObjects.MaterialId`). The Material-ID and Materialnummer among an
+  object's values are old copies from before, which nothing keeps in step. The link stops listing those.
+- Some objects already have a material assigned in the database (Yehia, 2026-11-23), so there's something to walk with.
+- **The pane** lists an object's material like any other change: "Material: 11-Beton, C12/15 → 31-Beton, C35/45", with who and
+  when. Apply assigns it, in the same undo step as the object's other values.
+- **Where it goes:** the element's own parameter "Material" that takes a material, as in the Excel import. The material is
+  found by its Materialname.
+- **Not applied,** with the reason: the material isn't in the model (step 10 creates it), the element has no "Material"
+  parameter of its own, it's read-only, someone else has borrowed the element.
+- An object without a material in Studio leaves the element's as it is.
+- Global materials are assigned when the model has one of that name; they aren't created.
+- Compare with Excel then also compares which material each object gets.
+- **Walk:**
+  1. Give BT-1101-01 another material in Studio (the object's Material tab): within a minute the pane lists it. Apply: the
+     element's Material shows it. Ctrl+Z takes it back.
+  2. Give it a material the model doesn't have: it's under "Not applied"; after Create… it can be applied.
+  3. Give it a global material: assigned if the model has it, else under "Not applied".
 
 **Later (phase 3, not now):**
 - auto-apply when Revit is idle
@@ -533,6 +700,7 @@ mockup (https://claude.ai/artifact/BUxmo897HJTFcEt43wpcen) stays as it was.
   parameter's values. Back at Yehia's request (2026-11-22): it asks first and is one undo step, and it
   asks once more for parameters that schedules or view filters use (step 4).
 - **Compare with Excel** isn't in the mockup: it's temporary (step 7) and sits in the slide-out.
+- **The database password** (step 9) isn't in the mockup: a window of its own before the sign-in, once per person and PC.
 - **The Database panel** follows the mockup since 2026-11-22: the big Database button, then three rows
   (Apply changes, Check parameters, Sign in). Database shows and hides the pane (since step 5; before,
   it opened the Link dialog). Test connection sits in the panel's slide-out (the arrow under the panel). The
@@ -610,10 +778,33 @@ MH_Database. Details: REVIT_LINK.md, "Signing in to Revit". They are what was as
   `DELETE FROM dbo.RevitSignInWaits;`. The add-in session calls `CheckSignIn` only on throwaway databases, as a try
   is written down.
 
+**The read-only login (2026-11-24),** prepared, tested and pushed (ProjectsApp, master 7c38707, its step 14). It isn't made yet, and
+nothing has gone to CADSQL. Details: REVIT_LINK.md, "The read-only login". The scripts and the day's order:
+`MH.DatabaseStudio\RevitLogin`, `CHECKLIST.md`.
+- **The connection file's six values are right** ("The connection file").
+- **Login and user `revit_reader`, role `revit_readers`:** SELECT and EXECUTE on schema `revit`, nothing else. Default database
+  MH_Database, default schema `revit`, no rights on the server. The password is 40 letters and digits and doesn't expire.
+- **No lockout** (CHECK_POLICY OFF): it's shared, so wrong tries by anyone would lock it for everybody. So a refused
+  password is always 18456 and a disabled login 18470; locked (18486) can't happen.
+- **A new password stops the old one at once,** for pooled connections too. Tried on LocalDB with SqlClient 5.2.2: the next
+  use throws 18456 at ExecuteReader (errors 18456, 596, 0), and from then on at Open. A query that's running finishes.
+  Disabling the login does the same with 18470.
+- **The add-in fits both** (checked here on 2026-11-24, reading the code and with tests of SqlClient's own exceptions; nothing
+  had to change). Its three places that ask the server have Open and ExecuteReader in one try. 18456 as the first error
+  makes it forget the password; 18470 doesn't. Only the first error counts: a database that can't be opened also answers
+  18456, after its 4060.
+- **The views and the procedures are unchanged;** `RevitViews.sql` and `RevitSignIn.sql` here match the migrations, batch by batch
+  (compared by the database session on 2026-11-24).
+- **TheAdmin's first-start password** isn't in use on dev. The office's Yehia checks, with the VPN.
+- **Waits for CADSQL:** its version, SQL logins and who may make one, the collation of `Users.Username`, the certificate, Studio's
+  release with both migrations and the master file, the login, the check. Yehia runs all of it and brings the answers.
+  The add-in's package is published only after Yehia says that `Test-RevitLogin.ps1` said "All right".
+
 ## Needs from the database
 
 *Final version, 2026-11-19. Items 1, 2 and 3 are built and the questions are answered (see "What the
-database session built"). Item 4 comes later, and item 5 isn't wanted for now.*
+database session built"). Item 4 is prepared and waits for CADSQL (2026-11-24), item 5 isn't wanted for now, and item 6
+comes with step 11, when Yehia asks for it.*
 
 **What the link needs, in order**
 1. **Now: the `revit` views.** The SQL is ready in the add-in repo (branch `database-link`):
@@ -631,7 +822,9 @@ database session built"). Item 4 comes later, and item 5 isn't wanted for now.*
    - Studio writes the master shared parameter file from them, in one go (to a temporary file, then
      rename), so the add-in never reads half a file. Tell me its path on the share.
 3. **For step 8:** the two sign-in procedures (below). Built on 2026-11-23.
-4. **Later, step 9:** the read-only login (below).
+4. **For step 9:** the read-only login and its password (below). Prepared on 2026-11-24, see "What the database session built".
+   The login itself waits for CADSQL, which can't be reached for now. The connection file is this session's, as it ships
+   without the password.
 5. **Not for now (Yehia, 2026-11-23). From step 7, in case the link is to fill what the Excel import fills:**
    values that the views don't give, so the link can't write them. Each has its parameter in the dictionary
    already.
@@ -643,6 +836,21 @@ database session built"). Item 4 comes later, and item 5 isn't wanted for now.*
    - Global materials (MP-9999-99-…): 23 in the workbook, none in `revit.Materials`, as they belong to no project.
      Should a project's model get them too?
    - Their history (who, when) and the change stamp should cover them like the other values.
+6. **For step 11 (planned 2026-11-23): `revit.ObjectMaterials`,** the material each object is made of
+   (`ProjectObjects.MaterialId`), one row per object of a project that has one:
+
+   | Column | |
+   |---|---|
+   | ProjectId | int |
+   | BauteilId | built as in `revit.ObjectValues`; objects without one are left out |
+   | MaterialId | built as in `revit.Materials`, e.g. MB-1761-01-BET-0031; global ones too, e.g. MP-9999-99-BET-0101 |
+   | MaterialName | the Materialname |
+   | ChangedAtUtc, ChangedBy | the newest history row of the `ProjectObject` (key ProjectId\|ObjectEntityId); never the Changes column |
+
+   - Global materials are in it because an object may be made of one. `revit.Materials` stays as it is.
+   - Setting, changing and clearing an object's material has to move the change stamp.
+   - Please say whether the Material-ID and Materialnummer values on objects, from before Studio's step 8b, are to stay.
+     The add-in ignores them from then on.
 
 Step 3 (linking a model to its project) needs only `revit.Projects`. It can start once the views exist
 in dev MH_Database.
@@ -683,7 +891,8 @@ first. Making the views SCHEMABINDING would do the same job more bluntly.
   - Who/when is the newest history row for that value.
   - Never the Changes column: for user rows it holds password hashes (4 rows today).
 - Objects point at their material through material parameters such as IDE-KAT-Material-ID, so an
-  object's values include those references.
+  object's values include those references. (They are old copies: since Studio's step 8b, 2026-11-11, the object's
+  material is `ProjectObjects.MaterialId`. See item 6.)
 
 **Please confirm**
 - Every change Studio saves to the tables above writes its AuditLogs row in the same transaction. A
@@ -704,7 +913,7 @@ duplicate today, because Schlitzrinne has no catalog numbers yet.
   under "Not applied".
 - No Boolean or Date values are stored yet. Tell me how they will be written, so they match the Excel.
 
-**The read-only login (step 9, for the office)**
+**The read-only login (step 9, for the office).** What was asked for; what came of it is under "What the database session built".
 - A role (name your call, e.g. `revit_reader`) with rights on schema `revit` only:
   `GRANT SELECT, EXECUTE ON SCHEMA::revit TO revit_reader`. That covers the views and the sign-in
   procedures.
@@ -726,10 +935,43 @@ duplicate today, because Schlitzrinne has no catalog numbers yet.
   ```
 - One SQL login in that role, with CONNECT on MH_Database and nothing else on the server. Use
   CHECK_EXPIRATION OFF: if this password expired, the link would stop on every PC at once. The password
-  goes only into the connection file.
-- The login is shared, so whoever holds the connection file can read every project, through the views
-  only. That's accepted.
-- Tell me what Studio uses for Encrypt and TrustServerCertificate on CADSQL. If the PCs don't trust
+  goes only into a text file of its own, for Yehia.
+- **A script makes all of it in one go** (settled 2026-11-23, changed 2026-11-24): the role, the login, its user and the password.
+  - It makes the password itself, long and random, of letters and digits only, so that it can be pasted without mistakes.
+    It's not shown, not a parameter, not in the help, an error or a preview: Release Manager keeps every script's output in
+    its logs.
+  - It asks for the administrator's sign-in when it runs and stores it nowhere. Running it again changes nothing, unless
+    it's told to make a new password.
+  - It writes the password into a text file of its own, `C:\Yehia\DatabaseFiles\<login>_pass.txt` (or a path it's given), readable
+    only by Yehia and administrators. Neither session opens that file. Yehia sends the password to each colleague in a private
+    Teams message.
+  - It doesn't write a connection file. The database session says what belongs in it: server and port, database, login,
+    Encrypt, TrustServerCertificate, the master file.
+  - **A check** signs in with the password from that text file and proves it: every view and both procedures answer;
+    `dbo.Users`, the history and the three sign-in tables are refused. It never calls `CheckSignIn` with a real account. As every
+    colleague has the password, this is what keeps the rest safe.
+- **CADSQL can't be reached for now** (2026-11-24). Everything that doesn't need it is prepared and tried on a throwaway
+  LocalDB database, so that only running it is left:
+  - the script and the check, the checklist, and REVIT_LINK.md;
+  - the values for the connection file, from Studio's own office settings: server and port, Encrypt, TrustServerCertificate;
+  - a read-only script for the first contact: the version, whether SQL logins are allowed, whether Yehia's sign-in may make one,
+    the collation of `Users.Username`, and which migrations are there.
+- **From Egypt,** once it can be reached: from Yehia's PC through the VPN, against `CADSQL.mh-frlg.local,1433` like Studio's
+  backups (BACKUP.md there), or it's said which steps can't and who in the office does them. Also ready: what the office's IT
+  could run instead, without the password in it, as a login can be made from the password's hash
+  (`CREATE LOGIN … WITH PASSWORD = 0x… HASHED`).
+- **TheAdmin's first-start password** doesn't hold this up for now (2026-11-24). The database session only says whether it's
+  still in use, on dev or in the office.
+- **The scripts follow Release Manager's way,** so it could run them: named, typed parameters and no question when
+  they're given; paths from `$PSScriptRoot`; a preview that writes nothing; an explicit confirmation before anything
+  that counts; a check afterwards, as an exit code alone proves nothing; a failure is a non-zero exit code.
+- **The order in the office:** back up; a Studio release through Release Manager's Database workflow (release.ps1, test,
+  promote.ps1), whose first start on CADSQL applies the migrations (views, sign-in); the login script; the check; then
+  the add-in's package. The sessions never connect to CADSQL: Yehia runs it.
+- The login is shared, so whoever has its password can read every project, through the views only. That's accepted: it's
+  every colleague who gets the Teams message.
+- Tell me what Studio uses for Encrypt and TrustServerCertificate on CADSQL. (Answered: encrypted, the certificate not
+  checked.) If the PCs don't trust
   CADSQL's certificate, the file needs `"trustServerCertificate": true`. Then the certificate isn't
   checked, and someone on the office network could pose as the server and catch the shared password.
   Better: give CADSQL a certificate the PCs trust (an internal CA is enough), so the file can say false.
@@ -799,7 +1041,8 @@ today's size. Tell me if the history gets trimmed or grows very large.
 
 Answered by Yehia on 2026-11-19 (recorded above):
 1. Sign-in: use the two procedures instead of reading `Users`, and put the file in ProgramData. Yes.
-2. Encrypt the password in the file (DPAPI): maybe later. Plain text for now.
+2. Encrypt the password in the file (DPAPI): maybe later. Plain text for now. (Since 2026-11-24 it isn't in the file: each
+   person enters it once, and Windows keeps it encrypted.)
 3. Project Number: `1761` without a sub-number, `1761-01` with one.
 4. Who may sign in: every active Studio account.
 
@@ -807,8 +1050,11 @@ Answered by Yehia on 2026-11-20:
 5. Where the parameter definitions come from (step 4): Studio's master file, named in the connection
    file, as in the mockup.
 
+Answered by the database session on 2026-11-24:
+6. The read-only login's name: `revit_reader`.
+
 Still open:
-- The read-only login's name. It comes with the database session's login script.
+- Which colleagues get it first, and whether they all have an active Studio account.
 
 ## Status log
 
@@ -1073,6 +1319,85 @@ Still open:
 - **2026-11-23, a question of Yehia's:** does the link assign materials to objects? No. It only writes values into
   parameters of materials that are already in the model, found by their Materialname. It doesn't create materials,
   doesn't assign them to elements and doesn't set fill patterns. The Excel import's Automate Material Creation does all
-  three (it assigns through the element's "Material" parameter). The database holds what it would take: an object's
-  Material-ID (BT-1101-01: MB-1761-01-BET-0031), and each material's name, group and fill patterns; global materials
-  aren't in the views. Open: whether the link should do it too.
+  three (it assigns through the element's "Material" parameter). The views hold each material's name, group and fill
+  patterns, except global materials. I also said they hold each object's material (BT-1101-01: MB-1761-01-BET-0031);
+  that's only an old copy, found while planning: see step 11.
+- **2026-11-23, materials planned:** Yehia: "Yes, plan it". Steps 10 (create) and 11 (assign) are written down above, and
+  item 6 of "Needs from the database" asks for the view step 11 needs. Creating comes first: it needs nothing from the
+  database session, and assigning then finds every material. Nothing is built.
+- **2026-11-23, step 9 first:** Yehia takes the request for the login and the office's connection file (item 4) to the
+  database session. The add-in's half is built meanwhile ("Yes, build it"): `Scripts\ConnectionFile`, as described under
+  step 9.
+  - Finished on 2026-11-24. 87 tests on throwaway folders pass in Windows PowerShell 5.1 and in PowerShell 7
+    (`Test-ConnectionFile.ps1`), and the add-in's own reader takes the installed file.
+  - A security review, reading the code only, found two high points, both about a folder someone prepared before: it was
+    locked in place, which a program that had it open before could undo. Now a new one takes its place. Also fixed:
+    the file is read once, and what was checked is what's written; the hand-over folder is closed from its first moment and
+    only cleared of what the script puts there; its place is checked more strictly. Found by the tests: Windows' own JSON
+    reader takes a file that was cut off; started from PowerShell 7, Windows PowerShell can't load `Get-Acl`.
+  - Not tried: as administrator, which is what gives the folder to the administrators, and on another PC. That's the walk.
+- **2026-11-24, security measures lifted for now:** Yehia is in Egypt, the office is in Germany, and the link is to be published
+  so that colleagues can install it. The last decision above says what's lifted and what stays. The installer that locks the
+  file is kept for later; the connection file goes along with the add-in instead.
+  - Built: `ConnectionFile.ReadFirst` and `ConnectionFilePlaces` in the library, `ConnectionFiles` in the add-in, and the 2027
+    project's Release build takes the file along. No script is changed, and 2024 and 2026 aren't touched. `database.json` is in
+    `.gitignore` now. 496 tests pass; the 32 that need LocalDB weren't run, and no SQL changed.
+  - A C# review, reading the code only, found nothing critical. Fixed: an old file left in the build output is always deleted
+    (its high point; in the trial the build removed it by itself); a developer's file that Windows won't let Revit look at
+    counts as there, instead of leading on to the office's. Left as it is: a file that OneDrive has to fetch first can hold up
+    a command for a moment, the first time.
+  - Tried on a throwaway copy with a made-up file: Release Manager's own build command (with the project reference to
+    `MH.RevitTools.Database`, which it hadn't built before), `New-Package.ps1` with the ZIP, `Publish-ToShare.ps1` into a scratch
+    folder, `Install.ps1` into scratch folders; the built library then reads the file from both places. Nothing was deployed or
+    published.
+  - Not tried in Revit, and not with the real file, which doesn't exist yet. Also not tried: an update by Check for Updates from
+    5.2.2.0, which leaves that version's `deps.json` and `runtimes` folder beside the new DLLs. One colleague first (the walk).
+- **2026-11-24, the password is entered in Revit:** the last decision above. Built as described under step 9 and "The connection
+  file"; what the entry before says about a Release build and `C:\Yehia\ProjectsApps\Revit.Addin\database.json` is gone again.
+  - In the library, under tests: connections without a password, `SavedPasswords` (with Windows' own encryption, tried for real),
+    what counts as refused, `PasswordWatch`, the check, every word. In the add-in: the window, `SignInGate`, and every command and
+    the pane go through it. No script and no SQL changed, and no package was added: Windows' encryption comes with SqlClient's.
+  - A C# and a security review, reading the code only, found nothing critical. Fixed: a sign-out that came late could have signed
+    out someone who had just signed in with the new password (the C# review's high point), so a sign-in now holds only for the
+    password it was made with; a password refused in Link, Check parameters or Compare isn't used again either; a server name with
+    look-alike letters would have got the saved password; the test of the shipped file allows its six entries and nothing else.
+    Left as they are: whoever can edit the Teams copy can name another server, and Revit then asks there for the password
+    (they could replace the DLLs, too); a PC's own file with a wrong password is still tried at every check.
+  - 575 tests pass; the 32 that need LocalDB weren't run. The password window and the pane's new cards were driven and drawn off
+    screen, and the sign-in window with a refused database password. Tried again on a throwaway copy: Release Manager's build
+    command, package, ZIP, publishing and installing into scratch folders; the built library then asks for the password with
+    the published file, keeps it and finds it in the next session.
+  - Deployed to both add-in folders on Yehia's PC (Debug). Not tried in Revit, and not with the real login, which doesn't exist yet.
+- **2026-11-24, CADSQL can't be reached for now:** Yehia takes a new prompt for item 4 to the database session, which replaces the
+  earlier ones: prepare everything that doesn't need the server.
+- **2026-11-24, the database session's answer to item 4:** prepared, tested and pushed; summed up under "What the database session
+  built". Asked for and done here: it's recorded, the add-in fits its two errors (nothing had to change, three tests were
+  added), and step 9's walk says what can be walked without the office. The reason never to try a refused password again is
+  another one now, as the login has no lockout.
+- **2026-11-24, the connection file is built into the add-in:** the last decision above. The Teams folder and the copy beside the
+  DLL, as the entries of this day before describe them, are gone again.
+  - Built: `Revit.Addin.2027\database.json` is a resource inside `Revit.Addin.2027.dll`; `ConnectionFile.ReadFirst` takes the PC's own
+    file or, without one, that. `ConnectionFilePlaces` is gone. The pane's card for a missing file says now that the connection
+    file can't be used, and why; a mistake in a PC's own file says that it counts instead of the add-in's. No script, no SQL and
+    no package changed.
+  - 571 tests pass; the 32 that need LocalDB weren't run. The pane's card, the sign-in and the password window were drawn off
+    screen.
+  - Tried on a throwaway copy: Release Manager's build command, the package with its ZIP, publishing into a scratch folder, and
+    what Check for Updates copies, over an older version's folder. Each time the add-in gives its connection with the six
+    values, and no separate file comes along. The same with the deployed one.
+  - A C# and a security review, reading the code only, found nothing critical or high. Left as they are: a folder in the place of
+    the PC's own file is called "No connection file"; and a PC's own file, which any user of that PC could put there, can name
+    another server, and Revit then asks for the password there, naming the server.
+  - Deployed to both add-in folders on Yehia's PC (Debug); the two copies from the same afternoon, which nothing reads any more,
+    were removed there. Not tried in Revit.
+- **2026-11-24, updating from 5.2.2.0** (Yehia asked whether Check for Updates brings the connection file): yes, inside the DLL. Its
+  copying, done on a scratch copy of the published 5.2.2.0, adds `MH.RevitTools.Database.dll` and SqlClient's native DLL and replaces
+  SqlClient's placeholder. That version's `deps.json` stays and doesn't name the library, but that does no harm: Revit 2027's loader
+  (`AddInLoader.dll`, read, not run) looks in the add-in's folder first and only then by `deps.json`, and our manifest leaves the
+  add-in in Revit's own context. The manifest is the published one, unchanged.
+  - The antivirus removed the scratch copy's `Revit.Addin.2027.dll` (Debug) when a throwaway program loaded it from there
+    (0x800700E1). The deployed ones, the same file, weren't touched, and Release copies had loaded before. Nothing was retried
+    or excluded. So one colleague first, also for the antivirus.
+- **2026-11-24, step 9 committed, not walked:** Yehia: "I will try the walk once the office can be reached thats fine" and "Commit
+  and push step9". Yehia also asked whether the password has to be entered again with each update: no (see "The connection file",
+  The password). Committed and pushed with this entry.

@@ -206,7 +206,7 @@ public sealed class ApplyTextsTests
 
         Assert.StartsWith("This model isn't linked", ApplyTexts.WhyNothingToApply(false, null, null));
         Assert.Contains("still being checked", ApplyTexts.WhyNothingToApply(true, null, null));
-        Assert.Contains("no connection file", ApplyTexts.WhyNothingToApply(true, CheckState.NotSetUp, null));
+        Assert.Contains("connection file can't be used", ApplyTexts.WhyNothingToApply(true, CheckState.NotSetUp, null));
         Assert.Contains("Sign in first", ApplyTexts.WhyNothingToApply(true, CheckState.NotSignedIn, changes));
         Assert.Contains("isn't reachable", ApplyTexts.WhyNothingToApply(true, CheckState.NotReachable, changes));
         Assert.Contains("any more", ApplyTexts.WhyNothingToApply(true, CheckState.ProjectChanged, null));

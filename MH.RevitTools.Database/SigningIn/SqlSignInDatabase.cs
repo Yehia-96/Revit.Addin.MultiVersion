@@ -94,7 +94,8 @@ namespace MH.RevitTools.Database.SigningIn
             }
             catch (SqlException ex)
             {
-                throw new LinkDatabaseException(Describe(ex.Number, ex.Message, _settings, isTry), ex);
+                throw new LinkDatabaseException(Describe(ex.Number, ex.Message, _settings, isTry), ex,
+                    ConnectionProblems.IsLoginRefused(ex.Number, ex.Message, _settings));
             }
             catch (Exception ex) when (ex is InvalidCastException || ex is SqlNullValueException || ex is IndexOutOfRangeException)
             {

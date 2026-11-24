@@ -1,0 +1,8 @@
+{
+  "server": "CADSQL.mh-frlg.local,1433",
+  "database": "MH_Database",
+  "login": "revit_reader",
+  "encrypt": true,
+  "trustServerCertificate": true,
+  "masterParameterFile": "\\\\CADSQL.mh-frlg.local\\PLDB\\01.Datenbank\\MH_Parameter.txt"
+}

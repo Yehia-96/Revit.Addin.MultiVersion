@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using MH.RevitTools.Database.Connection;
+using Microsoft.Data.SqlClient;
 
 namespace MH.RevitTools.Database.Tests.Connection;
 
@@ -8,6 +9,9 @@ public sealed class ConnectionProblemsTests
 {
     private static readonly ConnectionSettings SqlLogin =
         new("sql.example.local,1433", "MH_Database", false, "revit_reader", "fake-password-for-tests", true, false);
+
+    private static readonly ConnectionSettings Entered =
+        ConnectionSettings.WithoutPassword("sql.example.local,1433", "MH_Database", "revit_reader", true, false).WithPassword("fake-password-for-tests");
 
     private static readonly ConnectionSettings WindowsSignIn =
         new(@"(localdb)\MSSQLLocalDB", "MH_Database", true, null, null, true, false);
@@ -73,6 +77,82 @@ public sealed class ConnectionProblemsTests
         Assert.Contains("\"revit_reader\"", text);
         Assert.Contains("connection file", text);
     }
+
+    [Fact]
+    public void SqlError_LoginFailedWithAnEnteredPassword_SaysHowToEnterANewOne()
+    {
+        string text = ConnectionProblems.DescribeSqlError(18456, "Login failed for user 'revit_reader'.", Entered, 5);
+
+        Assert.Contains("refused the database password kept on this computer", text);
+        Assert.Contains("sign in again", text);
+        Assert.DoesNotContain("connection file", text);
+        Assert.DoesNotContain("fake-password", text);
+    }
+
+    [Fact]
+    public void LoginRefused_IsTheServersAnswerToALoginAndItsPassword()
+    {
+        Assert.True(ConnectionProblems.IsLoginRefused(18456, "Login failed for user 'revit_reader'.", Entered));
+        Assert.True(ConnectionProblems.IsLoginRefused(18456, "Login failed for user 'revit_reader'.", SqlLogin));
+    }
+
+    [Theory]
+    [InlineData(53, "A network-related or instance-specific error occurred.")]
+    [InlineData(-2, "Connection Timeout Expired.")]
+    [InlineData(4060, "Cannot open database \"MH_Database\" requested by the login.")]
+    [InlineData(18470, "Login failed for user 'revit_reader'. Reason: The account is disabled.")]
+    [InlineData(18486, "Login failed for user 'revit_reader' because the account is currently locked out.")]
+    [InlineData(18456, "The certificate chain was issued by an authority that is not trusted.")]
+    public void LoginRefused_IsNothingElse(int number, string message) =>
+        Assert.False(ConnectionProblems.IsLoginRefused(number, message, Entered));
+
+    // Tried by the database session on LocalDB (2026-11-24): a pooled connection only notices at the next command that its
+    // login has a new password, and two errors that follow from it come along.
+    [Fact]
+    public void PooledConnectionWithAnOldPassword_IsRefused()
+    {
+        SqlException error = SqlErrors.Answer(
+            (18456, 14, "Login failed for user 'revit_reader'."),
+            (596, 21, "Cannot continue the execution because the session is in the kill state."),
+            (0, 20, "A severe error occurred on the current command.  The results, if any, should be discarded."));
+
+        Assert.Equal(3, error.Errors.Count);
+        Assert.True(ConnectionProblems.IsLoginRefused(error.Number, error.Message, Entered));
+        Assert.Equal(
+            "The server refused the database password kept on this computer. If you got a new one, sign in again to enter it.",
+            ConnectionProblems.DescribeSqlError(error.Number, error.Message, Entered, 30));
+    }
+
+    // The same with the login disabled. Nothing is wrong with the password then, so it's kept.
+    [Fact]
+    public void PooledConnectionOfADisabledLogin_IsNotRefused()
+    {
+        SqlException error = SqlErrors.Answer(
+            (18470, 14, "Login failed for user 'revit_reader'. Reason: The account is disabled."),
+            (596, 21, "Cannot continue the execution because the session is in the kill state."),
+            (0, 20, "A severe error occurred on the current command.  The results, if any, should be discarded."));
+
+        Assert.False(ConnectionProblems.IsLoginRefused(error.Number, error.Message, Entered));
+        Assert.Equal(
+            "The server said: Login failed for user 'revit_reader'. Reason: The account is disabled.",
+            ConnectionProblems.DescribeSqlError(error.Number, error.Message, Entered, 30));
+    }
+
+    // The server says 18456 here too, but only after what's really wrong. So the first error decides, not any of them.
+    [Fact]
+    public void DatabaseThatCantBeOpened_IsNotRefused()
+    {
+        SqlException error = SqlErrors.Answer(
+            (4060, 11, "Cannot open database \"MH_Database\" requested by the login. The login failed."),
+            (18456, 14, "Login failed for user 'revit_reader'."));
+
+        Assert.False(ConnectionProblems.IsLoginRefused(error.Number, error.Message, Entered));
+        Assert.Contains("doesn't exist on", ConnectionProblems.DescribeSqlError(error.Number, error.Message, Entered, 30));
+    }
+
+    [Fact]
+    public void LoginRefused_IsNotAboutAWindowsAccount() =>
+        Assert.False(ConnectionProblems.IsLoginRefused(18456, "Login failed for user 'PC\\someone'.", WindowsSignIn));
 
     [Fact]
     public void SqlError_LoginFailedWithWindowsSignIn_SpeaksOfTheWindowsAccount()

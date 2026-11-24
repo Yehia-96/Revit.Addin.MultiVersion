@@ -1,16 +1,19 @@
 using System;
 using System.IO;
+using System.Reflection;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
 namespace MH.RevitTools.Database.Connection
 {
     /// <summary>
-    /// Reads the connection file, <c>C:\ProgramData\MH\RevitTools\database.json</c>: one per PC, for
-    /// every Revit year. The installer writes it and the add-in only reads it. It names the SQL
-    /// Server and how to sign in: with the read-only login, or as the Windows user on a developer PC.
-    /// It also names the database's master shared parameter file, so each PC pairs a database with
-    /// its own file.
+    /// Reads the connection file, <c>database.json</c>. The office's is built into the add-in and holds no password. So it
+    /// comes with every version of the add-in, also through Check for Updates, which takes DLLs only, and lies on no share;
+    /// and it's always the one of the version that runs. One at <c>C:\ProgramData\MH\RevitTools\database.json</c> is the
+    /// PC's own, for every Revit year, as on a developer's PC, and wins. The add-in only reads it. It names the SQL Server
+    /// and how to sign in: with the read-only login, whose password the person enters once (<see cref="SavedPasswords"/>),
+    /// or as the Windows user on a developer PC. It also names the database's master shared parameter file, so a database
+    /// always goes with its own file.
     /// </summary>
     public static class ConnectionFile
     {
@@ -18,14 +21,48 @@ namespace MH.RevitTools.Database.Connection
         // it would only stall Revit.
         private const long MaxFileBytes = 64 * 1024;
 
+        /// <summary>Its name: of the PC's own, and of the resource in the add-in's assembly.</summary>
+        public const string FileName = "database.json";
+
+        /// <summary>What <see cref="ConnectionFileResult.Source"/> says of the add-in's.</summary>
+        public const string BuiltIn = "built into the add-in";
+
+        private const string OwnFileCounts =
+            "It's this computer's own, which counts instead of the one built into the add-in: put it right, or delete it to use that one.";
+
         private static readonly JsonLoadSettings LoadSettings = new JsonLoadSettings
         {
             DuplicatePropertyNameHandling = DuplicatePropertyNameHandling.Error,
         };
 
+        /// <summary>The PC's own file.</summary>
         public static string DefaultPath { get; } = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
-            "MH", "RevitTools", "database.json");
+            "MH", "RevitTools", FileName);
+
+        /// <summary>
+        /// Reads the file that counts. The PC's own, if it's there, is the only one, good or broken: a mistake in a
+        /// developer's file must never quietly lead to the office's database. Otherwise it's the add-in's.
+        /// </summary>
+        /// <param name="ownPath">Where the PC's own would be, e.g. <see cref="DefaultPath"/>.</param>
+        /// <param name="addin">The add-in's assembly, which was built with a file.</param>
+        public static ConnectionFileResult ReadFirst(string ownPath, Assembly addin)
+        {
+            if (addin == null)
+                throw new ArgumentNullException(nameof(addin));
+            return ReadFirst(ownPath, () => addin.GetManifestResourceStream(FileName));
+        }
+
+        internal static ConnectionFileResult ReadFirst(string ownPath, Func<Stream> openBuiltIn)
+        {
+            if (string.IsNullOrWhiteSpace(ownPath))
+                throw new ArgumentException("The PC's own place is required.", nameof(ownPath));
+            if (IsClearlyMissing(ownPath))
+                return ReadBuiltIn(openBuiltIn);
+
+            ConnectionFileResult own = Read(ownPath);
+            return own.IsLoaded ? own : ConnectionFileResult.Failed(ownPath, own.Problem + " " + OwnFileCounts);
+        }
 
         /// <summary>
         /// Reads and checks the file. A missing or broken file doesn't throw: the result says what's
@@ -39,11 +76,17 @@ namespace MH.RevitTools.Database.Connection
             string json;
             try
             {
-                if (!File.Exists(path))
-                    return ConnectionFileResult.Failed(path, "No connection file at " + path + ". The installer puts it there.");
                 if (new FileInfo(path).Length > MaxFileBytes)
                     return ConnectionFileResult.Failed(path, "The connection file " + path + " is too big to be one (over 64 KB).");
                 json = File.ReadAllText(path);
+            }
+            catch (FileNotFoundException)
+            {
+                return ConnectionFileResult.Failed(path, NothingAt(path));
+            }
+            catch (DirectoryNotFoundException)
+            {
+                return ConnectionFileResult.Failed(path, NothingAt(path));
             }
             catch (IOException ex)
             {
@@ -54,6 +97,23 @@ namespace MH.RevitTools.Database.Connection
                 return ConnectionFileResult.Failed(path, "You don't have permission to read the connection file " + path + ".");
             }
 
+            return Parse(path, json);
+        }
+
+        private static ConnectionFileResult ReadBuiltIn(Func<Stream> open)
+        {
+            using (Stream stream = open())
+            {
+                if (stream == null)
+                    return ConnectionFileResult.Failed(BuiltIn,
+                        "This add-in was built without its connection file. Install the add-in again, or tell whoever published it.");
+                using (var reader = new StreamReader(stream))
+                    return Parse(BuiltIn, reader.ReadToEnd());
+            }
+        }
+
+        private static ConnectionFileResult Parse(string source, string json)
+        {
             string problem;
             JObject root = ParseObject(json, out problem);
             ConnectionSettings settings = root == null ? null : ToSettings(root, out problem);
@@ -61,8 +121,36 @@ namespace MH.RevitTools.Database.Connection
             if (settings != null && !TryGetText(root, "masterParameterFile", out masterParameterFile, out problem))
                 settings = null;
             return settings == null
-                ? ConnectionFileResult.Failed(path, "The connection file " + path + " " + problem)
-                : ConnectionFileResult.Loaded(path, settings, ExpandedPath(masterParameterFile));
+                ? ConnectionFileResult.Failed(source, "The connection file " + source + " " + problem)
+                : ConnectionFileResult.Loaded(source, settings, ExpandedPath(masterParameterFile));
+        }
+
+        private static string NothingAt(string path) => "No connection file at " + path + ".";
+
+        // Only when Windows says there's nothing. File.Exists also says no when it can't look, for lack of permission say.
+        private static bool IsClearlyMissing(string path)
+        {
+            try
+            {
+                File.GetAttributes(path);
+                return false;
+            }
+            catch (FileNotFoundException)
+            {
+                return true;
+            }
+            catch (DirectoryNotFoundException)
+            {
+                return true;
+            }
+            catch (IOException)
+            {
+                return false;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return false;
+            }
         }
 
         // A path as written, with %LOCALAPPDATA% and the like filled in for the user running Revit.
@@ -138,17 +226,17 @@ namespace MH.RevitTools.Database.Connection
             else if (string.IsNullOrWhiteSpace(database))
                 problem = "has no \"database\".";
             else if (!useWindowsSignIn && string.IsNullOrWhiteSpace(login))
-                problem = "has no \"login\". It needs the read-only login and its \"password\" "
+                problem = "has no \"login\". It needs the read-only login "
                     + "(or \"windowsSignIn\": true on a developer PC).";
-            else if (!useWindowsSignIn && string.IsNullOrEmpty(password))
-                problem = "has no \"password\" for the login \"" + login.Trim() + "\".";
 
             if (problem != null)
                 return null;
 
             // Encrypted, with the certificate checked, unless the file says otherwise.
-            return new ConnectionSettings(server, database, useWindowsSignIn, login, password,
-                encrypt ?? true, trustServerCertificate ?? false);
+            bool encrypts = encrypt ?? true, trusts = trustServerCertificate ?? false;
+            return !useWindowsSignIn && string.IsNullOrEmpty(password)
+                ? ConnectionSettings.WithoutPassword(server, database, login, encrypts, trusts)
+                : new ConnectionSettings(server, database, useWindowsSignIn, login, password, encrypts, trusts);
         }
 
         private static bool TryGetText(JObject root, string key, out string value, out string problem)

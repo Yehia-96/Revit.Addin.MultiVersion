@@ -1,4 +1,5 @@
 using MH.RevitTools.Database.Connection;
+using MH.RevitTools.Database.Link;
 using MH.RevitTools.Database.SigningIn;
 using System;
 using System.Diagnostics;
@@ -20,6 +21,7 @@ namespace Revit.Addin._2027.DatabaseLink.SignIn
         private static readonly Brush ProblemLine = DialogText.Frozen(0xE5, 0xA7, 0x9F);
 
         private readonly StudioSignIn _signIn;
+        private readonly ConnectionSettings _settings;
         private readonly SignInWaits _waits = new SignInWaits();
         private readonly DispatcherTimer _clock;
         private bool _trying;
@@ -31,6 +33,7 @@ namespace Revit.Addin._2027.DatabaseLink.SignIn
         public SignInWindow(StudioSignIn signIn, ConnectionSettings settings)
         {
             _signIn = signIn ?? throw new ArgumentNullException(nameof(signIn));
+            _settings = settings ?? throw new ArgumentNullException(nameof(settings));
 
             InitializeComponent();
             Heading.Text = SignInTexts.Title;
@@ -47,6 +50,12 @@ namespace Revit.Addin._2027.DatabaseLink.SignIn
 
         /// <summary>Who signed in; set only when the window closes with that.</summary>
         public SignedInPerson Person { get; private set; }
+
+        /// <summary>
+        /// The window closed because the server refused the database password that was entered on this PC. The account
+        /// wasn't tried.
+        /// </summary>
+        public bool IsDatabasePasswordRefused { get; private set; }
 
         private void OnSignIn(object sender, RoutedEventArgs e)
         {
@@ -85,6 +94,12 @@ namespace Revit.Addin._2027.DatabaseLink.SignIn
                     return;
                 }
                 Trace.WriteLine("[Parameter Tools] The sign-in failed: " + error);
+                if (_settings.HasEnteredPassword && error is LinkDatabaseException && ((LinkDatabaseException)error).IsLoginRefused)
+                {
+                    IsDatabasePasswordRefused = true;
+                    DialogResult = false;
+                    return;
+                }
                 ShowProblem(SignInTexts.Problem(error));
                 Password.Focus();
             }

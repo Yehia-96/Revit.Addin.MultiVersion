@@ -1,12 +1,11 @@
 using System;
-using MH.RevitTools.Database.Checking;
 using MH.RevitTools.Database.Connection;
 
 namespace MH.RevitTools.Database.SigningIn
 {
     /// <summary>
     /// Who is signed in, from sign-in until Revit closes. In memory only: each start of Revit begins with nobody. It
-    /// holds for the database it was made with; another one, after another connection file, asks again. Safe to use
+    /// holds for the database and the database password it was made with; another one asks again. Safe to use
     /// from several threads: the pane's check asks it from its own.
     /// </summary>
     public sealed class SignInSession
@@ -27,13 +26,13 @@ namespace MH.RevitTools.Database.SigningIn
             }
         }
 
-        /// <summary>Who is signed in to this database; null when nobody is.</summary>
+        /// <summary>Who is signed in with this connection; null when nobody is.</summary>
         public SignedInPerson PersonFor(ConnectionSettings settings)
         {
             if (settings == null)
                 throw new ArgumentNullException(nameof(settings));
             SignedInPerson person = Person;
-            return person != null && string.Equals(person.DatabaseKey, PullCache.KeyFor(settings), StringComparison.Ordinal) ? person : null;
+            return person != null && person.IsFor(settings) ? person : null;
         }
 
         public void SignIn(SignedInPerson person)

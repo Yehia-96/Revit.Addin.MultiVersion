@@ -7,6 +7,8 @@ namespace MH.RevitTools.Database.Connection
     /// <summary>Puts connection failures into plain words. The technical side goes in the details.</summary>
     internal static class ConnectionProblems
     {
+        private const int LoginFailed = 18456;
+
         /// <summary>
         /// The driver itself failed to load or start; no server involved. Must not touch SqlClient
         /// types: it runs exactly when SqlClient may be broken.
@@ -30,23 +32,28 @@ namespace MH.RevitTools.Database.Connection
             return "Couldn't connect: " + FirstLine(e.Message);
         }
 
+        /// <summary>The server doesn't take the login with this password. About a Windows account it says nothing.</summary>
+        internal static bool IsLoginRefused(int number, string message, ConnectionSettings settings) =>
+            number == LoginFailed && !settings.WindowsSignIn && !IsAboutCertificate(message);
+
         /// <summary>The server, or the way to it, answered with an error.</summary>
         internal static string DescribeSqlError(int number, string message, ConnectionSettings settings, int timeoutSeconds)
         {
-            // Encryption errors carry the operating system's error code, so go by the message. Name the
-            // setting for whoever sets up the PC, but don't nudge users to switch the check off.
-            if (message != null && message.IndexOf("certificate", StringComparison.OrdinalIgnoreCase) >= 0)
+            // Name the setting for whoever sets up the PC, but don't nudge users to switch the check off.
+            if (IsAboutCertificate(message))
                 return "The server's certificate isn't trusted on this PC, so the connection was stopped. "
                     + "The certificate setting in the connection file (\"trustServerCertificate\") has to match "
-                    + "how the server is set up; the installer writes it.";
+                    + "how the server is set up.";
 
             switch (number)
             {
                 case -2:
                     return settings.Server + " didn't answer within " + timeoutSeconds + " seconds.";
-                case 18456:
-                    return settings.WindowsSignIn
-                        ? "The server didn't accept your Windows account."
+                case LoginFailed:
+                    if (settings.WindowsSignIn)
+                        return "The server didn't accept your Windows account.";
+                    return settings.HasEnteredPassword
+                        ? "The server refused the database password kept on this computer. If you got a new one, sign in again to enter it."
                         : "The server refused the login \"" + settings.Login + "\". Check the login and password in the connection file.";
                 case 4060:
                     return "The database \"" + settings.Database + "\" doesn't exist on " + settings.Server
@@ -67,6 +74,10 @@ namespace MH.RevitTools.Database.Connection
                     return "The server said: " + FirstLine(message);
             }
         }
+
+        // Encryption errors carry the operating system's error code, so the message tells.
+        private static bool IsAboutCertificate(string message) =>
+            message != null && message.IndexOf("certificate", StringComparison.OrdinalIgnoreCase) >= 0;
 
         private static Exception Unwrap(Exception error)
         {

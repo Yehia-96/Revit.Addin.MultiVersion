@@ -6,10 +6,10 @@ namespace MH.RevitTools.Database.Checking
     /// <summary>What a check found, for the pane's header and the Database button's dot.</summary>
     public enum CheckState
     {
-        /// <summary>The PC's connection file is missing or broken.</summary>
+        /// <summary>The connection file can't be used: there's a mistake in the PC's own, say.</summary>
         NotSetUp,
 
-        /// <summary>Nobody is signed in to this database, so it wasn't asked.</summary>
+        /// <summary>Nobody is signed in to this database, or its password hasn't been entered on this PC, so it wasn't asked.</summary>
         NotSignedIn,
 
         /// <summary>The database didn't answer: the VPN is off, the server is down, the login is refused...</summary>
@@ -64,7 +64,10 @@ namespace MH.RevitTools.Database.Checking
         /// <summary>The server and database, e.g. "CADSQL · MH_Database"; empty when not set up.</summary>
         public string Where { get; }
 
-        /// <summary>Why it's not set up or not reachable, or what's wrong with the project, in plain words; null when answered.</summary>
+        /// <summary>
+        /// Why it's not set up or not reachable, what's wrong with the project, or what signing in also asks for, in plain
+        /// words; null when answered, and when only someone's sign-in is missing.
+        /// </summary>
         public string Problem { get; }
 
         public DateTime CheckedAtUtc { get; }
@@ -102,7 +105,7 @@ namespace MH.RevitTools.Database.Checking
 
         /// <summary>The same values from the moment someone signs out, before the next check says so.</summary>
         public CheckOutcome SignedOut(DateTime nowUtc) =>
-            State == CheckState.NotSetUp
+            State == CheckState.NotSetUp || State == CheckState.NotSignedIn
                 ? this
                 : new CheckOutcome(CheckState.NotSignedIn, ProjectId, Where, null, nowUtc, LastAnswerUtc,
                     Data, DataReadAtUtc, DataFromCache, DataVersion, null, null);
@@ -110,8 +113,8 @@ namespace MH.RevitTools.Database.Checking
         internal static CheckOutcome NotSetUp(int projectId, string problem, DateTime nowUtc) =>
             new CheckOutcome(CheckState.NotSetUp, projectId, "", problem, nowUtc, null, null, null, false, 0, null, null);
 
-        internal static CheckOutcome NotSignedIn(int projectId, string where, DateTime nowUtc, ProjectCheckState project) =>
-            new CheckOutcome(CheckState.NotSignedIn, projectId, where, null, nowUtc, LastAnswer(project),
+        internal static CheckOutcome NotSignedIn(int projectId, string where, string problem, DateTime nowUtc, ProjectCheckState project) =>
+            new CheckOutcome(CheckState.NotSignedIn, projectId, where, problem, nowUtc, LastAnswer(project),
                 project.Data, project.DataReadAtUtc, project.DataFromCache, project.Version, null, null);
 
         internal static CheckOutcome Answered(int projectId, string where, DateTime nowUtc, ProjectCheckState project, string cacheProblem) =>
