@@ -302,15 +302,7 @@ namespace Revit.Addin._2027
         }
         private void OnRevitClosing(object sender, ApplicationClosingEventArgs e)
         {
-            if (CheckPluginUpdate.ShouldRunUpdate && !string.IsNullOrWhiteSpace(CheckPluginUpdate.UpdateScriptPath))
-            {
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName = CheckPluginUpdate.UpdateScriptPath,
-                    UseShellExecute = true,
-                    WindowStyle = ProcessWindowStyle.Normal
-                });
-            }
+            CheckPluginUpdate.StartScheduledUpdate();
         }
 
 

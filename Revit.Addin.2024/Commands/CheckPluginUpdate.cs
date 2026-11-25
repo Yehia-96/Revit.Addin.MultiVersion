@@ -1,115 +1,73 @@
 ﻿using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
+using Revit.Addin._2024.Services;
 using System;
 using System.Diagnostics;
 using System.IO;
-using System.Text;
+using Cursor = System.Windows.Forms.Cursor;
+using Cursors = System.Windows.Forms.Cursors;
 
+// Keep identical in 2024, 2026 and 2027 but for the year.
 namespace Revit.Addin._2024.Commands
 {
+    /// <summary>
+    /// Functionality → Check for Updates. Offers the version in the synchronized Teams folder when it's newer than the
+    /// installed one. The files are copied and checked at once; they're installed when Revit closes, by a script that
+    /// waits until no Revit uses them and says how it went. The work is in <see cref="PluginUpdate"/>.
+    /// </summary>
     [Transaction(TransactionMode.Manual)]
     public class CheckPluginUpdate : IExternalCommand
     {
-        private static bool _isTeamsSynced = false;
-        private const string SyncInstructions =
-     "📁 Please follow these steps to sync the 31 BIM folder:\n\n" +
-     "1️⃣  Microsoft Teams will open in your **browser**.\n" +
-     "2️⃣  If prompted, sign in with your work account.\n" +
-     "3️⃣  Click on the **'Open in SharePoint'** button at the top of the Files tab.\n" +
-     "⬇️\n" +
-     "4️⃣  In SharePoint, click the **'Synchronisieren'** (🔄 Sync) button in the toolbar.\n\n" +
-     "🧩 You may be asked to allow OneDrive — confirm and allow it to complete the sync.\n\n" +
-     "✅ Done! The folder will now sync to your computer.";
+        private const string Title = "Check for Updates";
 
-        public static bool ShouldRunUpdate { get; set; } = false;
-        public static string UpdateScriptPath { get; private set; }
+        private const string TeamsFolderUrl =
+            "https://mhing.sharepoint.com/:f:/s/bim/EnndXLE_cLxKkeXBRY7emxwBcR5kh1hDzeC59c-hW66Q7g?e=GhLeaP";
+
+        private const string SyncInstructions =
+            "1. Microsoft Teams opens in your browser. If you're asked, sign in with your work account.\n"
+            + "2. Click 'Open in SharePoint' at the top of the Files tab.\n"
+            + "3. In SharePoint, click 'Synchronisieren' (Sync) in the toolbar, and allow OneDrive to open.\n\n"
+            + "Once the folder is on this computer, click Check for Updates again.";
+
+        // The update that installs when Revit closes; null for none.
+        private static PluginUpdatePaths _scheduled;
+        private static string _scheduledVersion;
+        private static bool _mayBeRefused;
+
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
         {
-            // Resolve all version-specific paths from the running Revit version
-            string revitVersion = commandData.Application.Application.VersionNumber;
-
-            string serverDir = Environment.ExpandEnvironmentVariables(
-                $@"%USERPROFILE%\Müller+Hereth GmbH\31 BIM - Dokumente\General\01 Software\01 Revit-Tools\Updates\Versions\{revitVersion}\dependencies");
-            string serverDllDir = Path.Combine(serverDir, "MH.RevitTools");
-            string serverAddinPath = Path.Combine(serverDir, $"Revit.Addin.{revitVersion}.addin");
-            string serverVersionFile = Path.Combine(serverDir, "version.txt");
-            string localAddinDir = $@"C:\ProgramData\Autodesk\Revit\Addins\{revitVersion}";
-            string localDllDir = Path.Combine(localAddinDir, "MH.RevitTools");
-            string pluginDllName = $"Revit.Addin.{revitVersion}.dll";
-
             try
             {
-                if (!_isTeamsSynced)
+                PluginUpdatePaths paths = PluginUpdatePaths.For(commandData.Application.Application.VersionNumber);
+                if (_scheduled != null)
                 {
-                    TaskDialog TeamsSync = new TaskDialog("Teams Sync Check")
-                    {
-                        MainInstruction = "Have you synced the 31 BIM folder from OneDrive?",
-                        MainContent = "If not, press Yes to open Microsoft Teams and follow the sync steps.\n\n" +
-                                      "After syncing, re-run the 'Check for Updates' button to proceed.",
-                        CommonButtons = TaskDialogCommonButtons.Yes | TaskDialogCommonButtons.No
-                    };
-
-                    if (TeamsSync.Show() == TaskDialogResult.Yes)
-                    {
-                        // Open Teams to allow user to sync
-                        Process.Start(new ProcessStartInfo
-                        {
-                            FileName = "https://mhing.sharepoint.com/:f:/s/bim/EnndXLE_cLxKkeXBRY7emxwBcR5kh1hDzeC59c-hW66Q7g?e=GhLeaP",
-                            UseShellExecute = true
-                        });
-                        TaskDialog.Show("Teams Sync", SyncInstructions);
-
-                        _isTeamsSynced = true;
-                        return Result.Succeeded;
-                    }
-                    else
-                    {
-                        TaskDialog.Show("Teams Sync", "Please ensure you have synced the Teams folder before proceeding.");
-                        
-                    }
-                }
-
-
-                if (!File.Exists(serverVersionFile))
-                {
-                    TaskDialog.Show("Update Check", "Cannot find version.txt on the server.");
-                    return Result.Cancelled;
-                }
-
-                string serverVersion = File.ReadAllText(serverVersionFile).Trim();
-                string localDllPath = Path.Combine(localDllDir, pluginDllName);
-
-                if (!File.Exists(localDllPath))
-                {
-                    TaskDialog.Show("Update Check", "Local plugin DLL not found.");
-                    return Result.Cancelled;
-                }
-
-                string localVersion = FileVersionInfo.GetVersionInfo(localDllPath).FileVersion;
-
-                if (serverVersion == localVersion)
-                {
-                    TaskDialog.Show("Plugin Up to Date", $"You're already using version {localVersion}.");
+                    ShowScheduled();
                     return Result.Succeeded;
                 }
 
-                var dialog = new TaskDialog("Plugin Update Available")
+                var update = new PluginUpdate(paths);
+                PluginUpdateCheck check = update.Check();
+                switch (check.State)
                 {
-                    MainInstruction = $"Update from {localVersion} to {serverVersion}?",
-                    MainContent = "Revit must be restarted. The update will install after you close Revit.",
-                    CommonButtons = TaskDialogCommonButtons.Yes | TaskDialogCommonButtons.No
-                };
-
-                if (dialog.Show() != TaskDialogResult.Yes)
-                    return Result.Cancelled;
-                ShouldRunUpdate = true;
-                UpdateScriptPath = Path.Combine(Path.GetTempPath(), "run_plugin_update.bat");
-                WriteUpdateScript(UpdateScriptPath, serverDllDir, serverAddinPath, localAddinDir, localDllDir);
-
-                TaskDialog.Show("Update Scheduled", "Update will install after Revit is closed.");
-                _isTeamsSynced = false;
-                return Result.Succeeded;
+                    case PluginUpdateState.Newer:
+                        return Offer(update, check, paths);
+                    case PluginUpdateState.UpToDate:
+                        Show("You're already using version " + check.Installed + ".", "It's the one in the Teams folder on this computer.");
+                        return Result.Succeeded;
+                    case PluginUpdateState.InstalledIsNewer:
+                        Show("There's no newer version", check.Text);
+                        return Result.Succeeded;
+                    case PluginUpdateState.Waiting:
+                        Show("An update is already waiting", check.Text);
+                        return Result.Succeeded;
+                    case PluginUpdateState.NoTeamsFolder:
+                        OfferTeams();
+                        return Result.Cancelled;
+                    default:
+                        Show("Can't check for updates now", check.Text);
+                        return Result.Cancelled;
+                }
             }
             catch (Exception ex)
             {
@@ -118,40 +76,95 @@ namespace Revit.Addin._2024.Commands
             }
         }
 
-        private void WriteUpdateScript(string path, string serverDllDir, string serverAddinPath, string localAddinDir, string localDllDir)
+        /// <summary>Starts the scheduled update's script, which waits until Revit has closed. Called when Revit closes.</summary>
+        public static void StartScheduledUpdate()
         {
-            var sb = new StringBuilder();
-            sb.AppendLine("@echo off");
-            sb.AppendLine("chcp 65001 >nul");
-            sb.AppendLine();
-            sb.AppendLine("echo Updating Revit Plugin...");
-            sb.AppendLine("echo Please wait, this may take a few moments...");
-            sb.AppendLine("timeout /t 10 >nul");
-            sb.AppendLine($@"set ""SERVER_DLL_DIR={serverDllDir}""");
-            sb.AppendLine($@"set ""ADDIN_FILE={serverAddinPath}""");
-            sb.AppendLine($@"set ""LOCAL_ADDIN_DIR={localAddinDir}""");
-            sb.AppendLine($@"set ""LOCAL_DLL_DIR={localDllDir}""");
-            sb.AppendLine();
-
-            sb.AppendLine("echo SERVER_DLL_DIR: %SERVER_DLL_DIR%");
-            sb.AppendLine("echo ADDIN_FILE: %ADDIN_FILE%");
-            sb.AppendLine("echo LOCAL_ADDIN_DIR: %LOCAL_ADDIN_DIR%");
-            sb.AppendLine("echo LOCAL_DLL_DIR: %LOCAL_DLL_DIR%");
-            sb.AppendLine();
-
-            sb.AppendLine("if not exist \"%LOCAL_DLL_DIR%\" mkdir \"%LOCAL_DLL_DIR%\"");
-            sb.AppendLine();
-
-            sb.AppendLine("xcopy /Y /Q /I \"%SERVER_DLL_DIR%\\*.dll\" \"%LOCAL_DLL_DIR%\\\"");
-
-            sb.AppendLine("xcopy /Y /Q \"%ADDIN_FILE%\" \"%LOCAL_ADDIN_DIR%\\\"");
-            sb.AppendLine();
-
-            sb.AppendLine("echo Update Complete.");
-            sb.AppendLine("pause");
-            sb.AppendLine("exit");
-
-            File.WriteAllText(path, sb.ToString(), new UTF8Encoding(false));
+            if (_scheduled == null)
+                return;
+            string script = _scheduled.Script;
+            _scheduled = null;
+            try
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = script,
+                    WorkingDirectory = Environment.SystemDirectory,
+                    UseShellExecute = true,
+                    WindowStyle = ProcessWindowStyle.Normal,
+                });
+            }
+            catch (Exception ex)
+            {
+                // Revit is closing, so there's nowhere to say it. The version stays as it is, and Check for Updates offers
+                // the new one again.
+                Trace.WriteLine("[Parameter Tools] The update wasn't started: " + ex.Message);
+            }
         }
+
+        private static Result Offer(PluginUpdate update, PluginUpdateCheck check, PluginUpdatePaths paths)
+        {
+            var question = new TaskDialog(Title)
+            {
+                MainInstruction = "Update from " + check.Installed + " to " + check.Published + "?",
+                MainContent = "The files are copied now and installed when you close Revit " + paths.RevitYear + ".",
+                CommonButtons = TaskDialogCommonButtons.Yes | TaskDialogCommonButtons.No,
+                DefaultButton = TaskDialogResult.Yes,
+            };
+            if (question.Show() != TaskDialogResult.Yes)
+                return Result.Cancelled;
+
+            string problem;
+            bool mayBeRefused;
+            Cursor before = Cursor.Current;
+            Cursor.Current = Cursors.WaitCursor;
+            try
+            {
+                problem = update.Prepare(check);
+                mayBeRefused = problem == null && update.NeedsAdministrator();
+            }
+            finally
+            {
+                Cursor.Current = before;
+            }
+            if (problem != null)
+            {
+                Show("The update couldn't be copied", problem);
+                return Result.Cancelled;
+            }
+
+            _scheduled = paths;
+            _scheduledVersion = check.Published;
+            _mayBeRefused = mayBeRefused;
+            ShowScheduled();
+            return Result.Succeeded;
+        }
+
+        private static void ShowScheduled() =>
+            Show("Version " + _scheduledVersion + " is ready to install",
+                "Close every Revit " + _scheduled.RevitYear + " window. A small window then installs it and says how it went. Wait for that "
+                + "before you start Revit again."
+                + (_mayBeRefused
+                    ? "\n\nThis Windows account may not be allowed to replace the installed files, as when an administrator installed them. If "
+                        + "the window says NOT UPDATED, an administrator has to install the update with Install.cmd from the ZIP."
+                    : ""));
+
+        private static void OfferTeams()
+        {
+            var question = new TaskDialog(Title)
+            {
+                MainInstruction = "The Teams folder isn't on this computer",
+                MainContent = "Updates come from the folder 31 BIM in Microsoft Teams, synchronized to this computer with OneDrive. "
+                    + "Open it now to synchronize it?",
+                CommonButtons = TaskDialogCommonButtons.Yes | TaskDialogCommonButtons.No,
+                DefaultButton = TaskDialogResult.Yes,
+            };
+            if (question.Show() != TaskDialogResult.Yes)
+                return;
+            Process.Start(new ProcessStartInfo { FileName = TeamsFolderUrl, UseShellExecute = true });
+            Show("Synchronize the folder 31 BIM", SyncInstructions);
+        }
+
+        private static void Show(string headline, string text) =>
+            new TaskDialog(Title) { MainInstruction = headline, MainContent = text, CommonButtons = TaskDialogCommonButtons.Close }.Show();
     }
 }

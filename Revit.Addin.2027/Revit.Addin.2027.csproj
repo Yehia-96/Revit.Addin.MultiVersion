@@ -29,8 +29,8 @@
          folder itself gets SqlClient's platform-neutral placeholder, which throws "not supported on
          this platform", and the real Windows build and its native Microsoft.Data.SqlClient.SNI.dll
          sit in runtimes\, which only a host that reads our deps.json finds. Flat files also survive
-         "Check for Updates", which copies only the top-level *.dll. Still framework-dependent:
-         Revit supplies .NET. -->
+         "Check for Updates" of 5.2.2.0, which copies only the top-level *.dll. Still
+         framework-dependent: Revit supplies .NET. -->
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>false</SelfContained>
   </PropertyGroup>
@@ -135,9 +135,9 @@
     <ProjectReference Include="..\MH.RevitTools.Database\MH.RevitTools.Database.csproj" />
   </ItemGroup>
 
-  <!-- The office's connection file, built into the add-in. So it gets through Check for Updates too, which copies only the
-       top-level *.dll, and lies on no PC and no share. Everybody could read it, so it never holds a password: each person
-       enters that once, in Revit. Tests see to both. -->
+  <!-- The office's connection file, built into the add-in. So it gets through Check for Updates of 5.2.2.0 too, which copies
+       only the top-level *.dll, and lies on no PC and no share. Everybody could read it, so it never holds a password: each
+       person enters that once, in Revit. Tests see to both. -->
   <ItemGroup>
     <None Remove="database.json" />
     <EmbeddedResource Include="database.json" LogicalName="database.json" />

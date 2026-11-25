@@ -27,6 +27,21 @@
     <None Include="..\Revit.Addin.2027\Revit.Addin.2027.csproj" Link="Connection\Revit.Addin.2027.csproj" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!-- Check for Updates: the Revit-free part, compiled into the tests, and every year's files, to see that they're the same -->
+  <ItemGroup>
+    <Compile Include="..\Revit.Addin.2027\Services\PluginUpdate.cs" Link="AddinUpdate\PluginUpdate.cs" />
+    <None Include="..\Revit.Addin.2024\Services\PluginUpdate.cs" Link="AddinUpdate\2024\PluginUpdate.cs.txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\Revit.Addin.2026\Services\PluginUpdate.cs" Link="AddinUpdate\2026\PluginUpdate.cs.txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\Revit.Addin.2027\Services\PluginUpdate.cs" Link="AddinUpdate\2027\PluginUpdate.cs.txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\Revit.Addin.2024\Commands\CheckPluginUpdate.cs" Link="AddinUpdate\2024\CheckPluginUpdate.cs.txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\Revit.Addin.2026\Commands\CheckPluginUpdate.cs" Link="AddinUpdate\2026\CheckPluginUpdate.cs.txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\Revit.Addin.2027\Commands\CheckPluginUpdate.cs" Link="AddinUpdate\2027\CheckPluginUpdate.cs.txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\Revit.Addin.2024\App.cs" Link="AddinUpdate\2024\App.cs.txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\Revit.Addin.2026\App.cs" Link="AddinUpdate\2026\App.cs.txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\Revit.Addin.2027\App.cs" Link="AddinUpdate\2027\App.cs.txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\Revit.Addin.2024\Revit.Addin.2024.csproj" Link="AddinUpdate\2024\Revit.Addin.2024.csproj.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <!-- SQL scripts the LocalDB tests run in their throwaway databases -->
   <ItemGroup>
     <None Update="Link\*.sql" CopyToOutputDirectory="PreserveNewest" />
