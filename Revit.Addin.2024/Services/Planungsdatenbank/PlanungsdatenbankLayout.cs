@@ -63,10 +63,7 @@ namespace Revit.Addin._2024.Services.Planungsdatenbank
         internal static class Headers
         {
             // Family identity. Bauteil_ID (e.g. BT-1101-01) is the unique key and the connection
-            // to Revit, where the modellers enter it on every element. Bauteilnummer and
-            // Bauteilunternummer are read only to keep them out of the parameter list.
-            internal const string Bauteilnummer = "Bauteilnummer";
-            internal const string Bauteilunternummer = "Bauteilunternummer";
+            // to Revit, where the modellers enter it on every element.
             internal const string BauteilId = "Bauteil_ID";
 
             /// <summary>Foreign key into <see cref="Sheets.Materials"/>, e.g. MB-1761-01-BET-0011.</summary>

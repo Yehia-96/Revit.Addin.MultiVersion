@@ -366,6 +366,36 @@ namespace Revit.Addin._2026.Services
                 }
             }
 
+        /// <summary>
+        /// The converted value as this parameter can take it, or null when it can't.
+        /// <para>
+        /// The model's parameter can be of another kind than the workbook's: a Bauteilnummer that a family
+        /// has as a text, or Revit's own "Typ". A value that doesn't fit isn't written, or SetMultiple throws
+        /// and none of the run's values is.
+        /// </para>
+        /// </summary>
+        public static ParameterValue Fitting(Parameter parameter, ParameterValue value, string raw)
+            {
+                switch (parameter.StorageType)
+                {
+                    case StorageType.String:
+                        return value is StringParameterValue ? value : new StringParameterValue(raw ?? "");
+                    case StorageType.Integer:
+                        int number;
+                        if (value is IntegerParameterValue) return value;
+                        return int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out number)
+                            ? new IntegerParameterValue(number)
+                            : null;
+                    case StorageType.Double:
+                        return value as DoubleParameterValue;
+                    case StorageType.ElementId:
+                        // The workbook has no element ids. Materials are assigned on their own.
+                        return value as ElementIdParameterValue;
+                    default:
+                        return null;
+                }
+            }
+
         // Static method to retrieve all shared parameters from a DefinitionFile
         public static List<string> GetAllSharedParameters(DefinitionFile defFile)
             {
