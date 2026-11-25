@@ -29,8 +29,20 @@ namespace Revit.Addin._2027.Services.Planungsdatenbank
         /// </summary>
         internal static ExcelFormat LoadedFormat { get; private set; }
 
+        /// <summary>The workbook currently loaded, as it was read. Null until something loads, another one after each load.</summary>
+        internal static WorkbookFile Loaded { get; private set; }
+
         /// <summary>Path of the workbook currently loaded, or null.</summary>
-        internal static string LoadedPath { get; private set; }
+        internal static string LoadedPath { get { return Loaded == null ? null : Loaded.FullPath; } }
+
+        /// <summary>The workbook currently loaded, for messages: its name and when it was saved. Null when there's none.</summary>
+        internal static string LoadedDescription { get { return Loaded == null ? null : Loaded.Description; } }
+
+        /// <summary>
+        /// The parameter the modellers type the key into, for the shared parameter file: Bauteil_ID. Empty for the old
+        /// format, whose families carry Bauteilnummer as their own parameter.
+        /// </summary>
+        internal static Dictionary<string, ParamMetaData> IdentityDefinitions { get; private set; }
 
         /// <summary>Problems from the last load. Always empty for the old format, which reports nothing.</summary>
         internal static List<string> Problems { get; private set; }
@@ -41,12 +53,34 @@ namespace Revit.Addin._2027.Services.Planungsdatenbank
         static WorkbookLoader()
         {
             LoadedFormat = ExcelFormat.Unknown;
+            IdentityDefinitions = new Dictionary<string, ParamMetaData>();
             Problems = new List<string>();
             Notes = new List<string>();
         }
 
         /// <summary>
-        /// Detects the workbook's format and loads it.
+        /// Loads the workbook again when it was saved since it was read; true when it did. Otherwise a value changed in
+        /// Excel would never arrive, as the workbook is read once per Revit session.
+        /// </summary>
+        /// <exception cref="InvalidOperationException">It has changed, and it can't be read. The next call tries again.</exception>
+        internal static bool ReloadIfChanged()
+        {
+            if (Loaded == null || !Loaded.HasChanged()) return false;
+
+            try
+            {
+                Load(LoadedPath);
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException(
+                    "The Excel file has changed, but it couldn't be read again: " + ex.Message, ex);
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// Detects the workbook's format and loads it, from a copy, so it may be open in Excel.
         /// <para>
         /// If reading fails, the exception propagates and whatever was loaded before is left as
         /// it was. Every reader in this add-in clears its state before reading, so a failure part
@@ -56,6 +90,16 @@ namespace Revit.Addin._2027.Services.Planungsdatenbank
         /// </para>
         /// </summary>
         internal static ExcelFormat Load(string path)
+        {
+            ExcelFormat format = ExcelFormat.Unknown;
+            WorkbookFile file = WorkbookFile.Read(path, copy => format = LoadFrom(copy));
+
+            LoadedFormat = format;
+            Loaded = file;
+            return format;
+        }
+
+        private static ExcelFormat LoadFrom(string path)
         {
             ExcelFormat format = ExcelFormatDetector.Detect(path);
 
@@ -76,12 +120,11 @@ namespace Revit.Addin._2027.Services.Planungsdatenbank
 
                 // Unchanged: the reader first-run loading has always used.
                 ExcelParser.NewReadExcelStructured(path);
+                IdentityDefinitions = new Dictionary<string, ParamMetaData>();
                 Problems = new List<string>();
                 Notes = new List<string>();
             }
 
-            LoadedFormat = format;
-            LoadedPath = path;
             return format;
         }
 
@@ -125,6 +168,8 @@ namespace Revit.Addin._2027.Services.Planungsdatenbank
             ExcelParser.MaterialParameterDefinitions.Clear();
             foreach (KeyValuePair<string, ParamMetaData> d in result.MaterialParameterDefinitions)
                 ExcelParser.MaterialParameterDefinitions[d.Key] = d.Value;
+
+            IdentityDefinitions = new Dictionary<string, ParamMetaData>(result.IdentityDefinitions);
 
             ExcelParser.FamilyData.Clear();
             foreach (KeyValuePair<string, Dictionary<string, string>> row in result.FamilyData)

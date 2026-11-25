@@ -22,6 +22,9 @@ namespace Revit.Addin._2027.Commands
         private string _excelFilePath;
 
         public static string _sharedParamPath;
+
+        // The workbook whose parameters were put into the shared parameter file.
+        private static WorkbookFile _seeded;
         // Which reader runs is decided by WorkbookLoader from the workbook itself. This replaces
         // an isNew flag that was never assigned, which made first-run loading and the menu's
         // "Add Excel" button use two different readers.
@@ -80,12 +83,21 @@ namespace Revit.Addin._2027.Commands
                         TaskDialog.Show("Workbook loaded with problems", WorkbookLoader.Summary());
 
                     // shared parameter file
-                    SharedParameterSeeder.EnsureParametersExist(
-                        app,
-                        new[] { ExcelParser.ParameterDefinitions, ExcelParser.MaterialParameterDefinitions },
-                        _sharedParamPath);
+                    SeedDefinitions(app);
 
                     _firstRun = false;
+                }
+                else
+                {
+                    bool readAgain = WorkbookLoader.ReloadIfChanged();
+
+                    // Read again here or by the materials command, the workbook can bring parameters the
+                    // shared-parameter file has never seen.
+                    if (!ReferenceEquals(_seeded, WorkbookLoader.Loaded))
+                        SeedDefinitions(app, sayNothingNew: false);
+
+                    if (readAgain)
+                        TaskDialog.Show("Info", "The Excel file has changed, so it was read again.\n\n" + WorkbookLoader.Summary());
                 }
 
                 // The menu's selection list is by whatever connects the loaded workbook to the
@@ -130,12 +142,7 @@ namespace Revit.Addin._2027.Commands
                         // parameters the shared-parameter file has never seen. Seed them now, or
                         // "Add Parameters" would find no definitions for them.
                         if (!string.IsNullOrWhiteSpace(_sharedParamPath))
-                        {
-                            SharedParameterSeeder.EnsureParametersExist(
-                                app,
-                                new[] { ExcelParser.ParameterDefinitions, ExcelParser.MaterialParameterDefinitions },
-                                _sharedParamPath);
-                        }
+                            SeedDefinitions(app);
 
                         TaskDialog.Show("Info", WorkbookLoader.Summary());
                     }
@@ -144,7 +151,7 @@ namespace Revit.Addin._2027.Commands
                 ui.OnAutoAddClicked = () =>
                 {
 
-                    Tuple<int, int> count = SeedProjectElementsParameters.AddParametersToElements(
+                    ParameterRun run = SeedProjectElementsParameters.AddParametersToElements(
                         doc,
                         ExcelParser.ParameterDefinitions,
                         ExcelParser.FamilyData,
@@ -157,10 +164,11 @@ namespace Revit.Addin._2027.Commands
                     // the Bauteil_ID on the elements, so say where the connection comes from.
                     string noMatch = keyFormat == ExcelFormat.Planungsdatenbank
                         ? "No matching elements found.\n\nElements are matched by their \"" + ElementKey.BauteilIdParameter +
-                          "\" parameter, which must hold the same ID as the Excel row (e.g. BT-1101-01)."
+                          "\" parameter, which must hold the same ID as the Excel row (e.g. BT-1101-01). Elements that don't have " +
+                          "it yet get it under Manage > Project Parameters, from the shared parameter file."
                         : "No matching elements found.";
-                    TaskDialog.Show("Info", count.Item1 == 0 && count.Item2 == 0 ? noMatch : $"{count.Item1} parameters applied.\n{count.Item2} values applied");
-                    didWork = count.Item1 > 0 || count.Item2 > 0;
+                    TaskDialog.Show("Info", run.Message(noMatch, WorkbookLoader.LoadedDescription));
+                    didWork = run.ChangedAnything;
                 };
 
                 // 🟢 OnUpdateClicked is triggered when the user clicks the "Update" button
@@ -192,6 +200,22 @@ namespace Revit.Addin._2027.Commands
                 message = ex.Message;
                 return Result.Failed;
             }
+        }
+
+        // Puts the loaded workbook's parameters into the shared parameter file, and the one elements are matched by.
+        private static void SeedDefinitions(RevitApp app, bool sayNothingNew = true)
+        {
+            SharedParameterSeeder.EnsureParametersExist(
+                app,
+                new[]
+                {
+                    ExcelParser.ParameterDefinitions,
+                    ExcelParser.MaterialParameterDefinitions,
+                    WorkbookLoader.IdentityDefinitions
+                },
+                _sharedParamPath,
+                sayNothingNew);
+            _seeded = WorkbookLoader.Loaded;
         }
     }
 }

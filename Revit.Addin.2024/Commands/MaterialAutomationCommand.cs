@@ -4,8 +4,10 @@ using Autodesk.Revit.UI;
 using Autodesk.Revit.ApplicationServices;
 using Revit.Addin._2024.Helpers;
 using Revit.Addin._2024.Services;
+using Revit.Addin._2024.Services.Planungsdatenbank;
 using Revit.Addin._2024.UI;
 using System;
+using System.Collections.Generic;
 
 namespace Revit.Addin._2024.Commands
 {
@@ -21,6 +23,17 @@ namespace Revit.Addin._2024.Commands
             Application app = uiApp.Application;
             string sharedParamPath = app.SharedParametersFilename;
 
+            try
+            {
+                if (WorkbookLoader.ReloadIfChanged())
+                    TaskDialog.Show("Info", "The Excel file has changed, so it was read again.\n\n" + WorkbookLoader.Summary());
+            }
+            catch (InvalidOperationException ex)
+            {
+                message = ex.Message;
+                return Result.Failed;
+            }
+
             var materialsUI = new MaterialsUI
             {
                 PopulateMaterialsAction = () =>
@@ -30,8 +43,11 @@ namespace Revit.Addin._2024.Commands
                         var report = new ImportReport();
 
                         // If you can’t/won’t modify your methods, just store the counts:
+                        var notAdded = new List<string>();
                         report.BoundParameters = SeedMaterialParameters.BindSharedParametersToMaterials(
-                            doc, app, sharedParamPath, ExcelParser.MaterialParameterDefinitions);
+                            doc, app, sharedParamPath, ExcelParser.MaterialParameterDefinitions, notAdded: notAdded);
+                        foreach (string problem in notAdded)
+                            report.AddWarn("Not added to the materials: " + problem);
 
                         report.WrittenValues = SeedMaterialParameters.ApplyValuesByMaterialName(
                             doc, ExcelParser.MaterialData);

@@ -4,7 +4,6 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using System.Text;
 using Revit.Addin._2026.Services;
 using Application = Autodesk.Revit.ApplicationServices.Application;
 using Document = Autodesk.Revit.DB.Document;
@@ -13,18 +12,18 @@ namespace Revit.Addin._2026.Helpers
 {
     public class SeedMaterialParameters
     {
+        // notAdded: takes the parameters that couldn't be added, each with the reason.
         public static int BindSharedParametersToMaterials(
         Document doc,
         Application app,
         string sharedParamFilePath,
         Dictionary<string, ParamMetaData> MaterialParameterDefinitions,
-        string sharedParamFileGroupName = "Materials")
+        string sharedParamFileGroupName = "Materials",
+        ICollection<string> notAdded = null)
         {
             if (doc == null) throw new ArgumentNullException(nameof(doc));
             if (app == null) throw new ArgumentNullException(nameof(app));
             if (MaterialParameterDefinitions == null || MaterialParameterDefinitions.Count == 0) return 0;
-
-            var log = new StringBuilder();
 
             // Open shared parameter file once
             app.SharedParametersFilename = sharedParamFilePath;
@@ -47,9 +46,6 @@ namespace Revit.Addin._2026.Helpers
             Category matCat = doc.Settings.Categories.get_Item(BuiltInCategory.OST_Materials);
             CategorySet cs = app.Create.NewCategorySet();
             cs.Insert(matCat);
-
-            InstanceBinding binding = app.Create.NewInstanceBinding(cs);
-            BindingMap map = doc.ParameterBindings;
 
             int bound = 0;
 
@@ -96,19 +92,19 @@ namespace Revit.Addin._2026.Helpers
                     // 3) Use the metadata's Revit group (fallback to Materials)
                     ForgeTypeId groupId = meta.GroupNameRevit ?? GroupTypeId.Materials;
 
-                    // 4) Insert or update binding
-                    bool ok = map.Insert(defToBind, binding, groupId);
-                    if (!ok)
-                        ok = map.ReInsert(defToBind, binding, groupId);
+                    // 4) Insert it, or add the materials to the categories it's on already
+                    BindingOutcome outcome = ProjectParameterBinder.Add(doc, app, defToBind, cs, groupId);
+                    if (outcome == BindingOutcome.Added)
+                        bound++;
 
-                    if (ok) bound++;
-                    else log.AppendLine($"Failed to bind '{paramName}'.");
+                    string problem = ProjectParameterBinder.Problem(paramName, outcome);
+                    if (problem != null && notAdded != null)
+                        notAdded.Add(problem);
                 }
 
                 tx.Commit();
             }
 
-            // If you want, show log in a TaskDialog here (kept out to avoid UI spam).
             return bound;
         }
 

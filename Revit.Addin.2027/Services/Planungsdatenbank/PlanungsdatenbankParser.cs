@@ -24,6 +24,13 @@ namespace Revit.Addin._2027.Services.Planungsdatenbank
         internal Dictionary<string, ParamMetaData> MaterialParameterDefinitions { get; private set; }
 
         /// <summary>
+        /// The parameter that connects an element to its row, Bauteil_ID. The modellers type it in by hand, so it
+        /// belongs in the shared parameter file, where they get it from. It isn't among
+        /// <see cref="ParameterDefinitions"/>, because it's never added to a family and never written.
+        /// </summary>
+        internal Dictionary<string, ParamMetaData> IdentityDefinitions { get; private set; }
+
+        /// <summary>
         /// Family values: key is the row's Bauteil_ID (see <see cref="ElementKey"/>), value is
         /// parameter name to value. Only cells carrying a real value are present - skipped cells
         /// are absent rather than empty, so a caller cannot accidentally write a blank over
@@ -78,6 +85,7 @@ namespace Revit.Addin._2027.Services.Planungsdatenbank
             ElementMaterial = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             ParameterDefinitions = new Dictionary<string, ParamMetaData>(StringComparer.OrdinalIgnoreCase);
             MaterialParameterDefinitions = new Dictionary<string, ParamMetaData>(StringComparer.OrdinalIgnoreCase);
+            IdentityDefinitions = new Dictionary<string, ParamMetaData>(StringComparer.OrdinalIgnoreCase);
             FamilyData = new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
             MaterialData = new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
             ParametersToIgnore = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -353,6 +361,7 @@ namespace Revit.Addin._2027.Services.Planungsdatenbank
             int bunColumn = TryFindColumn(sheet, nameRow, PlanungsdatenbankLayout.Headers.Bauteilunternummer);
             if (bnColumn > 0) identity.Add(bnColumn);
             if (bunColumn > 0) identity.Add(bunColumn);
+            result.IdentityDefinitions[PlanungsdatenbankLayout.Headers.BauteilId] = BauteilIdDefinition(sheet, idColumn);
 
             List<Column> columns = PrepareColumns(
                 sheet, PlanungsdatenbankLayout.Sheets.Objects, identity,
@@ -427,6 +436,23 @@ namespace Revit.Addin._2027.Services.Planungsdatenbank
             result.Notes.Add(PlanungsdatenbankLayout.Sheets.Objects + ": " + rowsRead + " rows, " +
                 result.ParameterDefinitions.Count + " parameters" +
                 (rowsSkipped > 0 ? ", " + rowsSkipped + " rows skipped" : "") + ".");
+        }
+
+        /// <summary>
+        /// Bauteil_ID as a parameter. A text whatever the sheet's Datentyp says, because that's how it's matched
+        /// (<see cref="ElementKey"/>).
+        /// </summary>
+        private static ParamMetaData BauteilIdDefinition(SheetGrid sheet, int column)
+        {
+            int groupRow = sheet.RequireLabelRow(PlanungsdatenbankLayout.Labels.ParameterGroup);
+            int idRow = sheet.LabelRow(
+                PlanungsdatenbankLayout.Labels.ParameterId,
+                PlanungsdatenbankLayout.Labels.ParameterIdTypo);
+
+            var meta = new ParamMetaData(PlanungsdatenbankLayout.Headers.BauteilId, sheet.Text(groupRow, column), "[string]");
+            meta.Target = ParamMetaData.ParamTarget.FamilyElement;
+            if (idRow > 0) meta.Description = sheet.Text(idRow, column);
+            return meta;
         }
 
         // --- Materialdatenbank ----------------------------------------------------------------

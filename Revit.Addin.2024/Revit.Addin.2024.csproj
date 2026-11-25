@@ -422,6 +422,7 @@
     <Compile Include="Helpers\EditedFamilyReloadService.cs" />
     <Compile Include="Helpers\FamilyNormParameterRemovalService.cs" />
     <Compile Include="Helpers\ParameterCategoryUnassigner.cs" />
+    <Compile Include="Helpers\ProjectParameterBinder.cs" />
     <Compile Include="Helpers\SeedMaterialParameters.cs" />
     <Compile Include="Helpers\SeedProjectElementsParameters.cs" />
     <Compile Include="Helpers\SharedParameterSeeder.cs" />
@@ -441,6 +442,7 @@
     <Compile Include="Services\ExcelParseResult.cs" />
     <Compile Include="Services\Planungsdatenbank\ElementKey.cs" />
     <Compile Include="Services\Planungsdatenbank\WorkbookLoader.cs" />
+    <Compile Include="Services\Planungsdatenbank\WorkbookFile.cs" />
     <Compile Include="Services\Planungsdatenbank\PlanungsdatenbankLayout.cs" />
     <Compile Include="Services\Planungsdatenbank\SheetGrid.cs" />
     <Compile Include="Services\Planungsdatenbank\ExcelFormatDetector.cs" />
@@ -450,6 +452,8 @@
     <Compile Include="Services\MaterialAssignment.cs" />
     <Compile Include="Services\MaterialCreation.cs" />
     <Compile Include="Services\ParamMetaData.cs" />
+    <Compile Include="Services\ParameterRun.cs" />
+    <Compile Include="Services\SharedParameterNames.cs" />
     <Compile Include="UI\AutoParameterUI.cs">
       <SubType>Form</SubType>
     </Compile>

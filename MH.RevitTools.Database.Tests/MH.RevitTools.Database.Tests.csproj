@@ -42,6 +42,38 @@
     <None Include="..\Revit.Addin.2024\Revit.Addin.2024.csproj" Link="AddinUpdate\2024\Revit.Addin.2024.csproj.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!-- The Excel import: the Revit-free parts, compiled into the tests, and every year's shared files, to see that they're the same.
+       Add Parameters differs between the years, as 2027 shares its loop with the database link. -->
+  <ItemGroup>
+    <Compile Include="..\Revit.Addin.2027\Services\ParameterRun.cs" Link="ExcelImport\ParameterRun.cs" />
+    <Compile Include="..\Revit.Addin.2027\Services\SharedParameterNames.cs" Link="ExcelImport\SharedParameterNames.cs" />
+    <Compile Include="..\Revit.Addin.2027\Services\Planungsdatenbank\WorkbookFile.cs" Link="ExcelImport\WorkbookFile.cs" />
+    <None Include="..\Revit.Addin.2024\Services\Planungsdatenbank\*.cs" Link="ExcelImport\2024\%(Filename)%(Extension).txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\Revit.Addin.2024\Services\ParameterRun.cs" Link="ExcelImport\2024\%(Filename)%(Extension).txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\Revit.Addin.2024\Services\SharedParameterNames.cs" Link="ExcelImport\2024\%(Filename)%(Extension).txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\Revit.Addin.2024\Helpers\ProjectParameterBinder.cs" Link="ExcelImport\2024\%(Filename)%(Extension).txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\Revit.Addin.2024\Helpers\SharedParameterSeeder.cs" Link="ExcelImport\2024\%(Filename)%(Extension).txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\Revit.Addin.2024\Helpers\SeedMaterialParameters.cs" Link="ExcelImport\2024\%(Filename)%(Extension).txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\Revit.Addin.2024\Commands\MaterialAutomationCommand.cs" Link="ExcelImport\2024\%(Filename)%(Extension).txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\Revit.Addin.2024\Helpers\SeedProjectElementsParameters.cs" Link="ExcelImport\2024\Own\%(Filename)%(Extension).txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\Revit.Addin.2026\Services\Planungsdatenbank\*.cs" Link="ExcelImport\2026\%(Filename)%(Extension).txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\Revit.Addin.2026\Services\ParameterRun.cs" Link="ExcelImport\2026\%(Filename)%(Extension).txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\Revit.Addin.2026\Services\SharedParameterNames.cs" Link="ExcelImport\2026\%(Filename)%(Extension).txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\Revit.Addin.2026\Helpers\ProjectParameterBinder.cs" Link="ExcelImport\2026\%(Filename)%(Extension).txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\Revit.Addin.2026\Helpers\SharedParameterSeeder.cs" Link="ExcelImport\2026\%(Filename)%(Extension).txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\Revit.Addin.2026\Helpers\SeedMaterialParameters.cs" Link="ExcelImport\2026\%(Filename)%(Extension).txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\Revit.Addin.2026\Commands\MaterialAutomationCommand.cs" Link="ExcelImport\2026\%(Filename)%(Extension).txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\Revit.Addin.2026\Helpers\SeedProjectElementsParameters.cs" Link="ExcelImport\2026\Own\%(Filename)%(Extension).txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\Revit.Addin.2027\Services\Planungsdatenbank\*.cs" Link="ExcelImport\2027\%(Filename)%(Extension).txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\Revit.Addin.2027\Services\ParameterRun.cs" Link="ExcelImport\2027\%(Filename)%(Extension).txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\Revit.Addin.2027\Services\SharedParameterNames.cs" Link="ExcelImport\2027\%(Filename)%(Extension).txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\Revit.Addin.2027\Helpers\ProjectParameterBinder.cs" Link="ExcelImport\2027\%(Filename)%(Extension).txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\Revit.Addin.2027\Helpers\SharedParameterSeeder.cs" Link="ExcelImport\2027\%(Filename)%(Extension).txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\Revit.Addin.2027\Helpers\SeedMaterialParameters.cs" Link="ExcelImport\2027\%(Filename)%(Extension).txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\Revit.Addin.2027\Commands\MaterialAutomationCommand.cs" Link="ExcelImport\2027\%(Filename)%(Extension).txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\Revit.Addin.2027\Helpers\SeedProjectElementsParameters.cs" Link="ExcelImport\2027\Own\%(Filename)%(Extension).txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <!-- SQL scripts the LocalDB tests run in their throwaway databases -->
   <ItemGroup>
     <None Update="Link\*.sql" CopyToOutputDirectory="PreserveNewest" />
