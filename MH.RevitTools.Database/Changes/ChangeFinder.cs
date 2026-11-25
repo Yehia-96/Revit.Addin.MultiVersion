@@ -11,7 +11,9 @@ namespace MH.RevitTools.Database.Changes
     /// the database", which is what Apply writes, and what Apply leaves out. Elements meet their object by
     /// Bauteil_ID, materials theirs by name (Revit materials carry the Materialname), parameters are found by
     /// GUID. It never touches the Bauteil_ID, the key the modellers enter by hand, and placeholders ([Modeller],
-    /// [ET], -, TBT and empty values) are never changes. Only reads; the Revit side answers for each value through <see cref="CompareValue"/>.
+    /// [ET], -, TBT and empty values) are never changes. A material's fill patterns are compared like its values. Materials
+    /// the model doesn't have are listed apart. Only reads; the Revit side answers for each value through
+    /// <see cref="CompareValue"/> and for each pattern through <see cref="ComparePattern"/>.
     /// </summary>
     public static class ChangeFinder
     {
@@ -19,6 +21,12 @@ namespace MH.RevitTools.Database.Changes
         private const string NamePart = "Bauteil";
         private const string SubNamePart = "Teilelement";
         private const string NameSet = "BAU";
+
+        // What Revit needs to make a material, as the dictionary calls it.
+        private const string MaterialNamePart = "Materialname";
+        private const string MaterialGroupPart = "Materialgruppe";
+
+        private const string NoAnswer = "Revit gave no answer for it";
 
         // What identifies an element: the key the elements are matched by, in both spellings. The numbers it's
         // made of (Bauteilnummer, Bauteilunternummer) are values like any other (Yehia, 2026-11-23), although the
@@ -28,18 +36,20 @@ namespace MH.RevitTools.Database.Changes
             "Bauteil_ID", "Bauteil-ID",
         };
 
+        /// <param name="comparePattern">Null leaves the fill patterns out.</param>
         public static ChangeReport Find(
             LinkProjectData data,
             IEnumerable<ModelElement> elements,
             IEnumerable<ModelMaterial> materials,
-            CompareValue compare)
+            CompareValue compare,
+            ComparePattern comparePattern = null)
         {
             if (data == null)
                 throw new ArgumentNullException(nameof(data));
             if (compare == null)
                 throw new ArgumentNullException(nameof(compare));
 
-            var finder = new Finder(data.Parameters, compare);
+            var finder = new Finder(data.Parameters, compare, comparePattern);
             List<ModelElement> modelElements = (elements ?? Enumerable.Empty<ModelElement>()).Where(e => e != null).ToList();
             ModelCounts counts = finder.Objects(data.ObjectValues, modelElements);
             finder.Materials(data.Materials, data.MaterialValues, (materials ?? Enumerable.Empty<ModelMaterial>()).Where(m => m != null).ToList());
@@ -61,7 +71,8 @@ namespace MH.RevitTools.Database.Changes
                 .ThenBy(group => group.IsMaterial)
                 .ThenBy(group => group.Key, NaturalOrder.Instance)
                 .ToList();
-            return new ChangeReport(groups, counts, finder.NotApplied, newest, newestBy);
+            IEnumerable<MissingMaterial> missing = finder.MissingMaterials.OrderBy(material => material.Name, NaturalOrder.Instance);
+            return new ChangeReport(groups, counts, missing, finder.NotApplied, newest, newestBy);
         }
 
         /// <summary>True for the Bauteil_ID, which identifies an element and which the link never writes.</summary>
@@ -158,9 +169,10 @@ namespace MH.RevitTools.Database.Changes
             private readonly Dictionary<int, LinkParameter> _dictionary = new Dictionary<int, LinkParameter>();
             private readonly Dictionary<int, int> _order = new Dictionary<int, int>();
             private readonly CompareValue _compare;
+            private readonly ComparePattern _comparePattern;
             private readonly NotAppliedCollector _notApplied;
 
-            public Finder(IEnumerable<LinkParameter> dictionary, CompareValue compare)
+            public Finder(IEnumerable<LinkParameter> dictionary, CompareValue compare, ComparePattern comparePattern)
             {
                 foreach (LinkParameter parameter in dictionary)
                 {
@@ -170,10 +182,13 @@ namespace MH.RevitTools.Database.Changes
                     _order.Add(parameter.ParameterId, _order.Count);
                 }
                 _compare = compare;
+                _comparePattern = comparePattern;
                 _notApplied = new NotAppliedCollector(PlaceOf);
             }
 
             public List<ChangeGroup> Groups { get; } = new List<ChangeGroup>();
+
+            public List<MissingMaterial> MissingMaterials { get; } = new List<MissingMaterial>();
 
             public IReadOnlyList<NotAppliedItem> NotApplied => _notApplied.Items();
 
@@ -241,10 +256,14 @@ namespace MH.RevitTools.Database.Changes
                 var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (LinkMaterial material in materials)
                 {
-                    List<long> modelIds;
                     string name = material.Name.Trim();
-                    if (!seenIds.Add(material.MaterialId) || !modelByName.TryGetValue(name, out modelIds))
+                    if (!seenIds.Add(material.MaterialId.Trim()))
                         continue;
+                    if (name.Length == 0)
+                    {
+                        _notApplied.NotCreatable(material.MaterialId, MaterialNamePart);
+                        continue;
+                    }
 
                     // Revit tells materials apart by name, so a name can mean one database material only; like
                     // the Excel route, the first one.
@@ -254,14 +273,79 @@ namespace MH.RevitTools.Database.Changes
                         continue;
                     }
 
-                    List<LinkMaterialValue> materialValues;
-                    if (!valuesByMaterial.TryGetValue(material.MaterialId.Trim(), out materialValues))
+                    List<long> modelIds;
+                    if (!modelByName.TryGetValue(name, out modelIds))
+                    {
+                        Missing(material, name);
                         continue;
-                    List<ChangeRow> rows = Rows(material.MaterialId, LinkTarget.Material, modelIds,
-                        materialValues.Select(value => new Candidate(value.ParameterId, value.Value, value.ChangedAtUtc, value.ChangedBy)));
+                    }
+
+                    var rows = new List<ChangeRow>();
+                    List<LinkMaterialValue> materialValues;
+                    if (valuesByMaterial.TryGetValue(material.MaterialId.Trim(), out materialValues))
+                    {
+                        rows.AddRange(Rows(material.MaterialId, LinkTarget.Material, modelIds,
+                            materialValues.Select(value => new Candidate(value.ParameterId, value.Value, value.ChangedAtUtc, value.ChangedBy))));
+                    }
+                    rows.AddRange(PatternRows(material, modelIds));
                     if (rows.Count > 0)
                         Groups.Add(new ChangeGroup(material.MaterialId, material.Name, true, modelIds, rows));
                 }
+            }
+
+            // Like the Excel import, which makes no material without a group: its class and look go by it.
+            private void Missing(LinkMaterial material, string name)
+            {
+                if (string.IsNullOrWhiteSpace(material.Group))
+                    _notApplied.NotCreatable(name, MaterialGroupPart);
+                else
+                    MissingMaterials.Add(new MissingMaterial(material.MaterialId, name));
+            }
+
+            // The material's fill patterns that differ. One the database doesn't name leaves the material's as it is.
+            private IEnumerable<ChangeRow> PatternRows(LinkMaterial material, List<long> modelIds)
+            {
+                if (_comparePattern == null)
+                    yield break;
+                foreach (MaterialPattern which in MaterialPatterns.All)
+                {
+                    string pattern = MaterialPatterns.Of(material, which);
+                    ChangeRow row = pattern.Length == 0 ? null : ComparePatternOf(which, pattern, modelIds);
+                    if (row != null)
+                        yield return row;
+                }
+            }
+
+            private ChangeRow ComparePatternOf(MaterialPattern which, string pattern, List<long> modelIds)
+            {
+                var differing = new List<long>();
+                var modelTexts = new List<string>();
+                foreach (long id in modelIds)
+                {
+                    ValueCheck check = _comparePattern(id, which, pattern) ?? ValueCheck.CantCompare(NoAnswer);
+                    switch (check.State)
+                    {
+                        case ValueState.Same:
+                            break;
+                        case ValueState.Differs:
+                            differing.Add(id);
+                            modelTexts.Add(check.ModelText);
+                            break;
+                        case ValueState.CantCompare:
+                            _notApplied.DoesntFit(which, check.Problem);
+                            break;
+                        case ValueState.Borrowed:
+                            _notApplied.Borrowed(check.Owner, which, id);
+                            break;
+                        case ValueState.NoPattern:
+                            _notApplied.MissingPattern(pattern, which, id);
+                            break;
+                        default:
+                            _notApplied.On(ReasonOf(check.State), which, id);
+                            break;
+                    }
+                }
+                return differing.Count == 0 ? null : new ChangeRow(which, pattern, FromText(modelTexts), differing);
             }
 
             // The changes on one object or material, the most recent first.
@@ -316,7 +400,7 @@ namespace MH.RevitTools.Database.Changes
                 var modelTexts = new List<string>();
                 foreach (long id in ids)
                 {
-                    ValueCheck check = _compare(id, parameter, candidate.Value) ?? ValueCheck.CantCompare("Revit gave no answer for it");
+                    ValueCheck check = _compare(id, parameter, candidate.Value) ?? ValueCheck.CantCompare(NoAnswer);
                     switch (check.State)
                     {
                         case ValueState.Same:

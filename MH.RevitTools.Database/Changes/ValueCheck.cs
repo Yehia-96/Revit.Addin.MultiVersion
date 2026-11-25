@@ -28,6 +28,9 @@ namespace MH.RevitTools.Database.Changes
 
         /// <summary>It differs, but the element has newer changes in the central model.</summary>
         OutOfDate,
+
+        /// <summary>The model doesn't have the fill pattern.</summary>
+        NoPattern,
     }
 
     /// <summary>
@@ -52,6 +55,8 @@ namespace MH.RevitTools.Database.Changes
         public static ValueCheck OnType { get; } = new ValueCheck(ValueState.OnType, null, null, null);
 
         public static ValueCheck OutOfDate { get; } = new ValueCheck(ValueState.OutOfDate, null, null, null);
+
+        public static ValueCheck NoPattern { get; } = new ValueCheck(ValueState.NoPattern, null, null, null);
 
         public ValueState State { get; }
 

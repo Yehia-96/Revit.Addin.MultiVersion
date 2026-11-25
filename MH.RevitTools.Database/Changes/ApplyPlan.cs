@@ -7,8 +7,8 @@ using MH.RevitTools.Database.Link;
 namespace MH.RevitTools.Database.Changes
 {
     /// <summary>
-    /// What one click on Apply writes: the values the pane listed, into the elements it listed them for, and
-    /// nothing else. A value that isn't the database's any more by the time Apply runs is left out; the pane
+    /// What one click on Apply writes: the values and fill patterns the pane listed, into the elements it listed them
+    /// for, and nothing else. A value that isn't the database's any more by the time Apply runs is left out; the pane
     /// lists the new one. Placeholders and the Bauteil_ID are never in it, whatever was listed.
     /// Immutable.
     /// </summary>
@@ -40,7 +40,11 @@ namespace MH.RevitTools.Database.Changes
         /// Bauteil_ID only after the list was made isn't; the pane lists it next.
         /// </summary>
         public bool IsListed(bool isMaterial, string key, Guid parameter, long elementId) =>
-            _listed.Contains(ListedKey(isMaterial, key, parameter, elementId));
+            _listed.Contains(ListedKey(isMaterial, key, parameter.ToString("N"), elementId));
+
+        /// <summary>True when the pane listed the fill pattern for that material.</summary>
+        public bool IsListed(string materialId, MaterialPattern which, long elementId) =>
+            _listed.Contains(ListedKey(true, materialId, which.ToString(), elementId));
 
         /// <param name="data">The database's values as last read.</param>
         /// <param name="groups">The groups to apply, as the pane listed them.</param>
@@ -56,6 +60,9 @@ namespace MH.RevitTools.Database.Changes
                 parameters[parameter.ParameterId] = parameter;
             Dictionary<string, string> objectValues = Values(data.ObjectValues.Select(v => Tuple.Create(v.BauteilId, v.ParameterId, v.Value)));
             Dictionary<string, string> materialValues = Values(data.MaterialValues.Select(v => Tuple.Create(v.MaterialId, v.ParameterId, v.Value)));
+            var patterns = new Dictionary<string, LinkMaterial>(StringComparer.OrdinalIgnoreCase);
+            foreach (LinkMaterial material in data.Materials.Reverse())
+                patterns[material.MaterialId.Trim()] = material;
 
             var objects = new List<PlannedValues>();
             var materials = new List<PlannedValues>();
@@ -65,8 +72,22 @@ namespace MH.RevitTools.Database.Changes
             {
                 Dictionary<string, string> current = group.IsMaterial ? materialValues : objectValues;
                 var values = new List<PlannedValue>();
+                var plannedPatterns = new List<PlannedPattern>();
                 foreach (ChangeRow row in group.Rows)
                 {
+                    if (row.Pattern.HasValue)
+                    {
+                        if (!IsStillThere(patterns, group.Key, row))
+                        {
+                            outdated++;
+                            continue;
+                        }
+                        plannedPatterns.Add(new PlannedPattern(row.Pattern.Value, row.Value));
+                        foreach (long id in row.ElementIds)
+                            listed.Add(ListedKey(true, group.Key, row.Pattern.Value.ToString(), id));
+                        continue;
+                    }
+
                     LinkParameter parameter;
                     string now;
                     if (!parameters.TryGetValue(row.ParameterId, out parameter)
@@ -80,23 +101,30 @@ namespace MH.RevitTools.Database.Changes
                         continue;
                     values.Add(new PlannedValue(parameter, row.Value));
                     foreach (long id in row.ElementIds)
-                        listed.Add(ListedKey(group.IsMaterial, group.Key, parameter.Guid, id));
+                        listed.Add(ListedKey(group.IsMaterial, group.Key, parameter.Guid.ToString("N"), id));
                 }
-                if (values.Count > 0)
-                    (group.IsMaterial ? materials : objects).Add(new PlannedValues(group.Key, group.Name, values));
+                if (values.Count + plannedPatterns.Count > 0)
+                    (group.IsMaterial ? materials : objects).Add(new PlannedValues(group.Key, group.Name, values, plannedPatterns));
             }
             return new ApplyPlan(objects, materials, listed, outdated);
         }
 
+        private static bool IsStillThere(Dictionary<string, LinkMaterial> materials, string materialId, ChangeRow row)
+        {
+            LinkMaterial material;
+            return materials.TryGetValue((materialId ?? "").Trim(), out material)
+                && string.Equals(MaterialPatterns.Of(material, row.Pattern.Value), row.Value, StringComparison.Ordinal);
+        }
+
         // ChangeFinder never lists these. Checked here too, as this is the last step before the model.
-        private static bool MayWrite(LinkParameter parameter, string value, bool isMaterial) =>
+        internal static bool MayWrite(LinkParameter parameter, string value, bool isMaterial) =>
             parameter.Guid != Guid.Empty
             && parameter.Target == (isMaterial ? LinkTarget.Material : LinkTarget.Object)
             && !ChangeFinder.IsIdentity(parameter)
             && !Placeholders.IsPlaceholder(value);
 
-        private static string ListedKey(bool isMaterial, string key, Guid parameter, long elementId) =>
-            (isMaterial ? "M|" : "O|") + (key ?? "").Trim() + "|" + parameter.ToString("N") + "|" + elementId;
+        private static string ListedKey(bool isMaterial, string key, string what, long elementId) =>
+            (isMaterial ? "M|" : "O|") + (key ?? "").Trim() + "|" + what + "|" + elementId;
 
         // The first value counts where a key repeats, as everywhere in the link.
         private static Dictionary<string, string> Values(IEnumerable<Tuple<string, int, string>> values)
@@ -117,11 +145,12 @@ namespace MH.RevitTools.Database.Changes
     /// <summary>The values Apply writes to one object or material. Immutable.</summary>
     public sealed class PlannedValues
     {
-        internal PlannedValues(string key, string name, IEnumerable<PlannedValue> values)
+        internal PlannedValues(string key, string name, IEnumerable<PlannedValue> values, IEnumerable<PlannedPattern> patterns)
         {
             Key = key;
             Name = name;
             Values = new ReadOnlyCollection<PlannedValue>(values.ToList());
+            Patterns = new ReadOnlyCollection<PlannedPattern>(patterns.ToList());
         }
 
         /// <summary>The Bauteil_ID or the Material-ID.</summary>
@@ -131,6 +160,24 @@ namespace MH.RevitTools.Database.Changes
         public string Name { get; }
 
         public IReadOnlyList<PlannedValue> Values { get; }
+
+        /// <summary>The fill patterns a material gets; objects have none.</summary>
+        public IReadOnlyList<PlannedPattern> Patterns { get; }
+    }
+
+    /// <summary>One fill pattern to set. Immutable.</summary>
+    public sealed class PlannedPattern
+    {
+        internal PlannedPattern(MaterialPattern which, string name)
+        {
+            Which = which;
+            Name = name;
+        }
+
+        public MaterialPattern Which { get; }
+
+        /// <summary>As the database names it.</summary>
+        public string Name { get; }
     }
 
     /// <summary>One value to write. Immutable.</summary>

@@ -30,6 +30,9 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
         /// <summary>Writes the groups' values into the model, as the pane lists them.</summary>
         void Apply(IReadOnlyList<ChangeGroup> groups);
 
+        /// <summary>Asks, then creates the project's materials the model doesn't have.</summary>
+        void CreateMaterials();
+
         void ChooseInterval(CheckInterval interval);
     }
 
@@ -51,6 +54,7 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
         private PaneSnapshot _snapshot;
         private CheckInterval _selectedInterval;
         private bool _notAppliedOpen = true;
+        private bool _missingOpen;
 
         // What the lists were made from. A check every minute mustn't rebuild them, or they'd flicker and lose
         // the keyboard's place.
@@ -68,8 +72,11 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
             SelectWithoutIdCommand = new RelayCommand(() => SelectCounted(counts => counts.WithoutId));
             SelectNotInProjectCommand = new RelayCommand(() => SelectCounted(counts => counts.IdNotInProject));
             ApplyAllCommand = new RelayCommand(ApplyAll);
-            ToggleNotAppliedCommand = new RelayCommand(ToggleNotApplied);
+            ToggleNotAppliedCommand = new RelayCommand(() => Toggle(ref _notAppliedOpen));
+            ToggleMissingCommand = new RelayCommand(() => Toggle(ref _missingOpen));
+            CreateCommand = new RelayCommand(() => _actions.CreateMaterials());
             Groups = new ChangeGroupView[0];
+            MissingItems = new MissingMaterialView[0];
             NotAppliedItems = new NotAppliedView[0];
             Show(new PaneSnapshot(false, null, null, null, null, null, false, null, DateTime.MinValue, null, DateTime.UtcNow, TimeZoneInfo.Local));
         }
@@ -140,11 +147,20 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
         public string AppliedLine => AppliedSomething ? "#BFE3CC" : "#F0D6A8";
         public string AppliedText => AppliedSomething ? "#145C33" : "#8F5B0A";
 
+        // ---- The project's materials the model doesn't have ----
+        public bool ShowMissing { get; private set; }
+        public string MissingTitle { get; private set; }
+        public string MissingText { get; private set; }
+        public bool CanCreate { get; private set; }
+        public bool MissingOpen => _missingOpen;
+        public IReadOnlyList<MissingMaterialView> MissingItems { get; private set; }
+        public bool ShowMoreMissing { get; private set; }
+        public string MoreMissingText { get; private set; }
+
         // ---- Not applied ----
         public bool ShowNotApplied { get; private set; }
         public string NotAppliedTitle { get; private set; }
         public bool NotAppliedOpen => _notAppliedOpen;
-        public double NotAppliedTurn => _notAppliedOpen ? 180 : 0;
         public IReadOnlyList<NotAppliedView> NotAppliedItems { get; private set; }
 
         // ---- Notes ----
@@ -176,6 +192,8 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
         public ICommand SelectNotInProjectCommand { get; }
         public ICommand ApplyAllCommand { get; }
         public ICommand ToggleNotAppliedCommand { get; }
+        public ICommand ToggleMissingCommand { get; }
+        public ICommand CreateCommand { get; }
 
         /// <summary>The snapshot shown now.</summary>
         public PaneSnapshot Snapshot => _snapshot;
@@ -203,11 +221,11 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
             CanCheckNow = ShowNoModel = ShowFileProblem = ShowSignIn = ShowSetup = ShowModel = ShowCounts = false;
             ShowBanner = BannerCanRetry = BannerOffersLink = ShowComparing = ShowUpToDate = ShowChanges = ShowMore = false;
             ShowLastPull = ShowFooter = false;
-            CanApply = ShowApplyWaits = ShowApplied = AppliedSomething = ShowNotApplied = false;
+            CanApply = ShowApplyWaits = ShowApplied = AppliedSomething = ShowNotApplied = ShowMissing = CanCreate = ShowMoreMissing = false;
             Where = When = FileProblem = SignInCardText = ProjectCode = ProjectName = LinkedLine = "";
             LinkedCount = LinkedLabel = WithoutIdCount = NotInProjectCount = "";
             BannerTitle = BannerText = UpToDateTitle = UpToDateText = ChangesTitle = MoreText = LastPullText = "";
-            ApplyWaitsText = AppliedTitle = AppliedDetail = NotAppliedTitle = "";
+            ApplyWaitsText = AppliedTitle = AppliedDetail = NotAppliedTitle = MissingTitle = MissingText = MoreMissingText = "";
             WithoutIdColor = NotInProjectColor = "#0F1B2D";
         }
 
@@ -357,10 +375,25 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
                     : "";
             }
 
+            ShowMissingOf(report, snapshot, relist);
             ShowNotApplied = report.NotApplied.Count > 0;
             NotAppliedTitle = ApplyTexts.NotAppliedTitle(report.NotApplied.Count).ToUpperInvariant();
             if (relist)
                 NotAppliedItems = report.NotApplied.Select(item => new NotAppliedView(item, CheckParametersCommand)).ToList();
+        }
+
+        private void ShowMissingOf(ChangeReport report, PaneSnapshot snapshot, bool relist)
+        {
+            int count = report.MissingMaterials.Count;
+            string waits = ApplyTexts.CreateWaits(snapshot.Outcome.State, snapshot.IsReadOnly);
+            ShowMissing = count > 0;
+            MissingTitle = ApplyTexts.MissingTitle(count).ToUpperInvariant();
+            MissingText = waits ?? ApplyTexts.MissingDetail;
+            CanCreate = waits == null;
+            if (relist)
+                MissingItems = report.MissingMaterials.Take(MaxRows).Select(material => new MissingMaterialView(material)).ToList();
+            ShowMoreMissing = count > MissingItems.Count;
+            MoreMissingText = ShowMoreMissing ? "… and " + Number(count - MissingItems.Count) + " more. Create… makes them too." : "";
         }
 
         private void ShowCountsOf(ChangeReport report)
@@ -394,7 +427,7 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
             if (snapshot.Applied == null)
                 return;
             ShowApplied = true;
-            AppliedSomething = snapshot.Applied.Changes > 0;
+            AppliedSomething = snapshot.Applied.DidSomething;
             AppliedTitle = ApplyTexts.AppliedTitle(snapshot.Applied);
             AppliedDetail = ApplyTexts.AppliedDetail(snapshot.Applied, snapshot.AppliedAtUtc, snapshot.NowUtc, snapshot.TimeZone);
         }
@@ -406,9 +439,9 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
                 _actions.Apply(report.Groups);
         }
 
-        private void ToggleNotApplied()
+        private void Toggle(ref bool isOpen)
         {
-            _notAppliedOpen = !_notAppliedOpen;
+            isOpen = !isOpen;
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(string.Empty));
         }
 
@@ -466,6 +499,19 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
         public bool CanApply { get; }
         public string ApplyLabel { get; }
         public ICommand ApplyCommand { get; }
+    }
+
+    /// <summary>One material the model doesn't have, in the pane's list.</summary>
+    public sealed class MissingMaterialView
+    {
+        public MissingMaterialView(MissingMaterial material)
+        {
+            Key = material.MaterialId;
+            Name = material.Name;
+        }
+
+        public string Key { get; }
+        public string Name { get; }
     }
 
     /// <summary>One entry of the pane's "Not applied" list.</summary>

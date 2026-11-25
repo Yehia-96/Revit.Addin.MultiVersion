@@ -30,6 +30,21 @@ namespace Revit.Addin._2027.DatabaseLink.Apply
             return result;
         }
 
+        /// <summary>The same for materials that are being created.</summary>
+        public static PlanungsdatenbankParseResult From(IEnumerable<PlannedMaterial> materials)
+        {
+            if (materials == null)
+                throw new ArgumentNullException(nameof(materials));
+
+            var result = new PlanungsdatenbankParseResult();
+            foreach (PlannedMaterial material in materials)
+            {
+                result.MaterialData[material.MaterialId] = Values(material.Values, result.MaterialParameterDefinitions, ParamMetaData.ParamTarget.Material);
+                result.MaterialNamesById[material.MaterialId] = material.Name;
+            }
+            return result;
+        }
+
         private static Dictionary<string, string> Values(
             IEnumerable<PlannedValue> planned, Dictionary<string, ParamMetaData> definitions, ParamMetaData.ParamTarget target)
         {

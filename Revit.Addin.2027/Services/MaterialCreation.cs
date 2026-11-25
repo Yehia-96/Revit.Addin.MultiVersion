@@ -72,28 +72,7 @@ namespace Revit.Addin._2027.Services
                     {
                         transaction.Start();
 
-                        var materialId = Material.Create(doc, materialName);
-                        var material = doc.GetElement(materialId) as Material;
-
-                        if (material == null)
-                            throw new InvalidOperationException($"Revit returned null for created material '{materialName}'.");
-
-                        material.MaterialClass = GetRevitMaterialClass(mat.MaterialType);
-
-                        var template = FindTemplateMaterial(existingMaterials, mat.MaterialType, material.MaterialClass);
-                        if (template != null)
-                        {
-                            CopyVisualProperties(material, template);
-                            report.AddInfo($"Applied visual template '{template.Name}' to '{materialName}'.");
-                        }
-                        else
-                        {
-                            report.AddWarn($"No matching template found for '{materialName}'. Revit defaults were used.");
-                        }
-
-                        var structuralAsset = mat.StructuralAsset ?? new StructuralAsset($"Properties for {materialName}", StructuralAssetClass.Generic);
-                        var pse = PropertySetElement.Create(doc, structuralAsset);
-                        material.SetMaterialAspectByPropertySet(MaterialAspect.Structural, pse.Id);
+                        var material = Create(doc, mat, materialName, existingMaterials, report);
 
                         existingMaterials.Add(material);
                         existingNames.Add(materialName);
@@ -116,6 +95,56 @@ namespace Revit.Addin._2027.Services
             return report;
         }
 
+
+        /// <summary>
+        /// Makes one material: its class by the Materialgruppe, a look copied from a material of the same kind, and
+        /// structural properties. The Excel import and the database link share it. Call it inside a transaction.
+        /// </summary>
+        /// <param name="existingMaterials">The model's materials, for the look. The new one isn't added.</param>
+        /// <param name="reuseProperties">
+        /// Takes structural properties of that name if the model has some, left over from a deleted material say: Revit
+        /// refuses to make them a second time. The Excel import doesn't.
+        /// </param>
+        internal static Material Create(
+            Document doc,
+            MaterialsDto mat,
+            string materialName,
+            List<Material> existingMaterials,
+            ImportReport report,
+            bool reuseProperties = false)
+        {
+            var materialId = Material.Create(doc, materialName);
+            var material = doc.GetElement(materialId) as Material;
+
+            if (material == null)
+                throw new InvalidOperationException($"Revit returned null for created material '{materialName}'.");
+
+            material.MaterialClass = GetRevitMaterialClass(mat.MaterialType);
+
+            var template = FindTemplateMaterial(existingMaterials, mat.MaterialType, material.MaterialClass);
+            if (template != null)
+            {
+                CopyVisualProperties(material, template);
+                report.AddInfo($"Applied visual template '{template.Name}' to '{materialName}'.");
+            }
+            else
+            {
+                report.AddWarn($"No matching template found for '{materialName}'. Revit defaults were used.");
+            }
+
+            var structuralAsset = mat.StructuralAsset ?? new StructuralAsset($"Properties for {materialName}", StructuralAssetClass.Generic);
+            var pse = (reuseProperties ? FindProperties(doc, structuralAsset.Name) : null) ?? PropertySetElement.Create(doc, structuralAsset);
+            material.SetMaterialAspectByPropertySet(MaterialAspect.Structural, pse.Id);
+            return material;
+        }
+
+        private static PropertySetElement FindProperties(Document doc, string name)
+        {
+            return new FilteredElementCollector(doc)
+                .OfClass(typeof(PropertySetElement))
+                .Cast<PropertySetElement>()
+                .FirstOrDefault(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase));
+        }
 
         public static ImportReport AssignFillPatterns(Document doc, string sourceLibraryPath = null)
         {

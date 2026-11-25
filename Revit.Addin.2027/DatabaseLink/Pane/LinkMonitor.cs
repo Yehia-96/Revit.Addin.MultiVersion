@@ -21,9 +21,10 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
     /// <summary>
     /// Runs the MH Database pane: follows the active model through the Database button, checks its project on
     /// the <see cref="CheckLoop"/>'s thread, compares the model with the database's values inside Revit whenever
-    /// either changes, shows the result in the pane and as the button's dot (step 5), and applies the changes
-    /// the user asks for (step 6). The database is read only while someone is signed in to it (step 8). Only Apply
-    /// changes the model; nothing ever changes the database. Everything but the check runs on Revit's main thread.
+    /// either changes, shows the result in the pane and as the button's dot (step 5), applies the changes the user
+    /// asks for (step 6) and creates the project's materials the model doesn't have (step 10). The database is read only
+    /// while someone is signed in to it (step 8). Only Apply and Create change the model; nothing ever changes the
+    /// database. Everything but the check runs on Revit's main thread.
     /// </summary>
     internal sealed class LinkMonitor : IPaneActions, IDisposable
     {
@@ -138,6 +139,12 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
             List<ChangeGroup> chosen = (groups ?? new ChangeGroup[0]).ToList();
             Document shown = _document;
             _revit.Run("applying changes", application => ApplyTo(shown, chosen));
+        }
+
+        public void CreateMaterials()
+        {
+            Document shown = _document;
+            _revit.Run("creating materials", application => AskToCreate(shown));
         }
 
         public void ChooseInterval(CheckInterval interval)
@@ -327,7 +334,9 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
             {
                 _isReadOnlyFile = document.IsReadOnlyFile;
                 var values = new RevitValues(document);
-                _report = ChangeFinder.Find(data, ModelReader.Elements(document, data), ModelReader.Materials(document), values.Compare);
+                var patterns = new RevitPatterns(document);
+                _report = ChangeFinder.Find(
+                    data, ModelReader.Elements(document, data), ModelReader.Materials(document), values.Compare, patterns.Compare);
                 _comparedVersion = outcome.DataVersion;
                 _compareFault = null;
             }
@@ -343,21 +352,53 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
 
         // Writes what the pane listed, then compares again. Nothing happens, and the answer is null, when the
         // pane has moved on to another model or state since the click; it shows that already.
-        private ApplyResult ApplyTo(Document document, IReadOnlyList<ChangeGroup> groups)
+        private ApplyResult ApplyTo(Document document, IReadOnlyList<ChangeGroup> groups) =>
+            groups.Count == 0 ? null : Change(document, "apply the changes", data => DatabaseApplier.Apply(document, data, groups), ApplyResult.Stop);
+
+        // Asks, then creates what was listed when it was asked; the pane shows what came of it.
+        private void AskToCreate(Document document)
+        {
+            ChangeReport report = _report;
+            ModelLink link = _link;
+            if (!IsShown(document) || report == null || link == null || report.MissingMaterials.Count == 0)
+                return;
+
+            int count = report.MissingMaterials.Count;
+            var question = new TaskDialog(DatabasePane.Title)
+            {
+                MainInstruction = ApplyTexts.CreateQuestion(count),
+                MainContent = ApplyTexts.CreateText(count, link.Describe()),
+                ExpandedContent = string.Join(Environment.NewLine, report.MissingMaterials.Select(material => material.Name)),
+                CommonButtons = TaskDialogCommonButtons.Cancel,
+                DefaultButton = TaskDialogResult.Cancel,
+            };
+            question.AddCommandLink(TaskDialogCommandLinkId.CommandLink1, "Create " + (count == 1 ? "it" : "them"));
+            if (question.Show() != TaskDialogResult.CommandLink1)
+                return;
+
+            ApplyResult result = Change(
+                document, "create the materials", data => MaterialCreator.Create(document, data, report.MissingMaterials), ApplyResult.StopCreating);
+            if (result == null)
+                Tell(ApplyTexts.AppliedTitle(ApplyResult.StopCreating(null)), "The database or the model changed while the question was open. The MH "
+                    + "Database pane shows how it is now.", TaskDialogIcon.TaskDialogIconInformation);
+        }
+
+        // Changes the model with the database's values as they are now.
+        private ApplyResult Change(Document document, string what, Func<LinkProjectData, ApplyResult> change, Func<string, ApplyResult> stop)
         {
             CheckOutcome outcome = _outcome;
-            if (groups.Count == 0 || !IsShown(document) || outcome == null || outcome.State != CheckState.Answered || outcome.Data == null)
+            if (!IsShown(document) || outcome == null || outcome.State != CheckState.Answered || outcome.Data == null)
                 return null;
 
             ApplyResult result;
             try
             {
-                result = DatabaseApplier.Apply(document, outcome.Data, groups);
+                result = change(outcome.Data);
             }
             catch (Exception ex)
             {
-                Trace.WriteLine("[Parameter Tools] The MH Database pane couldn't apply the changes: " + ex);
-                result = ApplyResult.Stop("Something went wrong in the add-in: " + ex.Message);
+                Trace.WriteLine("[Parameter Tools] The MH Database pane couldn't " + what + ": " + ex);
+                result = stop("Something went wrong in the add-in: " + ex.Message);
             }
 
             // Nothing left to do, as on a double-click: what the first click did stays on show.

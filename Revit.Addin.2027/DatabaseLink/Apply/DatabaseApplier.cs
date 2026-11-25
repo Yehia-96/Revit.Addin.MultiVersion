@@ -13,9 +13,9 @@ namespace Revit.Addin._2027.DatabaseLink.Apply
 {
     /// <summary>
     /// Writes the database's values the pane lists into the model, in one undo step, with the loop the Excel
-    /// import uses (<see cref="ElementValueWriter"/>). It borrows the elements first and leaves out those someone
-    /// else has. It never adds parameters and never touches what isn't listed. API context, outside a
-    /// transaction.
+    /// import uses (<see cref="ElementValueWriter"/>), and sets the materials' fill patterns it lists. It borrows the
+    /// elements first and leaves out those someone else has. It never adds parameters or patterns and never touches what
+    /// isn't listed. API context, outside a transaction.
     /// </summary>
     internal static class DatabaseApplier
     {
@@ -29,21 +29,24 @@ namespace Revit.Addin._2027.DatabaseLink.Apply
             var tally = new ApplyTally();
             ApplyPlan plan = ApplyPlan.For(data, groups);
             List<PendingValue> pending = Collect(document, data, plan);
-            if (pending.Count == 0)
+            List<PendingPattern> patterns = CollectPatterns(document, plan);
+            if (pending.Count + patterns.Count == 0)
                 return tally.Result(plan.Outdated);
 
             try
             {
-                pending = Borrowed(document, pending, tally);
+                HashSet<long> free = Borrow(document, pending.Select(value => value.ElementId).Concat(patterns.Select(p => p.Material.Id)), tally);
+                pending = pending.Where(value => free.Contains(value.ElementId.Value)).ToList();
+                patterns = patterns.Where(pattern => free.Contains(pattern.Material.Id.Value)).ToList();
             }
             catch (Exception ex) when (RevitErrors.IsRefusal(ex))
             {
                 return ApplyResult.Stop("Revit couldn't borrow the elements from the central model: " + ex.Message);
             }
-            if (pending.Count == 0)
+            if (pending.Count + patterns.Count == 0)
                 return tally.Result(plan.Outdated);
 
-            string stopped = Write(document, ApplyTexts.UndoName(groups), pending, tally);
+            string stopped = Write(document, ApplyTexts.UndoName(groups), pending, patterns, tally);
             return stopped == null ? tally.Result(plan.Outdated) : ApplyResult.Stop(stopped);
         }
 
@@ -74,32 +77,63 @@ namespace Revit.Addin._2027.DatabaseLink.Apply
                     string id;
                     return idsByName.TryGetValue(element.Name.Trim(), out id) ? id : null;
                 };
-                List<Element> materials;
-                using (var collector = new FilteredElementCollector(document))
-                    materials = collector.OfClass(typeof(Material)).ToList();
-                pending.AddRange(ElementValueWriter.Collect(document, materials, materialIdOf, values.MaterialData, values.MaterialParameterDefinitions, rules)
+                pending.AddRange(ElementValueWriter.Collect(document, Materials(document), materialIdOf, values.MaterialData, values.MaterialParameterDefinitions, rules)
                     .Select(pair => new PendingValue(pair, materialIdOf(pair.Item1.Element), true)));
             }
             // Only the elements the pane listed: one that got its Bauteil_ID since then is listed next.
             return pending.Where(value => plan.IsListed(value.IsMaterial, value.Key, value.ParameterGuid, value.ElementId.Value)).ToList();
         }
 
-        // Without the elements someone else has, or that changed in the central model.
-        private static List<PendingValue> Borrowed(Document document, List<PendingValue> pending, ApplyTally tally)
+        // The listed fill patterns the materials don't have yet, and the model has.
+        private static List<PendingPattern> CollectPatterns(Document document, ApplyPlan plan)
         {
-            List<ElementId> ids = pending.Select(value => value.ElementId).Distinct().ToList();
-            HashSet<long> free = new Worksharing(document).Borrow(ids, (id, access, owner) =>
+            var pending = new List<PendingPattern>();
+            var plannedByName = new Dictionary<string, PlannedValues>(StringComparer.OrdinalIgnoreCase);
+            foreach (PlannedValues planned in plan.Materials.Where(planned => planned.Patterns.Count > 0))
+                plannedByName[planned.Name.Trim()] = planned;
+            if (plannedByName.Count == 0)
+                return pending;
+
+            var patterns = new RevitPatterns(document);
+            foreach (Material material in Materials(document).Cast<Material>())
+            {
+                PlannedValues planned;
+                if (!plannedByName.TryGetValue(material.Name.Trim(), out planned))
+                    continue;
+                foreach (PlannedPattern pattern in planned.Patterns)
+                {
+                    if (!plan.IsListed(planned.Key, pattern.Which, material.Id.Value) || patterns.Has(material, pattern.Which, pattern.Name))
+                        continue;
+                    FillPatternElement found = patterns.Find(pattern.Which, pattern.Name);
+                    if (found != null)
+                        pending.Add(new PendingPattern(material, planned.Key, pattern.Which, found));
+                }
+            }
+            return pending;
+        }
+
+        private static List<Element> Materials(Document document)
+        {
+            using (var collector = new FilteredElementCollector(document))
+                return collector.OfClass(typeof(Material)).ToList();
+        }
+
+        // Without the elements someone else has, or that changed in the central model.
+        private static HashSet<long> Borrow(Document document, IEnumerable<ElementId> elementIds, ApplyTally tally)
+        {
+            List<ElementId> ids = elementIds.Distinct().ToList();
+            return new Worksharing(document).Borrow(ids, (id, access, owner) =>
             {
                 if (access == ElementAccess.OutOfDate)
                     tally.OutOfDate(id.Value);
                 else
                     tally.Borrowed(owner, id.Value);
             });
-            return pending.Where(value => free.Contains(value.ElementId.Value)).ToList();
         }
 
         /// <returns>Why nothing was written; null when it was.</returns>
-        private static string Write(Document document, string undoName, List<PendingValue> pending, ApplyTally tally)
+        private static string Write(
+            Document document, string undoName, List<PendingValue> pending, List<PendingPattern> patterns, ApplyTally tally)
         {
             using (var transaction = new Transaction(document, undoName))
             {
@@ -107,8 +141,9 @@ namespace Revit.Addin._2027.DatabaseLink.Apply
                     return "Revit couldn't start the change.";
                 try
                 {
-                    List<PendingValue> set = SetAll(document, pending, tally);
-                    if (set.Count == 0)
+                    List<PendingValue> set = ValueSetter.SetAll(document, pending, tally);
+                    List<PendingPattern> setPatterns = SetPatterns(patterns, tally);
+                    if (set.Count + setPatterns.Count == 0)
                     {
                         transaction.RollBack();
                         return null;
@@ -118,6 +153,8 @@ namespace Revit.Addin._2027.DatabaseLink.Apply
 
                     foreach (PendingValue value in set)
                         tally.Written(value.Key, value.IsMaterial, value.ParameterGuid, value.ElementId.Value);
+                    foreach (PendingPattern pattern in setPatterns)
+                        tally.WrittenPattern(pattern.MaterialId, pattern.Which, pattern.Material.Id.Value);
                     return null;
                 }
                 catch (Exception)
@@ -129,85 +166,46 @@ namespace Revit.Addin._2027.DatabaseLink.Apply
             }
         }
 
-        // All at once, which is quick; when Revit throws for one of them, one by one, so that one doesn't stop
-        // the others.
-        private static List<PendingValue> SetAll(Document document, List<PendingValue> pending, ApplyTally tally)
+        // One by one: a pattern Revit refuses doesn't stop the others.
+        private static List<PendingPattern> SetPatterns(List<PendingPattern> patterns, ApplyTally tally)
         {
-            using (var attempt = new SubTransaction(document))
-            {
-                attempt.Start();
-                try
-                {
-                    List<PendingValue> set = Set(pending, tally);
-                    attempt.Commit();
-                    return set;
-                }
-                catch (Exception ex) when (RevitErrors.IsRefusal(ex))
-                {
-                    attempt.RollBack();
-                }
-            }
-
-            var one = new List<PendingValue>();
-            foreach (PendingValue value in pending)
+            var set = new List<PendingPattern>();
+            foreach (PendingPattern pattern in patterns)
             {
                 try
                 {
-                    one.AddRange(Set(new List<PendingValue> { value }, tally));
+                    if (RevitPatterns.Set(pattern.Material, pattern.Which, pattern.Pattern))
+                        set.Add(pattern);
                 }
                 catch (Exception ex) when (RevitErrors.IsRefusal(ex))
                 {
-                    tally.Refused(value.ParameterName, ex.Message);
+                    tally.Refused(MaterialPatterns.Name(pattern.Which), ex.Message);
                 }
             }
-            return one;
-        }
-
-        private static List<PendingValue> Set(List<PendingValue> values, ApplyTally tally)
-        {
-            var refused = new HashSet<string>(StringComparer.Ordinal);
-            IList<Parameter> notSet = Parameter.SetMultiple(values.Select(value => value.Pair).ToList());
-            foreach (Parameter parameter in notSet ?? new Parameter[0])
-                refused.Add(PendingValue.IdOf(parameter));
-
-            foreach (PendingValue value in values.Where(value => refused.Contains(value.Id)))
-                tally.Refused(value.ParameterName, "Revit didn't take the value");
-            return values.Where(value => !refused.Contains(value.Id)).ToList();
+            return set;
         }
 
         private static string KeyOf(Element element) => ElementKey.Read(element, ExcelFormat.Planungsdatenbank);
 
-        /// <summary>One value on its way into one element or material.</summary>
-        private sealed class PendingValue
+        /// <summary>One fill pattern on its way into one material.</summary>
+        private sealed class PendingPattern
         {
-            public PendingValue(Tuple<Parameter, ParameterValue> pair, string key, bool isMaterial)
+            public PendingPattern(Material material, string materialId, MaterialPattern which, FillPatternElement pattern)
             {
-                Pair = pair;
-                Key = key;
-                IsMaterial = isMaterial;
-                ElementId = pair.Item1.Element.Id;
-                ParameterGuid = pair.Item1.GUID;
-                ParameterName = pair.Item1.Definition.Name;
-                Id = IdOf(pair.Item1);
+                Material = material;
+                MaterialId = materialId;
+                Which = which;
+                Pattern = pattern;
             }
 
-            public Tuple<Parameter, ParameterValue> Pair { get; }
+            public Material Material { get; }
 
-            /// <summary>The Bauteil_ID or the Material-ID.</summary>
-            public string Key { get; }
+            /// <summary>The database's Material-ID.</summary>
+            public string MaterialId { get; }
 
-            public bool IsMaterial { get; }
+            public MaterialPattern Which { get; }
 
-            public ElementId ElementId { get; }
-
-            public Guid ParameterGuid { get; }
-
-            public string ParameterName { get; }
-
-            /// <summary>Tells one element's parameter from all others.</summary>
-            public string Id { get; }
-
-            public static string IdOf(Parameter parameter) => parameter.Element.Id.Value + "|" + parameter.Id.Value;
+            public FillPatternElement Pattern { get; }
         }
     }
 }

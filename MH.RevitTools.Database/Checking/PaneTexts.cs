@@ -72,7 +72,9 @@ namespace MH.RevitTools.Database.Checking
         /// <summary>The up-to-date card's line, e.g. "The model matches the database. Last change there: today 14:31 · S. Brandt."</summary>
         public static string UpToDate(ChangeReport report, DateTime nowUtc, TimeZoneInfo timeZone)
         {
-            string text = "The model matches the database.";
+            string text = report != null && report.MissingMaterials.Count > 0
+                ? "What the model has matches the database."
+                : "The model matches the database.";
             if (report == null || !report.NewestChangeUtc.HasValue)
                 return text;
             string when = WhenInSentence(report.NewestChangeUtc.Value, nowUtc, timeZone);

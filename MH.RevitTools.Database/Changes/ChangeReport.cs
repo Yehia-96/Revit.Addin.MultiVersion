@@ -15,12 +15,14 @@ namespace MH.RevitTools.Database.Changes
         internal ChangeReport(
             IEnumerable<ChangeGroup> groups,
             ModelCounts counts,
+            IEnumerable<MissingMaterial> missingMaterials,
             IEnumerable<NotAppliedItem> notApplied,
             DateTime? newestChangeUtc,
             string newestChangeBy)
         {
             Groups = Freeze(groups);
             Counts = counts ?? throw new ArgumentNullException(nameof(counts));
+            MissingMaterials = Freeze(missingMaterials);
             NotApplied = Freeze(notApplied);
             NewestChangeUtc = newestChangeUtc;
             NewestChangeBy = string.IsNullOrWhiteSpace(newestChangeBy) ? null : newestChangeBy.Trim();
@@ -42,6 +44,11 @@ namespace MH.RevitTools.Database.Changes
             || item.Reason == NotAppliedReason.OnType);
 
         public ModelCounts Counts { get; }
+
+        /// <summary>
+        /// The project's materials the model doesn't have, by name. They're no changes: Create makes them, Apply doesn't.
+        /// </summary>
+        public IReadOnlyList<MissingMaterial> MissingMaterials { get; }
 
         /// <summary>What Apply leaves out, and why; what someone can act on first.</summary>
         public IReadOnlyList<NotAppliedItem> NotApplied { get; }
@@ -86,13 +93,27 @@ namespace MH.RevitTools.Database.Changes
         public DateTime? NewestChangeUtc { get; }
     }
 
-    /// <summary>One parameter's value that differs, on one object or material. Immutable.</summary>
+    /// <summary>One parameter's value that differs, on one object or material, or one of a material's fill patterns. Immutable.</summary>
     public sealed class ChangeRow
     {
         internal ChangeRow(
             int parameterId, string parameter, string value, string from, string to, DateTime? changedAtUtc, string changedBy, IEnumerable<long> elementIds)
+            : this(parameterId, null, parameter, value, from, to, changedAtUtc, changedBy, elementIds)
+        {
+        }
+
+        // The database doesn't say who changed a pattern, or when.
+        internal ChangeRow(MaterialPattern pattern, string value, string from, IEnumerable<long> materialIds)
+            : this(0, pattern, MaterialPatterns.Name(pattern), value, from, value, null, null, materialIds)
+        {
+        }
+
+        private ChangeRow(
+            int parameterId, MaterialPattern? pattern, string parameter, string value, string from, string to, DateTime? changedAtUtc, string changedBy,
+            IEnumerable<long> elementIds)
         {
             ParameterId = parameterId;
+            Pattern = pattern;
             Parameter = parameter ?? "";
             Value = value ?? "";
             From = from ?? "";
@@ -102,9 +123,13 @@ namespace MH.RevitTools.Database.Changes
             ElementIds = new ReadOnlyCollection<long>((elementIds ?? Enumerable.Empty<long>()).ToList());
         }
 
+        /// <summary>0 for a fill pattern.</summary>
         public int ParameterId { get; }
 
-        /// <summary>The parameter's Revit name, e.g. "Betonstahl Güte".</summary>
+        /// <summary>Which of the material's fill patterns it is; null for a parameter's value.</summary>
+        public MaterialPattern? Pattern { get; }
+
+        /// <summary>The parameter's Revit name, e.g. "Betonstahl Güte", or "Surface pattern".</summary>
         public string Parameter { get; }
 
         /// <summary>The database's value as stored, which Apply writes; <see cref="To"/> is how it's shown.</summary>

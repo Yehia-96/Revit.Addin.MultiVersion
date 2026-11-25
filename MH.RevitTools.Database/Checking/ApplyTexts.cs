@@ -7,8 +7,8 @@ using MH.RevitTools.Database.Changes;
 namespace MH.RevitTools.Database.Checking
 {
     /// <summary>
-    /// What the pane and the ribbon say about applying the database's changes, and about what's left out, in
-    /// the mockup's words. Like <see cref="PaneTexts"/>, so the wording sits under tests.
+    /// What the pane and the ribbon say about applying the database's changes, about what's left out, and about
+    /// creating missing materials, in the mockup's words. Like <see cref="PaneTexts"/>, so the wording sits under tests.
     /// </summary>
     public static class ApplyTexts
     {
@@ -32,9 +32,30 @@ namespace MH.RevitTools.Database.Checking
                 : PaneTexts.Count(groups.Sum(group => group.Rows.Count), "change", "changes"));
         }
 
-        /// <summary>The green banner's title, e.g. "3 changes applied to 16 elements".</summary>
+        /// <summary>The section's title, e.g. "Not in this model · 38 materials".</summary>
+        public static string MissingTitle(int count) => "Not in this model · " + PaneTexts.Count(count, "material", "materials");
+
+        /// <summary>What the section says about them.</summary>
+        public static string MissingDetail => "The project has them, this model doesn't. Create… makes them; Apply all doesn't.";
+
+        /// <summary>The step in Revit's Undo list, e.g. "MH database: 38 materials".</summary>
+        public static string CreateUndoName(int count) => UndoPrefix + PaneTexts.Count(count, "material", "materials");
+
+        /// <summary>Create's question, e.g. "Create 38 materials in this model?".</summary>
+        public static string CreateQuestion(int count) => "Create " + PaneTexts.Count(count, "material", "materials") + " in this model?";
+
+        /// <summary>What the question says about them.</summary>
+        /// <param name="project">E.g. "1761-01 Ulm".</param>
+        public static string CreateText(int count, string project) =>
+            (count == 1 ? "It's" : "They're") + " in " + project + ", but not in this model. " + (count == 1 ? "It" : "Each")
+            + " gets its material class, a look like one of its kind that's in the model, its fill patterns where the model has them, and its values. "
+            + "One undo step (Ctrl+Z).";
+
+        /// <summary>The green banner's title, e.g. "3 changes applied to 16 elements", or "38 materials created".</summary>
         public static string AppliedTitle(ApplyResult result)
         {
+            if (result != null && result.Created.HasValue)
+                return result.Created.Value == 0 ? "No material was created" : PaneTexts.Count(result.Created.Value, "material", "materials") + " created";
             if (result == null || result.Changes == 0)
                 return "Nothing was applied";
             return PaneTexts.Count(result.Changes, "change", "changes") + " applied to " + Targets(result.Elements, result.Materials);
@@ -48,7 +69,7 @@ namespace MH.RevitTools.Database.Checking
             var sentences = new List<string>();
             if (result.Stopped != null)
                 sentences.Add(Sentence(result.Stopped));
-            else if (result.Changes > 0)
+            else if (result.DidSomething)
                 sentences.Add(Capital(PaneTexts.WhenInSentence(appliedAtUtc, nowUtc, timeZone)) + ", one undo step in Revit (Ctrl+Z).");
 
             foreach (BorrowedElements borrowed in result.Borrowed)
@@ -61,13 +82,14 @@ namespace MH.RevitTools.Database.Checking
                 sentences.Add("Not applied to " + PaneTexts.Count(result.OutOfDate, "element", "elements")
                     + " with newer changes in the central model: Reload Latest, then apply again.");
             }
+            bool creates = result.Created.HasValue;
             if (result.Outdated > 0)
             {
-                sentences.Add(PaneTexts.Count(result.Outdated, "value", "values")
-                    + " had changed in the database by then: check the list and apply again.");
+                sentences.Add((creates ? PaneTexts.Count(result.Outdated, "material", "materials") : PaneTexts.Count(result.Outdated, "value", "values"))
+                    + " had changed in the database by then: check the list and " + (creates ? "create" : "apply") + " again.");
             }
             if (result.Refused.Count > 0)
-                sentences.Add("Revit refused some values: " + string.Join("; ", result.Refused) + ".");
+                sentences.Add((creates ? "Revit refused some: " : "Revit refused some values: ") + string.Join("; ", result.Refused) + ".");
             return string.Join(" ", sentences);
         }
 
@@ -97,8 +119,12 @@ namespace MH.RevitTools.Database.Checking
                     return item.Name + " has different values for " + Names(item.Parameters);
                 case NotAppliedReason.MissingParameter:
                     return Names(item.Parameters) + Are(item.Parameters) + " not in this model";
+                case NotAppliedReason.MissingPattern:
+                    return "The fill pattern “" + item.Name + "” is not in this model";
                 case NotAppliedReason.SameMaterialName:
                     return "Two materials are called “" + item.Name + "”";
+                case NotAppliedReason.NotCreatable:
+                    return item.Name + " has no " + item.Text;
                 case NotAppliedReason.Placeholder:
                     return PaneTexts.Count(item.ValueCount, "value is ", "values are ") + item.Name;
                 default:
@@ -131,8 +157,14 @@ namespace MH.RevitTools.Database.Checking
                         : "Materials in the database share this Material-ID, so none of their values goes in.";
                 case NotAppliedReason.MissingParameter:
                     return "Check parameters adds " + (item.Parameters.Count == 1 ? "it" : "them") + " from the master file.";
+                case NotAppliedReason.MissingPattern:
+                    return "It's " + string.Join(" and ", item.Parameters.Select(name => "the " + name.ToLowerInvariant())) + " of "
+                        + PaneTexts.Count(item.ElementIds.Count, "material", "materials") + ". Add it to the model (Manage, Additional Settings, Fill "
+                        + "Patterns), or copy something that uses it from another model; then it can be applied.";
                 case NotAppliedReason.SameMaterialName:
                     return "Revit tells materials apart by name, so " + item.Text + " is left out. Give it another name in Studio.";
+                case NotAppliedReason.NotCreatable:
+                    return "So it can't be created in Revit. Give it one in Studio.";
                 case NotAppliedReason.Placeholder:
                     return PlaceholderDetail(item);
                 default:
@@ -190,21 +222,28 @@ namespace MH.RevitTools.Database.Checking
                 return "The model is still being compared with the database. Try again in a moment.";
             if (report.ChangeCount > 0)
                 return null;
-            return report.HasBlockedDifferences
-                ? BlockedDetail.Replace("See Not applied below.", "The MH Database pane lists them under Not applied.")
-                : "The model matches the database.";
+            if (report.HasBlockedDifferences)
+                return BlockedDetail.Replace("See Not applied below.", "The MH Database pane lists them under Not applied.");
+            return report.MissingMaterials.Count == 0
+                ? "The model matches the database."
+                : "What the model has matches the database. The MH Database pane lists the materials it doesn't have.";
         }
 
         /// <summary>The pane's line where Apply is when it can't be used; null when it can.</summary>
-        public static string ApplyWaits(CheckState state, bool isReadOnly)
+        public static string ApplyWaits(CheckState state, bool isReadOnly) => Waits("Apply", "applied", state, isReadOnly);
+
+        /// <summary>The pane's line where Create is when it can't be used; null when it can.</summary>
+        public static string CreateWaits(CheckState state, bool isReadOnly) => Waits("Create", "created", state, isReadOnly);
+
+        private static string Waits(string what, string done, CheckState state, bool isReadOnly)
         {
             if (isReadOnly)
-                return "The model is open read-only, so nothing can be applied.";
+                return "The model is open read-only, so nothing can be " + done + ".";
             if (state == CheckState.NotSignedIn)
-                return "Apply waits until you sign in, so that nothing outdated goes in.";
+                return what + " waits until you sign in, so that nothing outdated goes in.";
             return state == CheckState.Answered
                 ? null
-                : "Apply waits until the database answers again, so that nothing outdated goes in.";
+                : what + " waits until the database answers again, so that nothing outdated goes in.";
         }
 
         private static string PlaceholderDetail(NotAppliedItem item)

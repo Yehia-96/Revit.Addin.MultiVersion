@@ -1,6 +1,7 @@
 <UserControl x:Class="Revit.Addin._2027.DatabaseLink.Pane.PaneView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:sys="clr-namespace:System;assembly=mscorlib"
              Background="#FFFFFF" Foreground="#2A3447" FontFamily="Segoe UI" FontSize="13"
              UseLayoutRounding="True" MinWidth="240">
 
@@ -126,6 +127,46 @@
             <Setter Property="BorderBrush" Value="{StaticResource Line}"/>
             <Setter Property="HorizontalContentAlignment" Value="Left"/>
             <Setter Property="ToolTip" Value="Select them in the model"/>
+        </Style>
+
+        <!-- A section's title that shows or hides it: Content is the title, Tag whether it's open. -->
+        <Style x:Key="SectionToggle" TargetType="Button" BasedOn="{StaticResource PlainButton}">
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="Padding" Value="0,4"/>
+            <Setter Property="AutomationProperties.ItemStatus" Value="closed"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Chrome" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}"
+                                BorderBrush="Transparent" BorderThickness="1" CornerRadius="4">
+                            <DockPanel>
+                                <Viewbox DockPanel.Dock="Right" Width="14" Height="14">
+                                    <Canvas Width="24" Height="24">
+                                        <Path x:Name="Chevron" Data="M6,9 L12,15 L18,9" Stroke="{StaticResource Muted}" StrokeThickness="2"
+                                              StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
+                                    </Canvas>
+                                </Viewbox>
+                                <TextBlock Style="{StaticResource SectionTitle}" Text="{TemplateBinding Content}" VerticalAlignment="Center"/>
+                            </DockPanel>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="Tag">
+                                <Trigger.Value>
+                                    <sys:Boolean>True</sys:Boolean>
+                                </Trigger.Value>
+                                <Setter TargetName="Chevron" Property="Data" Value="M6,15 L12,9 L18,15"/>
+                                <Setter Property="AutomationProperties.ItemStatus" Value="open"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="#F2F4F7"/>
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Chrome" Property="BorderBrush" Value="#1F6FEB"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
         <!-- One object's or material's changes: its ID and name, then each value as model → database. -->
@@ -445,41 +486,42 @@
                                Visibility="{Binding ShowMore, Converter={StaticResource Visible}}"/>
                 </StackPanel>
 
+                <!-- The project's materials the model doesn't have -->
+                <Border Margin="0,12,0,0" Padding="14,8,14,10" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0"
+                        Visibility="{Binding ShowMissing, Converter={StaticResource Visible}}">
+                    <StackPanel>
+                        <Button Style="{StaticResource SectionToggle}" Content="{Binding MissingTitle}" Tag="{Binding MissingOpen}"
+                                Command="{Binding ToggleMissingCommand}" ToolTip="Shows or hides the materials"/>
+                        <TextBlock Style="{StaticResource MutedText}" Text="{Binding MissingText}" Margin="0,4,0,0"/>
+                        <StackPanel Margin="0,8,0,0" Visibility="{Binding MissingOpen, Converter={StaticResource Visible}}">
+                            <ItemsControl ItemsSource="{Binding MissingItems}" Focusable="False">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <DockPanel Margin="0,0,0,6">
+                                            <Border DockPanel.Dock="Left" Style="{StaticResource Chip}">
+                                                <TextBlock Text="{Binding Key}" FontFamily="{StaticResource CodeFont}" FontSize="11.5"/>
+                                            </Border>
+                                            <TextBlock Text="{Binding Name}" Foreground="{StaticResource Strong}" Margin="8,0,0,0"
+                                                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}"/>
+                                        </DockPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Style="{StaticResource MutedText}" Text="{Binding MoreMissingText}"
+                                       Visibility="{Binding ShowMoreMissing, Converter={StaticResource Visible}}"/>
+                        </StackPanel>
+                        <Button Style="{StaticResource SecondaryButton}" Margin="0,10,0,0" HorizontalAlignment="Right" Content="Create…"
+                                Command="{Binding CreateCommand}" Visibility="{Binding CanCreate, Converter={StaticResource Visible}}"
+                                ToolTip="Asks, then creates them in the model, in one undo step"/>
+                    </StackPanel>
+                </Border>
+
                 <!-- What Apply leaves out, and why -->
                 <Border Margin="0,12,0,0" Padding="14,8,14,6" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0"
                         Visibility="{Binding ShowNotApplied, Converter={StaticResource Visible}}">
                     <StackPanel>
-                        <Button Style="{StaticResource PlainButton}" HorizontalAlignment="Stretch" Padding="0,4"
-                                Command="{Binding ToggleNotAppliedCommand}" ToolTip="Shows or hides what Apply leaves out">
-                            <Button.Template>
-                                <ControlTemplate TargetType="Button">
-                                    <Border x:Name="Chrome" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}"
-                                            BorderBrush="Transparent" BorderThickness="1" CornerRadius="4">
-                                        <DockPanel>
-                                            <Viewbox DockPanel.Dock="Right" Width="14" Height="14">
-                                                <Canvas Width="24" Height="24">
-                                                    <Path Data="M6,9 L12,15 L18,9" Stroke="{StaticResource Muted}" StrokeThickness="2"
-                                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round">
-                                                        <Path.RenderTransform>
-                                                            <RotateTransform Angle="{Binding NotAppliedTurn}" CenterX="12" CenterY="12"/>
-                                                        </Path.RenderTransform>
-                                                    </Path>
-                                                </Canvas>
-                                            </Viewbox>
-                                            <TextBlock Style="{StaticResource SectionTitle}" Text="{Binding NotAppliedTitle}" VerticalAlignment="Center"/>
-                                        </DockPanel>
-                                    </Border>
-                                    <ControlTemplate.Triggers>
-                                        <Trigger Property="IsMouseOver" Value="True">
-                                            <Setter TargetName="Chrome" Property="Background" Value="#F2F4F7"/>
-                                        </Trigger>
-                                        <Trigger Property="IsKeyboardFocused" Value="True">
-                                            <Setter TargetName="Chrome" Property="BorderBrush" Value="#1F6FEB"/>
-                                        </Trigger>
-                                    </ControlTemplate.Triggers>
-                                </ControlTemplate>
-                            </Button.Template>
-                        </Button>
+                        <Button Style="{StaticResource SectionToggle}" Content="{Binding NotAppliedTitle}" Tag="{Binding NotAppliedOpen}"
+                                Command="{Binding ToggleNotAppliedCommand}" ToolTip="Shows or hides what Apply leaves out"/>
                         <ItemsControl ItemsSource="{Binding NotAppliedItems}" Focusable="False" Margin="0,6,0,0"
                                       Visibility="{Binding NotAppliedOpen, Converter={StaticResource Visible}}">
                             <ItemsControl.ItemTemplate>

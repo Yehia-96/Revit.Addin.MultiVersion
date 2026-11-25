@@ -30,8 +30,14 @@ namespace MH.RevitTools.Database.Changes
         /// <summary>The model doesn't have the parameter: Check parameters adds it.</summary>
         MissingParameter,
 
+        /// <summary>The model doesn't have the fill pattern.</summary>
+        MissingPattern,
+
         /// <summary>Two of the project's materials share a name; only the first is used.</summary>
         SameMaterialName,
+
+        /// <summary>A material the model doesn't have, and that can't be created: it has no name or no group.</summary>
+        NotCreatable,
 
         /// <summary>[Modeller], [ET], - or TBT.</summary>
         Placeholder,
@@ -59,10 +65,16 @@ namespace MH.RevitTools.Database.Changes
 
         public NotAppliedReason Reason { get; }
 
-        /// <summary>Who borrowed the elements (null when Revit doesn't say), the placeholder, the material's name, or the shared ID.</summary>
+        /// <summary>
+        /// Who borrowed the elements (null when Revit doesn't say), the placeholder, the fill pattern's or the material's
+        /// name, or the shared ID.
+        /// </summary>
         public string Name { get; }
 
-        /// <summary>The problem with a value that doesn't fit, the Material-ID that's left out, or <see cref="OfMaterials"/>; else null.</summary>
+        /// <summary>
+        /// The problem with a value that doesn't fit, the Material-ID that's left out, what a material lacks, or
+        /// <see cref="OfMaterials"/>; else null.
+        /// </summary>
         public string Text { get; }
 
         /// <summary>The Revit names of the parameters concerned, in the dictionary's order.</summary>
@@ -92,28 +104,50 @@ namespace MH.RevitTools.Database.Changes
         }
 
         public void Borrowed(string owner, LinkParameter parameter, long elementId) =>
-            At(NotAppliedReason.Borrowed, owner, null).Add(parameter, elementId);
+            At(NotAppliedReason.Borrowed, owner, null).Add(parameter.ParameterId, parameter.RevitName, elementId);
+
+        public void Borrowed(string owner, MaterialPattern which, long materialId) =>
+            At(NotAppliedReason.Borrowed, owner, null).Add(IdOf(which), MaterialPatterns.Name(which), materialId);
 
         public void On(NotAppliedReason reason, LinkParameter parameter, long elementId) =>
-            At(reason, null, null).Add(parameter, elementId);
+            At(reason, null, null).Add(parameter.ParameterId, parameter.RevitName, elementId);
+
+        public void On(NotAppliedReason reason, MaterialPattern which, long materialId) =>
+            At(reason, null, null).Add(IdOf(which), MaterialPatterns.Name(which), materialId);
+
+        /// <summary>The model doesn't have the fill pattern; named once, for all materials that should have it.</summary>
+        public void MissingPattern(string patternName, MaterialPattern which, long materialId)
+        {
+            string known = _entries.Keys.Where(key => key.Item1 == NotAppliedReason.MissingPattern)
+                .Select(key => key.Item2).FirstOrDefault(name => string.Equals(name, patternName, StringComparison.OrdinalIgnoreCase));
+            At(NotAppliedReason.MissingPattern, known ?? patternName, null).Add(IdOf(which), MaterialPatterns.Name(which), materialId);
+        }
+
+        /// <summary>A material the model doesn't have and that can't be created.</summary>
+        /// <param name="lacks">What it lacks, as the dictionary calls it.</param>
+        public void NotCreatable(string material, string lacks) => At(NotAppliedReason.NotCreatable, material, lacks);
 
         public void Placeholder(string placeholder, LinkParameter parameter) =>
-            At(NotAppliedReason.Placeholder, placeholder, null).AddValue(parameter);
+            At(NotAppliedReason.Placeholder, placeholder, null).AddValue(parameter.ParameterId, parameter.RevitName);
 
         public void MaterialReference(LinkParameter parameter) =>
-            At(NotAppliedReason.MaterialReference, null, null).AddValue(parameter);
+            At(NotAppliedReason.MaterialReference, null, null).AddValue(parameter.ParameterId, parameter.RevitName);
 
-        public void DoesntFit(LinkParameter parameter, string problem)
+        public void DoesntFit(LinkParameter parameter, string problem) => DoesntFit(parameter.ParameterId, parameter.RevitName, problem);
+
+        public void DoesntFit(MaterialPattern which, string problem) => DoesntFit(IdOf(which), MaterialPatterns.Name(which), problem);
+
+        private void DoesntFit(int parameterId, string parameterName, string problem)
         {
-            string text = parameter.RevitName + ": " + problem;
+            string text = parameterName + ": " + problem;
             bool known = _entries.ContainsKey(Tuple.Create(NotAppliedReason.DoesntFit, (string)null, text));
             if (known || _entries.Keys.Count(key => key.Item1 == NotAppliedReason.DoesntFit) < MaxDoesntFit)
-                At(NotAppliedReason.DoesntFit, null, text).AddValue(parameter);
+                At(NotAppliedReason.DoesntFit, null, text).AddValue(parameterId, parameterName);
         }
 
         /// <summary>The database has different values for the parameter under one ID.</summary>
         public void Conflict(string key, bool isMaterial, LinkParameter parameter) =>
-            At(NotAppliedReason.ConflictingValues, key, isMaterial ? NotAppliedItem.OfMaterials : null).AddValue(parameter);
+            At(NotAppliedReason.ConflictingValues, key, isMaterial ? NotAppliedItem.OfMaterials : null).AddValue(parameter.ParameterId, parameter.RevitName);
 
         /// <summary>The material left out, because an earlier one already has its name.</summary>
         public void SameName(string materialName, string leftOutMaterialId) =>
@@ -125,10 +159,13 @@ namespace MH.RevitTools.Database.Changes
             .ThenBy(entry => entry.Key.Item2 ?? "", StringComparer.OrdinalIgnoreCase)
             .ThenBy(entry => entry.Key.Item3 ?? "", StringComparer.OrdinalIgnoreCase)
             .Select(entry => new NotAppliedItem(entry.Key.Item1, entry.Key.Item2, entry.Key.Item3,
-                entry.Value.Parameters.OrderBy(parameter => _placeOf(parameter.Key)).Select(parameter => parameter.Value)
+                entry.Value.Parameters.OrderBy(parameter => _placeOf(parameter.Key)).ThenBy(parameter => parameter.Key).Select(parameter => parameter.Value)
                     .Distinct(StringComparer.OrdinalIgnoreCase),
                 entry.Value.ValueCount, entry.Value.ElementIds))
             .ToList();
+
+        // Beside the dictionary's, which are positive; surface before cut.
+        private static int IdOf(MaterialPattern which) => which == MaterialPattern.Surface ? -2 : -1;
 
         private static int PlaceholderPlace(string name)
         {
@@ -162,16 +199,16 @@ namespace MH.RevitTools.Database.Changes
 
             public int ValueCount { get; private set; }
 
-            public void Add(LinkParameter parameter, long elementId)
+            public void Add(int parameterId, string parameterName, long elementId)
             {
-                AddValue(parameter);
+                AddValue(parameterId, parameterName);
                 if (_seen.Add(elementId))
                     ElementIds.Add(elementId);
             }
 
-            public void AddValue(LinkParameter parameter)
+            public void AddValue(int parameterId, string parameterName)
             {
-                Parameters[parameter.ParameterId] = parameter.RevitName;
+                Parameters[parameterId] = parameterName;
                 ValueCount++;
             }
         }

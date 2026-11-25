@@ -19,7 +19,9 @@ and walked on 2026-11-23. Step 6 (Apply and "Not applied") is done: built, commi
 done: built, committed and walked on 2026-11-23. **Step 9 (publish it for colleagues) is under way: the
 connection file is built into the add-in, and Revit asks each person once for the database password (Yehia, 2026-11-24).
 The add-in's half is built and committed; Yehia walks it once the office can be reached. The database session's half is
-prepared; CADSQL can't be reached for now, so the login isn't made yet. Then 10 and 11 (materials),** planned, not started.
+prepared; CADSQL can't be reached for now, so the login isn't made yet.** Step 10 (create missing materials, set fill patterns)
+is done: built, committed and walked on 2026-11-25. **Then 11 (assign materials),** planned, not started: the database
+session is making its view. Version 5.3.0.0 was released on 2026-11-25 without the link.
 
 The live link from the MH database into Revit, inside the "Parameter Tools" add-in (MH.RevitTools),
 in `Revit.Addin.2027` only. It only reads from the database. This file holds the plan, the status, and
@@ -93,9 +95,9 @@ after it are listed next.
   the Teams folder hold nothing secret.
 - **CADSQL can't be reached for now** (Yehia, 2026-11-24): the database session prepares everything it can until it can be again.
 - **Revit uses the connection file that ships with the add-in** (Yehia, 2026-11-24: "we don't want a global file that everyone can
-  access through share"). It's built into the add-in's DLL (this session's way): Check for Updates copies DLLs only, so a separate
-  file beside the add-in wouldn't reach whoever updates that way. A PC's own file still wins, as Yehia's PC needs it for dev;
-  colleagues have none.
+  access through share"). It's built into the add-in's DLL (this session's way): Check for Updates of 5.2.2.0 copies DLLs only, so
+  a separate file beside the add-in wouldn't reach whoever updates with it. A PC's own file still wins, as Yehia's PC needs it
+  for dev; colleagues have none.
 
 ## The connection file
 
@@ -106,7 +108,8 @@ after it are listed next.
    Colleagues have none.
 2. Otherwise the one built into the add-in (`Revit.Addin.2027.dll`). It comes with every version, whichever way that reaches the
    PC, and it's always the one of the version that runs. Nothing lies on the PC or on the share to open or change.
-   Check for Updates wouldn't bring a separate file: it copies only DLLs, and it's the version before that does the copying.
+   Check for Updates of 5.2.2.0 wouldn't bring a separate file: it copies only DLLs, and it's the version before that does
+   the copying.
 
 To change it takes a new version of the add-in; for one PC, a file of its own.
 
@@ -215,7 +218,7 @@ after Yehia has walked it.
     supported on this platform". The 2027 project now builds for win-x64 (`RuntimeIdentifier`), so the
     Windows `Microsoft.Data.SqlClient.dll`, its native `Microsoft.Data.SqlClient.SNI.dll` and
     `System.Runtime.Caching.dll` sit in the folder root. That also suits "Check for Updates", which
-    copies only the top-level `*.dll`. Old `runtimes\` folders stay in installed add-in folders, because
+    copied only the top-level `*.dll` then. Old `runtimes\` folders stay in installed add-in folders, because
     the deploy doesn't wipe; they're harmless.
   - **Checked outside Revit.** A throwaway loader loaded the deployed folder the way a host loads a
     plug-in (LoadFrom, no deps.json, .NET 10 desktop runtime). It connected in 0.2 s. With the old layout
@@ -573,13 +576,17 @@ after Yehia has walked it.
      Studio's release with the views and the sign-in, the login, the check. Yehia runs all of it.
   2. **Only once Yehia says that `Test-RevitLogin.ps1` said "All right":** Release Manager, Revit Tools 2027 (MultiVersion), in Live
      mode: Check readiness, Update version, Build add-in, Install for testing, I tested this build, Create installation files
-     (the ZIP), Preview publication, Publish add-in, Verify shared files. It builds what's in the working folder, so
-     `database-link` for now. (Release and Promote are Database Studio's.) The version has to change: Check for Updates offers
-     nothing while the share's is the installed one's (5.2.2.0).
+     (the ZIP), Preview publication, Publish add-in, Verify shared files. It builds the folder that its Locations name (Revit
+     repository root). 5.3.0.0, without the link, came from the release folder (2026-11-25, below); the link needs one that has it,
+     like this one. (Release and Promote are Database Studio's.) The version has to be higher than the share's (5.3.0.0).
   3. Yehia sends each colleague the password in a private Teams message.
   4. Colleagues: Check for Updates, or `Install.cmd` from the ZIP, run as themselves and not as another administrator (Revit
      2027 reads the manifest from the person's own `%APPDATA%`). Then Sign in…: the database password once, then their Studio
      account.
+     - Check for Updates: close every Revit 2027 window. **The version that's installed does the updating,** so whoever comes from
+       5.2.2.0 still has the old script, which says "Update Complete." whatever happens (2026-11-24, below); "Sharing violation" in
+       its window means that it didn't go through. After the restart, Check for Updates has to say "You're already using version …"
+       with the new number; otherwise once more. From the new version on, the corrected one does it.
 - **Walk:**
   1. On your PC, now, without the office, VPN off:
      1. With your own file, nothing has changed: Sign in… asks for the account only, the pane checks, and Test connection's
@@ -638,28 +645,43 @@ connection file that holds the password. As the PC's own file wins, it could sti
      panel's slide-out) works, and the pane asks to sign in.
   3. There, as a normal user, try to change or delete the file: Windows refuses.
 
-### 10. Create the project's missing materials (planned, not started)
-Today the link only fills parameters of materials that are already in the model. The Excel import's Automate Material
-Creation also creates them and sets their fill patterns. This step does the same from the database. It needs nothing
-from the database session.
-- **The pane** gets a section "Not in this model · 38 materials", with the names and **Create…**. It asks first, and
-  creates them all in one undo step, with their values. Apply all doesn't create materials.
+### 10. Create the project's missing materials
+Yehia, 2026-11-24: "we proceed to step 10", while step 9's walk waits for the office. Before this step the link only filled
+parameters of materials that are already in the model. The Excel import's Automate Material Creation also creates them and
+sets their fill patterns. This step does the same from the database. It needs nothing from the database session.
+- **The pane** has a section "Not in this model · 38 materials". Its title shows or hides the names. **Create…** asks first, and
+  creates them all in one undo step, with their values. Apply all doesn't create materials, and missing ones are no changes:
+  the pane can be up to date ("What the model has matches the database").
 - **Which:** the project's own materials (`revit.Materials`) whose Materialname the model doesn't have, as the Excel
   import does. Two with the same name: the first, as everywhere. Global materials aren't in the views.
-- **What they get:** the Materialname, the material class by the group (Beton → Concrete, …) and a look copied from a
-  material of the same kind in the model, both with the Excel import's own code; the fill patterns; the parameter
-  values.
-- **Fill patterns,** also of materials that are there: "Surface pattern" and "Cut pattern" become rows on the
-  material's card, and Apply sets them. An empty one in the database leaves the material's as it is.
+- **What they get:** the Materialname, the material class by the group (Beton → Concrete, …), a look copied from a
+  material of the same kind in the model and structural properties, with the Excel import's own code
+  (`MaterialCreation.Create`, taken out of its loop; the import works as before); then the fill patterns, and the parameter
+  values by the same loop and rules as Apply.
+  - A group that code doesn't know gets the class Generic and a default look, as with the Excel import. In dev's 1761 that's
+    "Boden (in situ)", 9 materials, and Bitumen, 1.
+  - Structural properties of that name that are in the model already, left over from a deleted material say, are taken (the
+    link only): Revit refuses to make them a second time.
+- **Fill patterns,** also of materials that are there: "Surface pattern" and "Cut pattern" are rows on the
+  material's card, and Apply sets them. An empty one in the database, or a placeholder, leaves the material's as it is. The views
+  don't say who changed a pattern, or when.
   - Only patterns the model has (and Solid). Others are listed under "Not applied". The Excel import copies missing
     ones from a model file whose path is fixed to Yehia's PC (`Services\FillPattern.cs`), so on other PCs it can't.
     A file for the office could come later, named in the connection file like the master parameter file.
+  - A cut takes drafting patterns only (Revit's rule), so a model pattern of that name doesn't count there.
+- **Not created:** a material without a Materialname or a Materialgruppe (listed under "Not applied"), and one Revit refuses, for
+  a character in its name say (the pane says it after Create).
 - A material renamed in Studio is another material to Revit, as materials meet by name: it's offered as missing.
-- **Walk:**
-  1. The pane says how many of 1761's materials aren't in the model. Create… asks; they appear in Revit's Materials with
-     class, look, patterns and values. Ctrl+Z takes them all back.
-  2. Change a material's pattern in Studio to one the model has: it's listed, and Apply sets it.
-  3. A pattern the model doesn't have is listed under "Not applied".
+- **Walk** (dev; the office isn't needed):
+  1. Open a linked model of 1761 that lacks some of its materials: the pane says how many aren't in the model, and the
+     section's title shows their names.
+  2. Create…, then Cancel: nothing happens. Create…, Create them: they're in Revit's Materials with class, look and values, and
+     with their patterns where the model has them. The pane says how many it created; the section is gone.
+  3. Ctrl+Z takes them all back, and the section is there again.
+  4. Create them again, delete one in Revit's Materials: the pane offers it, and Create… makes it.
+  5. In Studio, set a material's pattern to one the model has (Solid, say): it's listed, and Apply sets it.
+  6. A pattern the model doesn't have is listed under "Not applied".
+  7. The Excel import's Automate Material Creation works as before.
 
 ### 11. Assign materials to objects (planned, not started)
 - **It needs a view:** `revit.ObjectMaterials` ("Needs from the database", item 6). Since 2026-11-11 Studio keeps an
@@ -804,7 +826,7 @@ nothing has gone to CADSQL. Details: REVIT_LINK.md, "The read-only login". The s
 
 *Final version, 2026-11-19. Items 1, 2 and 3 are built and the questions are answered (see "What the
 database session built"). Item 4 is prepared and waits for CADSQL (2026-11-24), item 5 isn't wanted for now, and item 6
-comes with step 11, when Yehia asks for it.*
+is asked for now, for step 11 (2026-11-24).*
 
 **What the link needs, in order**
 1. **Now: the `revit` views.** The SQL is ready in the add-in repo (branch `database-link`):
@@ -836,19 +858,23 @@ comes with step 11, when Yehia asks for it.*
    - Global materials (MP-9999-99-…): 23 in the workbook, none in `revit.Materials`, as they belong to no project.
      Should a project's model get them too?
    - Their history (who, when) and the change stamp should cover them like the other values.
-6. **For step 11 (planned 2026-11-23): `revit.ObjectMaterials`,** the material each object is made of
-   (`ProjectObjects.MaterialId`), one row per object of a project that has one:
+6. **Now, for step 11 (asked for on 2026-11-24): `revit.ObjectMaterials`,** the material each object is made of
+   (`ProjectObjects.MaterialId`), one row per object of a project that has one. In a migration of its own; the other views stay
+   as they are.
 
    | Column | |
    |---|---|
    | ProjectId | int |
    | BauteilId | built as in `revit.ObjectValues`; objects without one are left out |
-   | MaterialId | built as in `revit.Materials`, e.g. MB-1761-01-BET-0031; global ones too, e.g. MP-9999-99-BET-0101 |
+   | MaterialId | built as in `revit.Materials`, e.g. MB-1761-01-BET-0031; global ones too, e.g. MP-9999-99-BET-0101; NULL for a material without a full ID |
    | MaterialName | the Materialname |
    | ChangedAtUtc, ChangedBy | the newest history row of the `ProjectObject` (key ProjectId\|ObjectEntityId); never the Changes column |
 
    - Global materials are in it because an object may be made of one. `revit.Materials` stays as it is.
-   - Setting, changing and clearing an object's material has to move the change stamp.
+   - Two objects with one Bauteil-ID give two rows. The add-in then applies neither and says so, as with values.
+   - No new grant: the role's SELECT on schema `revit` covers it. `$RevitViews` in `RevitLogin\_RevitLogin.ps1` and Studio's
+     `RevitViewsTests` get it too.
+   - Setting, changing and clearing an object's material, also by the import, has to move the change stamp.
    - Please say whether the Material-ID and Materialnummer values on objects, from before Studio's step 8b, are to stay.
      The add-in ignores them from then on.
 
@@ -1401,3 +1427,108 @@ Still open:
 - **2026-11-24, step 9 committed, not walked:** Yehia: "I will try the walk once the office can be reached thats fine" and "Commit
   and push step9". Yehia also asked whether the password has to be entered again with each update: no (see "The connection file",
   The password). Committed and pushed with this entry.
+- **2026-11-24, step 10 built** ("we proceed to step 10"), as described there. In the library, under tests: what's missing
+  (`ChangeFinder`), what Create makes (`CreationPlan`), the patterns (`MaterialPattern`) in the list and in Apply, every word. In the
+  add-in: `MaterialCreator`, `RevitPatterns`, `ValueSetter` (taken out of `DatabaseApplier`, unchanged), the pane's section. The one
+  change to the Excel import's code: its loop body is a method of its own now (`MaterialCreation.Create`), in 2027 only.
+  - Over the kept pull of dev's 1761, without a database: 38 materials missing in an empty model, all 38 planned with 109 values;
+    three have patterns (_Waben or Solid; three Ortbeton names).
+  - 621 tests pass; the 32 that need LocalDB weren't run. Compiled as Debug and as Release. The pane's new states were drawn off
+    screen.
+  - A C# review, reading the code only, found nothing critical or high. Fixed: IDs that differ only in spaces count as one in the
+    list too; a pattern that was there already isn't counted as applied; the sections' titles tell a screen reader whether
+    they're open. Left as it is: an exception that isn't a refusal of Revit's stops the whole Create, as with Apply.
+  - Not deployed while Yehia's Revit was open, and not tried in Revit: what Revit does with the look, the structural properties and
+    the patterns hasn't been seen at work from here.
+- **2026-11-24, step 10 installed:** Yehia closed Revit; deployed (Debug) to both add-in folders. Not walked. Yehia takes the
+  request for step 11's view (item 6) to the database session; it was checked against Studio's own code, which was only read.
+- **2026-11-24, Check for Updates looked at** (Yehia asked whether the tool's update functionality behaves correctly). Nothing is
+  changed: `CheckPluginUpdate.cs` is the same in 2024, 2026 and 2027.
+  - Its script was run on made-up files. With Revit closed it brings every DLL and the manifest, also over a path with "ü".
+  - With two DLLs in use, as by a Revit that's still open, xcopy stops at the first one: the files before it are new, the rest is
+    old, the manifest is new, and it says "Update Complete.". Without the Teams folder nothing is copied, with the same words.
+  - It waits 10 s instead of until Revit has closed. In the last 20 journals here that show it, Revit went on for 3 to 5 s
+    after the add-in's shutdown, 10 to 60 s after the exit command; when in between the script starts, they don't say. A second Revit
+    window keeps the DLLs in use anyway.
+  - It offers any other number as an update, an older one too. Its first question is the wrong way round: "Have you synced …?"
+    Yes opens Teams and stops, No goes on. `%TEMP%\run_plugin_update.bat` is the same file for every Revit year. The manifest only
+    goes to ProgramData, and Revit 2027 reads the person's own in `%APPDATA%`; it hasn't changed since 5.2.2.0.
+  - `Update-FromShare.ps1` does it right, and says that the ribbon hands off to it; the ribbon doesn't.
+  - The version that's installed does the copying, so a correction helps from the update after it.
+  - Update Family Files was only read: nothing wrong with the files it writes. "Cancelled after updating 3 of 3 files" counts the
+    processed ones, not those found; and old backup folders are only left out directly under the chosen folder.
+- **2026-11-24, Check for Updates corrected** (Yehia: "Yes fix it for 2027 and copy the fixed version for 2026 and 2024").
+  `Services\PluginUpdate.cs` (new, without Revit) and `Commands\CheckPluginUpdate.cs` are the same in all three years but for the year;
+  a test sees to it. ProjectsApp's copy of 2024 isn't changed, and neither are the scripts.
+  - It offers only newer versions, compared as numbers, and only when the Teams folder is complete (the DLL there has the version of
+    `version.txt`). Without the Teams folder it offers to open it; otherwise it asks nothing first.
+  - The whole payload is copied to `%LOCALAPPDATA%\MH\RevitTools\Update\<year>` at once, by content, without the Mark of the Web. The
+    script installs it once Revit has closed: it waits until no DLL is in use, however many windows are open, saves the installed
+    files, replaces them, checks that all arrived, and refreshes the manifest, the person's own too if there is one. If anything goes
+    wrong, the files from before go back, and it says NOT UPDATED. Plain cmd and the person's own rights, as before; whoever may not
+    write there is told so, and an administrator installs it with `Install.cmd`.
+  - One at a time: with the update accepted in two windows, the second script ends, and Check for Updates says "An update is already
+    waiting". The window can be closed at any time: the add-in's own DLLs come last, so it's the old version until everything
+    else is new, and the update is offered again.
+  - Two reviews, reading the code only (C# and security). Fixed after them: two scripts at once, a copy interrupted halfway, a window
+    left open that stopped the next update, a Teams folder that can't be read, a manifest that can't be saved first, the raw text of
+    `version.txt` in the script. Left as it is: with the DLLs free it installs at once, but while one can't be replaced, for whatever
+    reason, it goes on waiting as long as any Revit runs, of any year or person; of the published files only the add-in's DLL is
+    compared with `version.txt`, so another one that OneDrive hasn't brought yet isn't noticed; after a crash of Revit the update
+    has to be accepted again.
+  - Tested with the real script on folders of its own (with ü, & and % in the path): closed, in use, waiting as long as Revit runs, two
+    at once, interrupted, a file that can't be replaced or is gone, the manifests, a window left open, twice. Found by that:
+    `robocopy` takes a file of the same size and time for the same one, so the copies have a time of their own; and another `find`, like
+    Git's, can come before Windows' own, so the script uses Windows' own only.
+  - **The antivirus (G DATA) stopped one run:** with the real Debug payload, in scratch under `Temp`, it took `Revit.Addin.2027.dll` for
+    unwanted software when `robocopy` read the copy, and removed that copy (22:12). The script said NOT UPDATED, and the files from
+    before stayed. The DLL in both add-in folders and in `bin`, the same file, wasn't touched. Not retried, nothing excluded. Since
+    then the script also counts the copied files first. Whether G DATA minds the real way (Revit, `%LOCALAPPDATA%`, `ProgramData`)
+    isn't known: it has to be tried on Yehia's PC, and then by one colleague first.
+  - 690 tests pass; the 32 that need LocalDB weren't run. All three years compile; 2027 is deployed (Debug) to both add-in folders on
+    Yehia's PC, 2024 and 2026 aren't. Not tried in Revit, and not committed.
+- **2026-11-25, set up so that Yehia can walk a real update** ("Yes set it up"). The Teams folder publishes 5.2.2.0, as the PC had, so
+  today's code was compiled as 5.2.1.0, with a version file outside the repo, and its DLL put into both add-in folders on Yehia's
+  PC. Nothing in the repo says 5.2.1.0, and nothing is written to the Teams folder. The updater, asked outside Revit, offers 5.2.1.0 →
+  5.2.2.0. G DATA left the DLL alone. After the walk the PC has the published 5.2.2.0, without the database link, until
+  today's build is put back (Debug, Revit closed). Walk:
+  1. Revit 2027, any model, Parameter Tools → Functionality → Check for Updates: "Update from 5.2.1.0 to 5.2.2.0?" Yes: "Version 5.2.2.0 is
+     ready to install". Clicked again, it says the same.
+  2. A second Revit 2027, then close the first: the small window waits. In the second one, Check for Updates says "An update is
+     already waiting".
+  3. Close the second one too: "Installing…", then "Updated to 5.2.2.0. You can start Revit 2027 again." Whether G DATA minds.
+- **2026-11-25, a real update walked:** Yehia: "It updated, looking good". Yehia didn't say which parts of the walk that covers, nor
+  anything of G DATA. On the PC, all 63 files are the published ones, both manifests too, and of the update only the script, the lock,
+  the log and the copied manifest are left. From the script's start to its end it took 8 s. The PC now has the published 5.2.2.0;
+  the link's build isn't put back yet.
+- **2026-11-25, a release folder without the database link** (Yehia: "I need you to jsut make a build that I can release without the
+  database link, I will release it through release manager as 5.3.0.0"):
+  `C:\Users\Y.Abdelazziz\source\repos\Revit.Addin.MultiVersion.Release`, a git worktree on the new branch `release-5.3.0`. It's
+  master (928b8c2, the released 5.2.2.0) plus the corrected Check for Updates in 2024, 2026 and 2027, and nothing else. Nothing there
+  is committed, and it still says 5.2.2.0: raising the version and releasing are Yehia's. Release Manager needs that folder under
+  Locations; it isn't changed itself.
+  - A folder of its own, because this one has the link in it, uncommitted work, and old files in its `bin\Release`, which a release
+    would take along.
+  - Built as Release Manager does, with its isolation, so nothing was installed. 2026: 82 files, 2027: 63, the same names as published,
+    and only the add-in's DLL is different. 2024: 90, the same but for that DLL; the 78 more in the Teams folder are Revit's own, left
+    in this folder's `bin\Release` since April 2026, and no built DLL refers to them but to RevitAPI and RevitAPIUI, which Revit
+    has. No DLL has anything of the link: no type, no library, no `database.json`.
+  - The old button "Populate DB Parameters" is there as in 5.2.2.0, in all three years. In `database-link` 2027's is deleted.
+  - The changelog workbooks say the same as the ones in the Teams folder; 2027's there was saved again on 2026-11-24.
+  - After the release, on Yehia's word: commit there, take it over to master, and merge master into `database-link`. Until then the
+    link's builds say 5.2.2.0, and Check for Updates offers them 5.3.0.0, which has no link.
+- **2026-11-25, 5.3.0.0 released** by Yehia with Release Manager, for 2027 (01:58), 2026 (02:04) and 2024 (02:05), from the release
+  folder, all nine steps each. Read back: all built files (63, 82, 90) are in the Teams folder as built, every DLL says 5.3.0.0, has the
+  new updater and nothing of the link. The ZIPs are in `C:\Yehia\ProjectsApps\Revit.Addin`. Yehia's PC has 5.3.0.0 installed in all
+  three years; the link's build isn't back on it.
+  - Yehia: "Its set, now let us change this back to the old location". Release Manager's Locations are Yehia's to set. So that
+    this folder doesn't say 5.2.2.0 any more, the released version number and changelog (`version.txt`, `AssemblyInfo.cs`,
+    `version-docs.xlsx`, all three years) were taken over into it. Built from here, 2027 has the link.
+  - Nothing is committed, here or in the release folder. **The release folder's changes are the only copy of what was released,** so
+    it stays until they're committed.
+  - The link's build is back on Yehia's PC ("Yes, put it back"): 2027, Debug, says 5.3.0.0; all 58 files in both add-in folders are the
+    built ones. 2024 and 2026 have the released 5.3.0.0. Steps 9 and 10 can be walked with it.
+- **2026-11-25, step 10 walked and committed:** Yehia: "I tried step 10, works good..you can commit and push the database session is
+  almsot done with its step 11 part". Committed and pushed with this entry on `database-link`: the updater, the version number, step 10.
+  The released code is committed and pushed on `release-5.3.0`, so the release folder isn't its only copy any more. master isn't
+  changed.
