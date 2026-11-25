@@ -26,7 +26,7 @@ namespace Revit.Addin._2027.Helpers
         /// Which identifier connects an element to its row - see <see cref="ElementKey"/>. Defaults
         /// to the Material-Bauteilliste, matching on Bauteilnummer as this always has.
         /// </param>
-        public static Tuple<int, int> AddParametersToElements(
+        public static ParameterRun AddParametersToElements(
             Document projectDoc,
             Dictionary<string, ParamMetaData> parameterMeta,
             Dictionary<string, Dictionary<string, string>> familyData,
@@ -57,6 +57,7 @@ namespace Revit.Addin._2027.Helpers
 
             int parametersAdded = 0;
             int valuesWritten = 0;
+            var notAdded = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
             // Collect relevant elements (selected keys only), read the same way the data was keyed
             var selectedSet = new HashSet<string>(
@@ -72,7 +73,7 @@ namespace Revit.Addin._2027.Helpers
                 .ToList();
 
             if (matchingElements.Count == 0)
-                return Tuple.Create(0, 0);
+                return new ParameterRun(0, 0, 0);
 
             List<FamilyInstance> familyInstances = matchingElements
                 .OfType<FamilyInstance>()
@@ -136,7 +137,8 @@ namespace Revit.Addin._2027.Helpers
                     family,
                     defsByName,
                     parameterMeta,
-                    required);
+                    required,
+                    notAdded);
 
                 parametersAdded += added;
             }
@@ -186,7 +188,8 @@ namespace Revit.Addin._2027.Helpers
                     defsByName,
                     parameterMeta,
                     requiredForOtherElements,
-                    otherCategorySet);
+                    otherCategorySet,
+                    notAdded);
 
                 parametersAdded += bound;
             }
@@ -308,7 +311,37 @@ namespace Revit.Addin._2027.Helpers
                 }
             }
             
-            return Tuple.Create(parametersAdded, valuesWritten);
+            IEnumerable<string> notWritten = NotWritable(matchingElements, keyFormat, familyData, parameterMeta)
+                .Where(name => !notAdded.ContainsKey(name));
+            return new ParameterRun(matchingElements.Count, parametersAdded, valuesWritten, notAdded.Values, notWritten);
+        }
+
+        // The parameters an element has a value for in the workbook, and can't take: it lacks them, or has them read-only.
+        private static IEnumerable<string> NotWritable(
+            IEnumerable<Element> elements,
+            ExcelFormat keyFormat,
+            Dictionary<string, Dictionary<string, string>> familyData,
+            Dictionary<string, ParamMetaData> parameterMeta)
+        {
+            var names = new SortedSet<string>(ElementKey.NaturalOrder);
+            foreach (Element element in elements)
+            {
+                string key = ElementKey.Read(element, keyFormat);
+                Dictionary<string, string> row;
+                if (key == null || !familyData.TryGetValue(key, out row))
+                    continue;
+
+                foreach (string name in row.Keys)
+                {
+                    if (names.Contains(name) || ExcelParser.ParametersToIgnore.Contains(name) || !parameterMeta.ContainsKey(name))
+                        continue;
+
+                    Parameter parameter = element.LookupParameter(name);
+                    if (parameter == null || parameter.IsReadOnly)
+                        names.Add(name);
+                }
+            }
+            return names;
         }
 
         private static int BindParametersToCategories(
@@ -317,13 +350,11 @@ namespace Revit.Addin._2027.Helpers
             Dictionary<string, Definition> defsByName,
             Dictionary<string, ParamMetaData> parameterMeta,
             IEnumerable<string> requiredParameterNames,
-            CategorySet categories)
+            CategorySet categories,
+            IDictionary<string, string> notAdded)
         {
             if (requiredParameterNames == null || categories == null || categories.Size == 0)
                 return 0;
-
-            BindingMap map = projectDoc.ParameterBindings;
-            InstanceBinding binding = app.Create.NewInstanceBinding(categories);
 
             int bound = 0;
 
@@ -344,12 +375,13 @@ namespace Revit.Addin._2027.Helpers
 
                     ForgeTypeId groupId = meta.GroupNameRevit ?? GroupTypeId.General;
 
-                    bool ok = map.Insert(def, binding, groupId);
-                    if (!ok)
-                        ok = map.ReInsert(def, binding, groupId);
-
-                    if (ok)
+                    BindingOutcome outcome = ProjectParameterBinder.Add(projectDoc, app, def, categories, groupId);
+                    if (outcome == BindingOutcome.Added)
                         bound++;
+
+                    string problem = ProjectParameterBinder.Problem(name, outcome);
+                    if (problem != null)
+                        notAdded[name] = problem;
                 }
 
                 tx.Commit();
@@ -368,7 +400,8 @@ namespace Revit.Addin._2027.Helpers
             Family family,
             Dictionary<string, Definition> defsByName,
             Dictionary<string, ParamMetaData> parameterMeta,
-            List<string> requiredParameterNames)
+            List<string> requiredParameterNames,
+            IDictionary<string, string> notAdded)
         {
             if (requiredParameterNames == null || requiredParameterNames.Count == 0)
                 return 0;
@@ -380,8 +413,7 @@ namespace Revit.Addin._2027.Helpers
             {
                 Debug.WriteLine($"[WARN] Skipping in-place family '{family.Name}' (cannot be edited).");
                 
-                BindParametersForInPlaceFamily(projectDoc, app, defsByName, parameterMeta, requiredParameterNames, family);
-                return 0;
+                return BindParametersForInPlaceFamily(projectDoc, app, defsByName, parameterMeta, requiredParameterNames, family, notAdded);
             }
 
             Document famDoc = projectDoc.EditFamily(family);
@@ -442,20 +474,21 @@ namespace Revit.Addin._2027.Helpers
             return addedCount;
         }
 
-        private static void BindParametersForInPlaceFamily(
+        private static int BindParametersForInPlaceFamily(
             Document projectDoc,
             RevitApp app,
             Dictionary<string, Definition> defsByName,
             Dictionary<string, ParamMetaData> parameterMeta,
             IEnumerable<string> requiredParameterNames,
-            Family family)
+            Family family,
+            IDictionary<string, string> notAdded)
         {
             if (projectDoc == null || app == null || family == null)
-                return;
+                return 0;
 
             Category category = family.FamilyCategory;
             if (category == null || !category.AllowsBoundParameters)
-                return;
+                return 0;
 
             var categorySet = app.Create.NewCategorySet();
             try
@@ -479,9 +512,9 @@ namespace Revit.Addin._2027.Helpers
             }
 
             if (names.Count == 0)
-                return;
+                return 0;
 
-            BindParametersToCategories(projectDoc, app, defsByName, parameterMeta, names, categorySet);
+            return BindParametersToCategories(projectDoc, app, defsByName, parameterMeta, names, categorySet, notAdded);
         }
 
         /// <summary>
