@@ -21,8 +21,8 @@ connection file is built into the add-in, and Revit asks each person once for th
 The add-in's half is built and committed; Yehia walks it once the office can be reached. The database session's half is
 prepared; CADSQL can't be reached for now, so the login isn't made yet.** Step 10 (create missing materials, set fill patterns)
 is done: built, committed and walked on 2026-11-25. Step 11 (assign materials) is done: built, walked and committed on 2026-11-25.
-**Step 12 (fill the material's own fields) is planned; it needs more rows from the database session.** Version 5.3.0.0 was released on
-2026-11-25 without the link; 5.3.1.0, with four fixes of the Excel import, is to follow the same way.
+**Step 12 (fill the material's own fields) is planned; it needs more rows from the database session.** Versions 5.3.0.0 and 5.3.1.0 (fixes
+of the Excel import) were released on 2026-11-25 without the link.
 
 The live link from the MH database into Revit, inside the "Parameter Tools" add-in (MH.RevitTools),
 in `Revit.Addin.2027` only. It only reads from the database. This file holds the plan, the status, and
@@ -741,7 +741,8 @@ link should fill these too: "Yes it should, so plan it".
   Material, so Check parameters has them already.
 - **It needs** more rows of `revit.MaterialValues` ("Needs from the database", item 7). No new view and no new column: the add-in as it is
   lists and applies them as soon as they come. An add-in with step 12 works without them too; it just doesn't fill these fields.
-  - So the rows go into dev only after step 11's walk. Otherwise the pane lists about 400 more changes during it.
+  - So the rows go into dev only after step 11's walk. Otherwise the pane lists about 400 more changes during it. (Walked on 2026-11-25, so
+    they may go in.)
 - **As with the material's other values:** the pane lists them on the material's card, with who last changed the material and when; Apply
   writes them; Create… fills them in what it creates. A field that's blank in Studio leaves the model's as it is, a placeholder is under
   "Not applied", and so is a parameter the model doesn't have, until Check parameters has added it.
@@ -1771,3 +1772,11 @@ Still open:
     aren't named as not written. Not tried in Revit. Deployed (Debug) to both 2027 add-in folders on Yehia's PC ("Yes, install it"), Revit closed.
   - Walk: BT-1101-01 on a Generic Model without the two numbers: Add Parameters adds and fills them (1101 and 1). On one that has another
     Bauteilnummer: it gets 1101. A new shared parameter file has both, as whole numbers.
+- **2026-11-25, 5.3.1.0 released** by Yehia with Release Manager from the release folder ("Yes, released"), 2027 (13:46), 2026 and 2024 (13:47).
+  Read back: all built files (63, 82, 90) are in the Teams folder as built, every DLL says 5.3.1.0, has the fixes and nothing of the link. The
+  ZIPs are in `C:\Yehia\ProjectsApps\Revit.Addin`. Yehia's PC has 5.3.1.0 installed in all three years, so the link's build isn't on it.
+  - The released version number and changelog (`version.txt`, `AssemblyInfo.cs`, `version-docs.xlsx`, all three years) were taken over into this
+    folder. Built from here, 2027 has the link.
+  - On Yehia's word ("Yes, to master...bring back the linjk on my pc and give me the prompt for step 12 for teh database session to proceed"): master is
+    the released state (c4df996), three commits forward; the link's build is back on Yehia's PC (2027, Debug, says
+    5.3.1.0, all 58 files as built in both add-in folders); and the prompt for step 12 is given again, now with the go-ahead for dev.
