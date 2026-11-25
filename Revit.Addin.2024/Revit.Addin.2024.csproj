@@ -409,6 +409,7 @@
     <Compile Include="Commands\ChangeUnique.cs" />
     <Compile Include="Commands\AddParametersToFamilies.cs" />
     <Compile Include="Commands\CheckPluginUpdate.cs" />
+    <Compile Include="Services\PluginUpdate.cs" />
     <Compile Include="Commands\FamilyFileUpdater.cs" />
     <Compile Include="Commands\MaterialAutomationCommand.cs" />
     <Compile Include="Commands\PopulateFromDbCommand.cs" />
