@@ -8,8 +8,8 @@ namespace MH.RevitTools.Database.Tests.Link;
 [Trait("Category", "LocalDB")]
 public sealed class SqlLinkDatabaseTableTests : IClassFixture<StandInDatabaseFixture>
 {
-    // Three history rows that count (the login row doesn't); the newest is 3.
-    private const long ExpectedStamp = 3L * 4294967296 + 3;
+    // Five history rows that count (the login row doesn't); the newest is 6.
+    private const long ExpectedStamp = 5L * 4294967296 + 6;
 
     private readonly SqlLinkDatabase _database;
 
@@ -137,5 +137,38 @@ public sealed class SqlLinkDatabaseTableTests : IClassFixture<StandInDatabaseFix
         Assert.Equal("C35/45", value.Value);
         Assert.Equal(new DateTime(2026, 11, 18, 15, 0, 0), value.ChangedAtUtc);
         Assert.Equal("A. Tester", value.ChangedBy);
+    }
+
+    // The project's own, a global one, another project's and one without a full ID; not one for an object without a
+    // Bauteil-ID, nor for one without a material.
+    [Fact]
+    public void GetProjectData_ReadsWhatEachObjectIsMadeOf()
+    {
+        LinkProjectData data = _database.GetProjectData(13);
+
+        Assert.Equal(
+            new[]
+            {
+                ("BT-1101-01", "MB-1761-01-BET-0031", "31-Beton, C35/45"),
+                ("BT-1102-01", null, "Ohne Nummer"),
+                ("BT-1104-01", "MB-1760-01-BET-0001", "1-Beton"),
+                ("ET-2101-12", "MP-9999-99-BET-0007", "Produkt"),
+            },
+            data.ObjectMaterials.Select(m => (m.BauteilId, m.MaterialId, m.MaterialName)).OrderBy(m => m.BauteilId, StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public void GetProjectData_SaysWhoSetAnObjectsMaterialLastAndWhen()
+    {
+        LinkProjectData data = _database.GetProjectData(13);
+
+        LinkObjectMaterial set = data.ObjectMaterials.Single(m => m.BauteilId == "BT-1101-01");
+        Assert.Equal(new DateTime(2026, 11, 18, 18, 0, 0), set.ChangedAtUtc);
+        Assert.Equal(DateTimeKind.Utc, set.ChangedAtUtc.Value.Kind);
+        Assert.Equal("B. Tester", set.ChangedBy);
+
+        LinkObjectMaterial without = data.ObjectMaterials.Single(m => m.BauteilId == "ET-2101-12");
+        Assert.Null(without.ChangedAtUtc);
+        Assert.Null(without.ChangedBy);
     }
 }

@@ -14,7 +14,8 @@ public sealed class FakeLinkDatabaseTests
         new[] { new LinkParameter(61, Guid.NewGuid(), "Dicke", "BAU", "GEO", "Dicke", "Double", "m", LinkTarget.Object, new[] { "OST_GenericModel" }) },
         new[] { new LinkObjectValue("BT-1101-01", 61, thickness, null, null) },
         Array.Empty<LinkMaterial>(),
-        Array.Empty<LinkMaterialValue>());
+        Array.Empty<LinkMaterialValue>(),
+        Array.Empty<LinkObjectMaterial>());
 
     [Fact]
     public void ReturnsWhatItWasGiven()
@@ -45,6 +46,21 @@ public sealed class FakeLinkDatabaseTests
 
         Assert.Equal(8, database.GetStamp(13));
         Assert.Equal("0.35", Assert.Single(database.GetProjectData(13).ObjectValues).Value);
+    }
+
+    [Fact]
+    public void Update_KeepsEverythingElse()
+    {
+        LinkProjectData read = UlmData(7, "0.3");
+        var database = new FakeLinkDatabase(new[] { Ulm }, new[] { read });
+
+        database.Update(new LinkProjectData(13, 0, read.Parameters, read.ObjectValues, read.Materials, read.MaterialValues,
+            new[] { new LinkObjectMaterial("BT-1101-01", "MB-1761-01-BET-0013", "13-Beton, C20/25", null, null) }));
+
+        LinkProjectData now = database.GetProjectData(13);
+        Assert.Equal("13-Beton, C20/25", Assert.Single(now.ObjectMaterials).MaterialName);
+        Assert.Single(now.ObjectValues);
+        Assert.Empty(read.ObjectMaterials);
     }
 
     [Fact]

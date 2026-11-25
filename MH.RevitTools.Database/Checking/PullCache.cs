@@ -23,7 +23,7 @@ namespace MH.RevitTools.Database.Checking
     public sealed class PullCache
     {
         // Bumped when the file's layout changes; older files are then ignored and written anew.
-        private const int Version = 2;
+        private const int Version = 3;
 
         // A project is a few thousand values; anything far bigger isn't ours.
         private const long MaxFileBytes = 64L * 1024 * 1024;
@@ -185,6 +185,7 @@ namespace MH.RevitTools.Database.Checking
             public List<ValueLine> ObjectValues;
             public List<MaterialLine> Materials;
             public List<ValueLine> MaterialValues;
+            public List<ObjectMaterialLine> ObjectMaterials;
 
             public static PullFile From(LinkProjectData data, ModelLink link, DateTime readAtUtc) => new PullFile
             {
@@ -212,6 +213,14 @@ namespace MH.RevitTools.Database.Checking
                     ChangedAtUtc = value.ChangedAtUtc,
                     ChangedBy = value.ChangedBy,
                 }).ToList(),
+                ObjectMaterials = data.ObjectMaterials.Select(material => new ObjectMaterialLine
+                {
+                    Key = material.BauteilId,
+                    MaterialId = material.MaterialId,
+                    Name = material.MaterialName,
+                    ChangedAtUtc = material.ChangedAtUtc,
+                    ChangedBy = material.ChangedBy,
+                }).ToList(),
             };
 
             public CachedPull ToPull()
@@ -224,7 +233,9 @@ namespace MH.RevitTools.Database.Checking
                         new LinkObjectValue(line.Key, line.ParameterId, line.Value, AsUtc(line.ChangedAtUtc), line.ChangedBy)),
                     (Materials ?? new List<MaterialLine>()).Select(line => line.ToMaterial()),
                     (MaterialValues ?? new List<ValueLine>()).Select(line =>
-                        new LinkMaterialValue(line.Key, line.ParameterId, line.Value, AsUtc(line.ChangedAtUtc), line.ChangedBy)));
+                        new LinkMaterialValue(line.Key, line.ParameterId, line.Value, AsUtc(line.ChangedAtUtc), line.ChangedBy)),
+                    (ObjectMaterials ?? new List<ObjectMaterialLine>()).Select(line =>
+                        new LinkObjectMaterial(line.Key, line.MaterialId, line.Name, AsUtc(line.ChangedAtUtc), line.ChangedBy)));
                 return new CachedPull(data, DateTime.SpecifyKind(ReadAtUtc, DateTimeKind.Utc));
             }
 
@@ -295,6 +306,15 @@ namespace MH.RevitTools.Database.Checking
             public string Key;
             public int ParameterId;
             public string Value;
+            public DateTime? ChangedAtUtc;
+            public string ChangedBy;
+        }
+
+        private sealed class ObjectMaterialLine
+        {
+            public string Key;
+            public string MaterialId;
+            public string Name;
             public DateTime? ChangedAtUtc;
             public string ChangedBy;
         }

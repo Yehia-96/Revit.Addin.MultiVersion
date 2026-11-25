@@ -31,7 +31,12 @@ public sealed class PullCacheTests : IDisposable
         return UlmData.With(4930622457727,
             new[] { UlmData.Value("BT-1101-01", UlmData.Guete, "B500B", at, "TheAdmin"), UlmData.Value("ET-2101-01", UlmData.Dicke, "0.3") },
             new[] { new LinkMaterial("MB-1761-01-BET-0011", "11-Beton, C12/15", "BET", "Beton", "Beton Ansicht", null) },
-            new[] { new LinkMaterialValue("MB-1761-01-BET-0011", UlmData.Festigkeit.ParameterId, "C12/15", at, "TheAdmin") });
+            new[] { new LinkMaterialValue("MB-1761-01-BET-0011", UlmData.Festigkeit.ParameterId, "C12/15", at, "TheAdmin") },
+            new[]
+            {
+                new LinkObjectMaterial("BT-1101-01", "MB-1761-01-BET-0011", "11-Beton, C12/15", at, "TheAdmin"),
+                new LinkObjectMaterial("ET-2101-01", null, "Ohne Nummer", null, null),
+            });
     }
 
     [Fact]
@@ -67,6 +72,28 @@ public sealed class PullCacheTests : IDisposable
         Assert.Equal("Beton Ansicht", material.SurfacePattern);
         Assert.Null(material.CutPattern);
         Assert.Equal("C12/15", Assert.Single(data.MaterialValues).Value);
+
+        LinkObjectMaterial madeOf = data.ObjectMaterials.Single(m => m.BauteilId == "BT-1101-01");
+        Assert.Equal(("MB-1761-01-BET-0011", "11-Beton, C12/15", "TheAdmin"), (madeOf.MaterialId, madeOf.MaterialName, madeOf.ChangedBy));
+        Assert.Equal(new DateTime(2026, 11, 11, 20, 47, 53, DateTimeKind.Utc), madeOf.ChangedAtUtc);
+        Assert.Equal(DateTimeKind.Utc, madeOf.ChangedAtUtc.Value.Kind);
+        LinkObjectMaterial withoutId = data.ObjectMaterials.Single(m => m.BauteilId == "ET-2101-01");
+        Assert.Null(withoutId.MaterialId);
+        Assert.Null(withoutId.ChangedAtUtc);
+    }
+
+    // It doesn't have what objects are made of, and would say that nothing differs.
+    [Fact]
+    public void APullOfAnEarlierLayout_IsntUsed()
+    {
+        var cache = new PullCache(_folder, Office);
+        cache.TrySave(Everything(), UlmLink, ReadAt, out _);
+        string path = cache.PathFor(UlmData.ProjectId), text = File.ReadAllText(path);
+        Assert.Contains("\"Version\":3,", text);
+
+        File.WriteAllText(path, text.Replace("\"Version\":3,", "\"Version\":2,"));
+
+        Assert.Null(cache.Load(UlmLink));
     }
 
     [Fact]

@@ -30,8 +30,14 @@ namespace MH.RevitTools.Database.Changes
         /// <summary>The model doesn't have the parameter: Check parameters adds it.</summary>
         MissingParameter,
 
+        /// <summary>The model doesn't have the material the objects are made of.</summary>
+        MissingMaterial,
+
         /// <summary>The model doesn't have the fill pattern.</summary>
         MissingPattern,
+
+        /// <summary>The elements have no parameter that takes their material.</summary>
+        NoMaterialParameter,
 
         /// <summary>Two of the project's materials share a name; only the first is used.</summary>
         SameMaterialName,
@@ -39,11 +45,11 @@ namespace MH.RevitTools.Database.Changes
         /// <summary>A material the model doesn't have, and that can't be created: it has no name or no group.</summary>
         NotCreatable,
 
+        /// <summary>Values of materials for parameters that go on elements.</summary>
+        OfElements,
+
         /// <summary>[Modeller], [ET], - or TBT.</summary>
         Placeholder,
-
-        /// <summary>An object's reference to its material: a parameter of materials, not of elements.</summary>
-        MaterialReference,
     }
 
     /// <summary>One entry under "Not applied". Immutable; its words are in <c>ApplyTexts</c>.</summary>
@@ -51,6 +57,12 @@ namespace MH.RevitTools.Database.Changes
     {
         /// <summary><see cref="Text"/> of conflicting values that materials share, rather than objects.</summary>
         internal const string OfMaterials = "materials";
+
+        /// <summary><see cref="Text"/> of a missing material that Create doesn't make, as it's a global one.</summary>
+        internal const string Global = "global";
+
+        /// <summary><see cref="Text"/> of a missing material that Create can't make for another reason.</summary>
+        internal const string NotCreated = "not created";
 
         internal NotAppliedItem(
             NotAppliedReason reason, string name, string text, IEnumerable<string> parameters, int valueCount, IEnumerable<long> elementIds)
@@ -72,15 +84,15 @@ namespace MH.RevitTools.Database.Changes
         public string Name { get; }
 
         /// <summary>
-        /// The problem with a value that doesn't fit, the Material-ID that's left out, what a material lacks, or
-        /// <see cref="OfMaterials"/>; else null.
+        /// The problem with a value that doesn't fit, the Material-ID that's left out, what a material lacks,
+        /// <see cref="OfMaterials"/>, <see cref="Global"/> or <see cref="NotCreated"/>; else null.
         /// </summary>
         public string Text { get; }
 
         /// <summary>The Revit names of the parameters concerned, in the dictionary's order.</summary>
         public IReadOnlyList<string> Parameters { get; }
 
-        /// <summary>How many values it's about: for placeholders and references, one per parameter of an object or material.</summary>
+        /// <summary>How many values it's about: for placeholders, one per parameter of an object or material.</summary>
         public int ValueCount { get; }
 
         /// <summary>The elements or materials concerned, where it's about particular ones.</summary>
@@ -92,6 +104,11 @@ namespace MH.RevitTools.Database.Changes
     {
         // A value that doesn't fit is named each time; this many are enough to see what's wrong.
         private const int MaxDoesntFit = 20;
+
+        // Beside the dictionary's IDs, which are positive, for what's no parameter of it; surface before cut.
+        private const int MaterialPlace = -3;
+        private const int SurfacePlace = -2;
+        private const int CutPlace = -1;
 
         private readonly Func<int, int> _placeOf;
         private readonly Dictionary<Tuple<NotAppliedReason, string, string>, Entry> _entries =
@@ -116,12 +133,24 @@ namespace MH.RevitTools.Database.Changes
             At(reason, null, null).Add(IdOf(which), MaterialPatterns.Name(which), materialId);
 
         /// <summary>The model doesn't have the fill pattern; named once, for all materials that should have it.</summary>
-        public void MissingPattern(string patternName, MaterialPattern which, long materialId)
-        {
-            string known = _entries.Keys.Where(key => key.Item1 == NotAppliedReason.MissingPattern)
-                .Select(key => key.Item2).FirstOrDefault(name => string.Equals(name, patternName, StringComparison.OrdinalIgnoreCase));
-            At(NotAppliedReason.MissingPattern, known ?? patternName, null).Add(IdOf(which), MaterialPatterns.Name(which), materialId);
-        }
+        public void MissingPattern(string patternName, MaterialPattern which, long materialId) =>
+            At(NotAppliedReason.MissingPattern, KnownAs(NotAppliedReason.MissingPattern, patternName), null)
+                .Add(IdOf(which), MaterialPatterns.Name(which), materialId);
+
+        // What an object is made of, on one of its elements.
+        public void MaterialBorrowed(string owner, long elementId) => AddMaterial(At(NotAppliedReason.Borrowed, owner, null), elementId);
+
+        public void MaterialOn(NotAppliedReason reason, long elementId) => AddMaterial(At(reason, null, null), elementId);
+
+        public void MaterialDoesntFit(string problem) => DoesntFit(MaterialPlace, ObjectMaterial.ParameterName, problem);
+
+        public void MaterialConflict(string bauteilId) =>
+            At(NotAppliedReason.ConflictingValues, bauteilId, null).AddValue(MaterialPlace, ObjectMaterial.ParameterName);
+
+        /// <summary>The model doesn't have the material; named once, for all elements that should have it.</summary>
+        /// <param name="why">Why Create doesn't make it; null when it does.</param>
+        public void MissingMaterial(string materialName, string why, long elementId) =>
+            AddMaterial(At(NotAppliedReason.MissingMaterial, KnownAs(NotAppliedReason.MissingMaterial, materialName), why), elementId);
 
         /// <summary>A material the model doesn't have and that can't be created.</summary>
         /// <param name="lacks">What it lacks, as the dictionary calls it.</param>
@@ -130,8 +159,8 @@ namespace MH.RevitTools.Database.Changes
         public void Placeholder(string placeholder, LinkParameter parameter) =>
             At(NotAppliedReason.Placeholder, placeholder, null).AddValue(parameter.ParameterId, parameter.RevitName);
 
-        public void MaterialReference(LinkParameter parameter) =>
-            At(NotAppliedReason.MaterialReference, null, null).AddValue(parameter.ParameterId, parameter.RevitName);
+        public void OfElements(LinkParameter parameter) =>
+            At(NotAppliedReason.OfElements, null, null).AddValue(parameter.ParameterId, parameter.RevitName);
 
         public void DoesntFit(LinkParameter parameter, string problem) => DoesntFit(parameter.ParameterId, parameter.RevitName, problem);
 
@@ -164,8 +193,13 @@ namespace MH.RevitTools.Database.Changes
                 entry.Value.ValueCount, entry.Value.ElementIds))
             .ToList();
 
-        // Beside the dictionary's, which are positive; surface before cut.
-        private static int IdOf(MaterialPattern which) => which == MaterialPattern.Surface ? -2 : -1;
+        private static int IdOf(MaterialPattern which) => which == MaterialPattern.Surface ? SurfacePlace : CutPlace;
+
+        private static void AddMaterial(Entry entry, long elementId) => entry.Add(MaterialPlace, ObjectMaterial.ParameterName, elementId);
+
+        // The name as it was given first, whatever its case.
+        private string KnownAs(NotAppliedReason reason, string name) => _entries.Keys.Where(key => key.Item1 == reason)
+            .Select(key => key.Item2).FirstOrDefault(known => string.Equals(known, name, StringComparison.OrdinalIgnoreCase)) ?? name;
 
         private static int PlaceholderPlace(string name)
         {

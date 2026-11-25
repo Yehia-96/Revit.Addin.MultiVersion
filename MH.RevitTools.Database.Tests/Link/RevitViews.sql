@@ -1,8 +1,9 @@
 -- The revit views that the Revit add-in (MH.RevitTools, database link) reads: the add-in tests' copy.
 --
 -- Since 2026-11-19 the views live in Studio's migration AddRevitLink (ProjectsApp, Database.Data,
--- AddRevitLink.ViewBatches), which is their one source. This copy lets the add-in's tests build the
--- same views on stand-in tables with known rows (Link/StandInTables.sql). When the migration changes a
+-- AddRevitLink.ViewBatches), which is their one source; the last one, revit.ObjectMaterials, since
+-- 2026-11-24 in AddRevitObjectMaterials (its View). This copy lets the add-in's tests build the
+-- same views on stand-in tables with known rows (Link/StandInTables.sql). When a migration changes a
 -- view, change it here the same way. The tests over dev MH_Database read the real views instead.
 --
 -- The add-in reads exactly the columns below, by name; extra columns are ignored. The views:
@@ -122,4 +123,36 @@ SELECT p.ProjectId,
         FROM dbo.AuditLogs a
         WHERE a.EntityName NOT IN (N'User', N'AppSetting')) AS Stamp
 FROM dbo.Projects p;
+GO
+-- One row per object of a project that has a material: the project's own or a global one,
+-- which revit.Materials leaves out. Objects without a Bauteil-ID are left out, as in
+-- revit.ObjectValues; two objects with one Bauteil-ID are two rows. The Material-ID is built
+-- as in revit.Materials (the project is the material's), and is NULL where a part is missing.
+-- Who/when: the newest history row of the ProjectObject, whose one value is its material.
+CREATE OR ALTER VIEW revit.ObjectMaterials AS
+SELECT po.ProjectId,
+       oid.BauteilId,
+       mid.MaterialId,
+       m.Name AS MaterialName,
+       h.OccurredAtUtc AS ChangedAtUtc,
+       h.UserDisplay AS ChangedBy
+FROM dbo.ProjectObjects po
+JOIN dbo.Materials m ON m.MaterialId = po.MaterialId
+JOIN dbo.Objects o ON o.ObjectEntityId = po.ObjectEntityId
+LEFT JOIN dbo.ComponentCategories cc ON cc.ComponentCategoryId = o.ComponentCategoryId
+LEFT JOIN dbo.Projects pr ON pr.ProjectId = m.ProjectId
+LEFT JOIN dbo.MaterialCategories mc ON mc.MaterialCategoryId = m.MaterialCategoryId
+LEFT JOIN dbo.MaterialGroups mg ON mg.MaterialGroupId = m.MaterialGroupId
+CROSS APPLY (SELECT UPPER(NULLIF(LTRIM(RTRIM(cc.Code)), N'')) + N'-' + FORMAT(o.BauteilNummer, '0000')
+                    + N'-' + FORMAT(o.BauteilUnterNummer, '00') AS BauteilId) oid
+CROSS APPLY (SELECT UPPER(LTRIM(RTRIM(mc.Code)))
+                    + N'-' + FORMAT(CASE WHEN mc.IsProjectSpecific = 1 THEN pr.ProjectNumber ELSE mc.CodeProjectNumber END, '0000')
+                    + N'-' + FORMAT(CASE WHEN mc.IsProjectSpecific = 1 THEN pr.ProjectSubNumber ELSE mc.CodeProjectSubNumber END, '00')
+                    + N'-' + UPPER(LTRIM(RTRIM(mg.Code))) + N'-' + FORMAT(m.MaterialNumber, '0000') AS MaterialId) mid
+OUTER APPLY (SELECT TOP (1) a.OccurredAtUtc, a.UserDisplay
+             FROM dbo.AuditLogs a
+             WHERE a.EntityName = N'ProjectObject'
+               AND a.EntityKey = CONCAT(po.ProjectId, N'|', po.ObjectEntityId)
+             ORDER BY a.AuditLogId DESC) h
+WHERE oid.BauteilId IS NOT NULL;
 GO

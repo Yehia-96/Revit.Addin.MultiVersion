@@ -43,6 +43,7 @@ namespace MH.RevitTools.Database.Link
             + " SELECT BauteilId, ParameterId, Value, ChangedAtUtc, ChangedBy FROM revit.ObjectValues WHERE ProjectId = @ProjectId;"
             + " SELECT MaterialId, MaterialName, MaterialGroupCode, MaterialGroup, SurfacePattern, CutPattern FROM revit.Materials WHERE ProjectId = @ProjectId;"
             + " SELECT MaterialId, ParameterId, Value, ChangedAtUtc, ChangedBy FROM revit.MaterialValues WHERE ProjectId = @ProjectId;"
+            + " SELECT BauteilId, MaterialId, MaterialName, ChangedAtUtc, ChangedBy FROM revit.ObjectMaterials WHERE ProjectId = @ProjectId;"
             + " " + StampQuery;
 
         private readonly ConnectionSettings _settings;
@@ -177,11 +178,13 @@ namespace MH.RevitTools.Database.Link
             NextResult(reader);
             List<LinkMaterialValue> materialValues = ReadMaterialValues(reader);
             NextResult(reader);
+            List<LinkObjectMaterial> objectMaterials = ReadObjectMaterials(reader);
+            NextResult(reader);
             long? stampAfter = ReadStamp(reader);
 
             if (stampAfter != stampBefore)
                 return (false, null);
-            return (true, new LinkProjectData(projectId, stampBefore.Value, parameters, objectValues, materials, materialValues));
+            return (true, new LinkProjectData(projectId, stampBefore.Value, parameters, objectValues, materials, materialValues, objectMaterials));
         }
 
         private static void NextResult(SqlDataReader reader)
@@ -300,6 +303,24 @@ namespace MH.RevitTools.Database.Link
                     UtcOrNull(reader, changedAt), TextOrNull(reader, changedBy)));
             }
             return values;
+        }
+
+        private static List<LinkObjectMaterial> ReadObjectMaterials(SqlDataReader reader)
+        {
+            int bauteilId = reader.GetOrdinal("BauteilId");
+            int materialId = reader.GetOrdinal("MaterialId");
+            int name = reader.GetOrdinal("MaterialName");
+            int changedAt = reader.GetOrdinal("ChangedAtUtc");
+            int changedBy = reader.GetOrdinal("ChangedBy");
+
+            var materials = new List<LinkObjectMaterial>();
+            while (reader.Read())
+            {
+                materials.Add(new LinkObjectMaterial(
+                    TextOrNull(reader, bauteilId), TextOrNull(reader, materialId), TextOrNull(reader, name),
+                    UtcOrNull(reader, changedAt), TextOrNull(reader, changedBy)));
+            }
+            return materials;
         }
 
         private static string TextOrNull(SqlDataReader reader, int ordinal) =>

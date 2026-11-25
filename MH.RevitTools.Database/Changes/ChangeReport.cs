@@ -41,7 +41,7 @@ namespace MH.RevitTools.Database.Changes
         /// <summary>True when some values differ but can't go into the model now, e.g. as someone has borrowed the elements.</summary>
         public bool HasBlockedDifferences => NotApplied.Any(item => item.Reason == NotAppliedReason.Borrowed
             || item.Reason == NotAppliedReason.OutOfDate || item.Reason == NotAppliedReason.ReadOnly
-            || item.Reason == NotAppliedReason.OnType);
+            || item.Reason == NotAppliedReason.OnType || item.Reason == NotAppliedReason.MissingMaterial);
 
         public ModelCounts Counts { get; }
 
@@ -93,27 +93,39 @@ namespace MH.RevitTools.Database.Changes
         public DateTime? NewestChangeUtc { get; }
     }
 
-    /// <summary>One parameter's value that differs, on one object or material, or one of a material's fill patterns. Immutable.</summary>
+    /// <summary>
+    /// One parameter's value that differs, on one object or material; or an object's material, or one of a material's
+    /// fill patterns. Immutable.
+    /// </summary>
     public sealed class ChangeRow
     {
         internal ChangeRow(
             int parameterId, string parameter, string value, string from, string to, DateTime? changedAtUtc, string changedBy, IEnumerable<long> elementIds)
-            : this(parameterId, null, parameter, value, from, to, changedAtUtc, changedBy, elementIds)
+            : this(parameterId, null, false, parameter, value, from, to, changedAtUtc, changedBy, elementIds)
         {
         }
 
         // The database doesn't say who changed a pattern, or when.
         internal ChangeRow(MaterialPattern pattern, string value, string from, IEnumerable<long> materialIds)
-            : this(0, pattern, MaterialPatterns.Name(pattern), value, from, value, null, null, materialIds)
+            : this(0, pattern, false, MaterialPatterns.Name(pattern), value, from, value, null, null, materialIds)
         {
         }
 
+        // An object's material.
+        internal ChangeRow(
+            string materialId, string materialName, string from, DateTime? changedAtUtc, string changedBy, IEnumerable<long> elementIds)
+            : this(0, null, true, ObjectMaterial.ParameterName, materialName, from, materialName, changedAtUtc, changedBy, elementIds)
+        {
+            MaterialId = materialId;
+        }
+
         private ChangeRow(
-            int parameterId, MaterialPattern? pattern, string parameter, string value, string from, string to, DateTime? changedAtUtc, string changedBy,
-            IEnumerable<long> elementIds)
+            int parameterId, MaterialPattern? pattern, bool isObjectMaterial, string parameter, string value, string from, string to,
+            DateTime? changedAtUtc, string changedBy, IEnumerable<long> elementIds)
         {
             ParameterId = parameterId;
             Pattern = pattern;
+            IsObjectMaterial = isObjectMaterial;
             Parameter = parameter ?? "";
             Value = value ?? "";
             From = from ?? "";
@@ -123,13 +135,19 @@ namespace MH.RevitTools.Database.Changes
             ElementIds = new ReadOnlyCollection<long>((elementIds ?? Enumerable.Empty<long>()).ToList());
         }
 
-        /// <summary>0 for a fill pattern.</summary>
+        /// <summary>0 for a fill pattern, and for an object's material.</summary>
         public int ParameterId { get; }
 
-        /// <summary>Which of the material's fill patterns it is; null for a parameter's value.</summary>
+        /// <summary>Which of the material's fill patterns it is; null for anything else.</summary>
         public MaterialPattern? Pattern { get; }
 
-        /// <summary>The parameter's Revit name, e.g. "Betonstahl Güte", or "Surface pattern".</summary>
+        /// <summary>It's what the object is made of, by the Materialname.</summary>
+        public bool IsObjectMaterial { get; }
+
+        /// <summary>Of what the object is made of: its Material-ID, as two can share a name; null for one without a full ID.</summary>
+        internal string MaterialId { get; }
+
+        /// <summary>The parameter's Revit name, e.g. "Betonstahl Güte", "Material", or "Surface pattern".</summary>
         public string Parameter { get; }
 
         /// <summary>The database's value as stored, which Apply writes; <see cref="To"/> is how it's shown.</summary>
@@ -170,7 +188,7 @@ namespace MH.RevitTools.Database.Changes
         /// <summary>Elements without a Bauteil_ID.</summary>
         public IReadOnlyList<long> WithoutId { get; }
 
-        /// <summary>Elements whose Bauteil_ID the project doesn't have (or has no values for).</summary>
+        /// <summary>Elements whose Bauteil_ID the project doesn't have (or has neither values nor a material for).</summary>
         public IReadOnlyList<long> IdNotInProject { get; }
     }
 }

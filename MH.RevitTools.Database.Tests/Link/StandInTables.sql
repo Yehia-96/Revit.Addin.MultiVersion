@@ -26,6 +26,8 @@ CREATE TABLE dbo.Materials (
     MaterialGroupId int NULL, MaterialNumber int NULL, RevitAppearanceId int NULL);
 CREATE TABLE dbo.MaterialParameterValues (
     MaterialId int NOT NULL, ParameterId int NOT NULL, ProjectId int NULL, Value nvarchar(max) NULL);
+CREATE TABLE dbo.ProjectObjects (
+    ProjectId int NOT NULL, ObjectEntityId int NOT NULL, MaterialId int NULL);
 CREATE TABLE dbo.AuditLogs (
     AuditLogId bigint NOT NULL PRIMARY KEY, OccurredAtUtc datetime2 NOT NULL, UserDisplay nvarchar(200) NOT NULL,
     EntityName nvarchar(200) NOT NULL, EntityKey nvarchar(400) NOT NULL);
@@ -39,7 +41,10 @@ INSERT dbo.ComponentCategories VALUES
 INSERT dbo.Objects VALUES
     (69, N'Bodenplatte', 2, 1101, 1),            -- BT-1101-01
     (392, N'Schlitzrinne links', 4, 2101, 12),   -- ET-2101-12: the code in capitals, two-digit Unternummer
-    (290, N'Schlitzrinne', NULL, NULL, NULL);    -- no Bauteil-ID, so its values are left out
+    (290, N'Schlitzrinne', NULL, NULL, NULL),    -- no Bauteil-ID, so its values are left out
+    (70, N'Decke', 2, 1102, 1),                  -- BT-1102-01, made of a material without a full ID
+    (71, N'Wand', 2, 1103, 1),                   -- BT-1103-01, made of nothing yet
+    (72, N'Stütze', 2, 1104, 1);                 -- BT-1104-01, made of another project's material
 INSERT dbo.ParameterSets VALUES (1, N'BAU'), (2, N'MAT');
 INSERT dbo.ParameterGroups VALUES (1, N'GEO'), (2, N'BES');
 INSERT dbo.Parameters VALUES
@@ -65,7 +70,16 @@ INSERT dbo.RevitAppearances VALUES (1, NULL, N'Ortbeton - bewehrt');
 INSERT dbo.Materials VALUES
     (123, N'31-Beton, C35/45', 13, 1, 1, 31, 1),    -- MB-1761-01-BET-0031
     (124, N'Produkt', NULL, 4, 1, 7, NULL),         -- a global product: in no project's data
-    (125, N'1-Beton', 1, 1, 1, 1, NULL);            -- another project's
+    (125, N'1-Beton', 1, 1, 1, 1, NULL),            -- another project's
+    (126, N'Ohne Nummer', 13, 1, 1, NULL, NULL);    -- no number, so no full ID: in no project's data
+INSERT dbo.ProjectObjects VALUES
+    (13, 69, 123),
+    (13, 392, 124),
+    (13, 290, 123),     -- object without a Bauteil-ID
+    (13, 70, 126),
+    (13, 71, NULL),
+    (13, 72, 125),
+    (1, 69, 125);       -- another project
 INSERT dbo.MaterialParameterValues VALUES
     (123, 140, 13, N'C35/45'),
     (125, 140, 1, N'C12/15');
@@ -73,4 +87,6 @@ INSERT dbo.AuditLogs VALUES
     (1, '2026-11-18T10:00:00', N'A. Tester', N'ProjectObjectParameter', N'13|69|61'),
     (2, '2026-11-18T14:28:00', N'B. Tester', N'ProjectObjectParameter', N'13|69|61'),
     (3, '2026-11-18T15:00:00', N'A. Tester', N'MaterialParameterValue', N'123|140'),
-    (4, '2026-11-18T16:00:00', N'A. Tester', N'User', N'5');
+    (4, '2026-11-18T16:00:00', N'A. Tester', N'User', N'5'),
+    (5, '2026-11-18T17:00:00', N'A. Tester', N'ProjectObject', N'13|69'),
+    (6, '2026-11-18T18:00:00', N'B. Tester', N'ProjectObject', N'13|69');

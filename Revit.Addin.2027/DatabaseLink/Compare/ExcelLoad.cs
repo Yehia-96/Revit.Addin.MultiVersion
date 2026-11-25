@@ -56,6 +56,9 @@ namespace Revit.Addin._2027.DatabaseLink.Compare
                 foreach (KeyValuePair<string, string> value in row.Value)
                     project.ObjectValue(row.Key, objectKeys[value.Key], Convert(convert, result.ParameterDefinitions[value.Key], value.Value));
             }
+            // The Materialname it makes of the row's Material-ID; it remarks on an ID it doesn't know.
+            foreach (KeyValuePair<string, string> madeOf in result.ElementMaterial)
+                project.ObjectMaterial(madeOf.Key, madeOf.Value);
             foreach (KeyValuePair<string, Dictionary<string, string>> row in result.MaterialData)
             {
                 // The columns the reader makes the material of. It remarks on those it can't make one of.

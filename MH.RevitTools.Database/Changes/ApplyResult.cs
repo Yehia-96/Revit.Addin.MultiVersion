@@ -106,6 +106,13 @@ namespace MH.RevitTools.Database.Changes
             (isMaterial ? _materials : _elements).Add(elementId);
         }
 
+        /// <summary>An element got its object's material.</summary>
+        public void WrittenMaterial(string bauteilId, long elementId)
+        {
+            _changes.Add("O|" + (bauteilId ?? "").Trim() + "|material");
+            _elements.Add(elementId);
+        }
+
         /// <summary>A material got a fill pattern.</summary>
         public void WrittenPattern(string materialId, MaterialPattern which, long elementId)
         {

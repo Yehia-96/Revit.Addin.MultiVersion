@@ -140,7 +140,7 @@ public sealed class MissingMaterialsTests
                 Value(Beton, UlmData.Guete, "B500B"),
                 Value(Beton, other, "x"),
                 new LinkMaterialValue(Beton.MaterialId, 9999, "unknown", null, null),
-            });
+            }, Array.Empty<LinkObjectMaterial>());
 
         PlannedMaterial beton = Assert.Single(CreationPlan.For(data, Find(data).MissingMaterials).Materials);
 

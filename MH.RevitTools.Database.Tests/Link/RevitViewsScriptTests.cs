@@ -14,7 +14,7 @@ public sealed class RevitViewsScriptTests
     private const int PermissionDenied = 229;
 
     private static readonly string[] Views =
-        { "Projects", "Parameters", "ParameterCategories", "ObjectValues", "Materials", "MaterialValues", "ProjectStamps" };
+        { "Projects", "Parameters", "ParameterCategories", "ObjectValues", "Materials", "MaterialValues", "ProjectStamps", "ObjectMaterials" };
 
     [Fact]
     public void AUserWithOnlyTheRevitGrant_ReadsEveryView_ButNoTable()
@@ -29,7 +29,7 @@ public sealed class RevitViewsScriptTests
         foreach (string view in Views)
             Assert.True(Convert.ToInt64(database.QueryAs(Reader, "SELECT COUNT_BIG(*) FROM revit." + view + ";")) > 0, view);
 
-        foreach (string table in new[] { "dbo.Users", "dbo.AuditLogs", "dbo.Projects", "dbo.ProjectObjectParameters" })
+        foreach (string table in new[] { "dbo.Users", "dbo.AuditLogs", "dbo.Projects", "dbo.ProjectObjectParameters", "dbo.ProjectObjects" })
         {
             var denied = Assert.Throws<SqlException>(() => database.QueryAs(Reader, "SELECT COUNT_BIG(*) FROM " + table + ";"));
             Assert.Equal(PermissionDenied, denied.Number);

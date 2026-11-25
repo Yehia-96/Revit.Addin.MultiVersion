@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using MH.RevitTools.Database.Changes;
+using MH.RevitTools.Database.Checking;
 using MH.RevitTools.Database.Link;
 using MH.RevitTools.Database.Tests.Checking;
 
@@ -181,8 +182,9 @@ public sealed class ChangeFinderTests
         Assert.Equal(new[] { "Dicke", "Bewehrt" }, item.Parameters);
     }
 
+    // Copies of what the object is made of, from before Studio kept that once (revit.ObjectMaterials).
     [Fact]
-    public void AnObjectsMaterialReferences_AreLeftToTheMaterial()
+    public void AnObjectsMaterialReferences_AreLeftOut()
     {
         LinkProjectData data = UlmData.With(1, new[] { UlmData.Value("BT-1101-01", UlmData.MaterialId, "MB-1761-01-BET-0031") });
         var model = new FakeModel();
@@ -190,9 +192,49 @@ public sealed class ChangeFinderTests
         ChangeReport report = Find(data, model, new[] { new ModelElement(1, "BT-1101-01", null) });
 
         Assert.Empty(model.Asked);
-        NotAppliedItem item = Assert.Single(report.NotApplied);
-        Assert.Equal(NotAppliedReason.MaterialReference, item.Reason);
-        Assert.Equal(new[] { "Material-ID" }, item.Parameters);
+        Assert.True(report.IsUpToDate);
+        Assert.Empty(report.NotApplied);
+    }
+
+    [Fact]
+    public void AMaterialsValues_OfParametersOfElements_AreListed()
+    {
+        LinkProjectData data = UlmData.With(1, Array.Empty<LinkObjectValue>(),
+            new[] { new LinkMaterial("MB-1761-01-BET-0011", "11-Beton, C12/15", "BET", "Beton", null, null) },
+            new[]
+            {
+                new LinkMaterialValue("MB-1761-01-BET-0011", UlmData.Dicke.ParameterId, "0.3", null, null),
+                new LinkMaterialValue("MB-1761-01-BET-0011", UlmData.Guete.ParameterId, "B500B", null, null),
+                new LinkMaterialValue("MB-1761-01-BET-0011", UlmData.Bewehrt.ParameterId, "-", null, null),
+            });
+        var model = new FakeModel();
+
+        ChangeReport report = Find(data, model, Array.Empty<ModelElement>(), new[] { new ModelMaterial(70, "11-Beton, C12/15") });
+
+        Assert.Empty(model.Asked);
+        Assert.True(report.IsUpToDate);
+        Assert.Equal(new[] { NotAppliedReason.OfElements, NotAppliedReason.Placeholder }, report.NotApplied.Select(item => item.Reason));
+        Assert.Equal("Dicke and Betonstahl Güte go on elements, not on materials", ApplyTexts.Title(report.NotApplied[0]));
+        Assert.Equal("The database has values of them for materials too; Revit has no place for those.", ApplyTexts.Detail(report.NotApplied[0]));
+    }
+
+    // The material of the object's product (PRI-MAT) is called Material-ID too, and is a parameter of objects.
+    [Fact]
+    public void TheMaterialIdOfAnObjectsProduct_IsAValueLikeAnyOther()
+    {
+        var ofProduct = new LinkParameter(22, new Guid("6f0c4b8e-0000-4000-8000-000000000022"), "Material-ID", "PRI", "MAT", "Material-ID",
+            "String", null, LinkTarget.Object, new[] { "OST_GenericModel" });
+        var data = new LinkProjectData(13, 1, UlmData.Dictionary.Concat(new[] { ofProduct }), new[]
+        {
+            UlmData.Value("BT-1101-01", UlmData.MaterialId, "MB-1761-01-BET-0031"),
+            UlmData.Value("BT-1101-01", ofProduct, "89z98"),
+        }, Array.Empty<LinkMaterial>(), Array.Empty<LinkMaterialValue>(), Array.Empty<LinkObjectMaterial>());
+
+        ChangeReport report = Find(data, new FakeModel().Has(1, ofProduct, ""), new[] { new ModelElement(1, "BT-1101-01", null) });
+
+        ChangeRow row = Assert.Single(Assert.Single(report.Groups).Rows);
+        Assert.Equal((22, "Material-ID", "89z98"), (row.ParameterId, row.Parameter, row.To));
+        Assert.False(row.IsObjectMaterial);
     }
 
     [Fact]

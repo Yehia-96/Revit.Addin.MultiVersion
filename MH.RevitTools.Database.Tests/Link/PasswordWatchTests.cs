@@ -23,7 +23,8 @@ public sealed class PasswordWatchTests
     [Fact]
     public void Answers_ComeThroughAsTheyAre()
     {
-        var data = new LinkProjectData(13, 7, Array.Empty<LinkParameter>(), Array.Empty<LinkObjectValue>(), Array.Empty<LinkMaterial>(), Array.Empty<LinkMaterialValue>());
+        var data = new LinkProjectData(13, 7, Array.Empty<LinkParameter>(), Array.Empty<LinkObjectValue>(), Array.Empty<LinkMaterial>(),
+            Array.Empty<LinkMaterialValue>(), Array.Empty<LinkObjectMaterial>());
         var inner = new FakeLinkDatabase(new[] { Ulm }, new[] { data });
         PasswordWatch watch = Watch(inner);
 

@@ -27,9 +27,10 @@ internal static class UlmData
     public static readonly LinkProject Project = new(ProjectId, 1761, 1, "Ulm");
 
     public static LinkProjectData With(long stamp, IEnumerable<LinkObjectValue> objectValues,
-        IEnumerable<LinkMaterial> materials = null, IEnumerable<LinkMaterialValue> materialValues = null) => new(
+        IEnumerable<LinkMaterial> materials = null, IEnumerable<LinkMaterialValue> materialValues = null,
+        IEnumerable<LinkObjectMaterial> objectMaterials = null) => new(
         ProjectId, stamp, Dictionary, objectValues,
-        materials ?? Array.Empty<LinkMaterial>(), materialValues ?? Array.Empty<LinkMaterialValue>());
+        materials ?? Array.Empty<LinkMaterial>(), materialValues ?? Array.Empty<LinkMaterialValue>(), objectMaterials);
 
     public static LinkObjectValue Value(string bauteilId, LinkParameter parameter, string value,
         DateTime? changedAtUtc = null, string changedBy = null) =>

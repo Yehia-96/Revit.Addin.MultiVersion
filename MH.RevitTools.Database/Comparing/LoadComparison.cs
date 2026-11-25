@@ -11,8 +11,8 @@ namespace MH.RevitTools.Database.Comparing
 {
     /// <summary>
     /// Compares a project as the Planungsdatenbank workbook has it with the same project as the MH database has
-    /// it: objects, parameters, values after unit conversion, and materials (step 7, the acceptance). What differs
-    /// by design is listed apart, so it doesn't hide what doesn't. Immutable.
+    /// it: objects and what they're made of, parameters, values after unit conversion, and materials (step 7, the
+    /// acceptance). What differs by design is listed apart, so it doesn't hide what doesn't. Immutable.
     /// </summary>
     public sealed class LoadComparison
     {
@@ -85,17 +85,21 @@ namespace MH.RevitTools.Database.Comparing
                 OnlyIn("Objects only in the Excel", excel.Objects, database.Objects, ComparisonSectionKind.Difference, row => true),
                 OnlyIn("Objects only in the database", database.Objects, excel.Objects, ComparisonSectionKind.Difference, row => true),
             };
-            sections.AddRange(Values("object", "objects", excel, database, excel.Objects, database.Objects, ObjectIdentity, ObjectPatterns));
+            sections.Add(Facts("Objects made of another material", excel.Objects, database.Objects));
+            sections.AddRange(Values("object", "objects", excel, database, excel.Objects, database.Objects, ObjectIdentity, ObjectPatterns,
+                key => IsOfMaterials(key, database)));
             sections.Add(new ComparisonSection("Parameters only in the Excel", ComparisonSectionKind.Difference,
                 Missing(excel.Parameters, database.Parameters).Select(parameter => parameter.Key + " (" + parameter.Kind + ")")));
             sections.Add(new ComparisonSection("Parameters filed under another set", ComparisonSectionKind.Difference, refiled
                 .OrderBy(pair => pair.Key, NaturalOrder.Instance)
                 .Select(pair => pair.Key + " in the Excel is " + pair.Value + " in the database")));
             sections.Add(Kinds(excel, database));
-            sections.Add(OnlyIn("Materials only in the Excel", excel.Materials, database.Materials, ComparisonSectionKind.Difference, row => !IsGlobal(row.Key)));
+            sections.Add(OnlyIn("Materials only in the Excel", excel.Materials, database.Materials, ComparisonSectionKind.Difference,
+                row => !ObjectMaterial.IsGlobal(row.Key)));
             sections.Add(OnlyIn("Materials only in the database", database.Materials, excel.Materials, ComparisonSectionKind.Difference, row => true));
-            sections.Add(Facts(excel, database));
-            sections.AddRange(Values("material", "materials", excel, database, excel.Materials, database.Materials, MaterialIdentity, MaterialPatterns));
+            sections.Add(Facts("Materials that differ", excel.Materials, database.Materials));
+            sections.AddRange(Values("material", "materials", excel, database, excel.Materials, database.Materials, MaterialIdentity, MaterialPatterns,
+                key => false));
 
             sections.Add(new ComparisonSection("Given twice in the Excel, differently. Only the first is compared.",
                 ComparisonSectionKind.Difference, excel.Conflicts));
@@ -105,7 +109,7 @@ namespace MH.RevitTools.Database.Comparing
                 ComparisonSectionKind.Remark, excel.Remarks));
 
             sections.Add(OnlyIn("By design: global materials only in the Excel. In the database they belong to no project.",
-                excel.Materials, database.Materials, ComparisonSectionKind.ByDesign, row => IsGlobal(row.Key)));
+                excel.Materials, database.Materials, ComparisonSectionKind.ByDesign, row => ObjectMaterial.IsGlobal(row.Key)));
             sections.Add(new ComparisonSection("By design: parameters only in the database. Its dictionary holds more than the workbook.",
                 ComparisonSectionKind.ByDesign, Missing(database.Parameters, excel.Parameters).Select(parameter => parameter.Key)));
             return new LoadComparison(excel, database, sections);
@@ -131,13 +135,14 @@ namespace MH.RevitTools.Database.Comparing
         private static IEnumerable<ComparisonSection> Values(
             string one, string many, LoadedProject excel, LoadedProject database,
             IReadOnlyDictionary<string, LoadedRow> excelRows, IReadOnlyDictionary<string, LoadedRow> databaseRows,
-            HashSet<string> identityNames, HashSet<string> patternNames)
+            HashSet<string> identityNames, HashSet<string> patternNames, Func<string, bool> saysMadeOf)
         {
             var differing = new List<string>();
             var onlyExcel = new OnlyOneSide(one, many, excel, database);
             var onlyDatabase = new OnlyOneSide(one, many, database, excel);
             var identity = new OnlyOneSide(one, many, database, excel);
             var patterns = new OnlyOneSide(one, many, database, excel);
+            var madeOf = new OnlyOneSide(one, many, database, excel);
             foreach (string key in excelRows.Keys.Where(databaseRows.ContainsKey).OrderBy(key => key, NaturalOrder.Instance))
             {
                 LoadedRow inExcel = excelRows[key], inDatabase = databaseRows[key];
@@ -145,7 +150,7 @@ namespace MH.RevitTools.Database.Comparing
                 {
                     LoadedValue other;
                     if (!inDatabase.Values.TryGetValue(value.Key, out other))
-                        (HasName(value.Key, patternNames) ? patterns : onlyExcel).Add(value.Key, key, value.Value);
+                        (HasName(value.Key, patternNames) ? patterns : saysMadeOf(value.Key) ? madeOf : onlyExcel).Add(value.Key, key, value.Value);
                     else if (!value.Value.IsSameAs(other))
                         differing.Add(key + " · " + NameOf(value.Key, database, excel) + ": Excel “" + value.Value.Shown + "”, database “" + other.Shown + "”");
                 }
@@ -161,6 +166,14 @@ namespace MH.RevitTools.Database.Comparing
                 + ". The Excel reader leaves it out, the database holds it as a value.", ComparisonSectionKind.ByDesign);
             yield return patterns.Section("By design: fill patterns. The database holds them with the material, and they're compared there.",
                 ComparisonSectionKind.ByDesign);
+            yield return madeOf.Section("By design: what an object is made of, among its values. The database holds it once, and it's compared there.",
+                ComparisonSectionKind.ByDesign);
+        }
+
+        private static bool IsOfMaterials(string key, LoadedProject database)
+        {
+            LoadedParameter parameter;
+            return database.Parameters.TryGetValue(key, out parameter) && parameter.IsOfMaterials;
         }
 
         // The Excel's parameters that the database has once more under another set: the same group and name, and
@@ -187,12 +200,13 @@ namespace MH.RevitTools.Database.Comparing
             return dash < 0 ? key : key.Substring(dash + 1);
         }
 
-        private static ComparisonSection Facts(LoadedProject excel, LoadedProject database)
+        private static ComparisonSection Facts(
+            string title, IReadOnlyDictionary<string, LoadedRow> excelRows, IReadOnlyDictionary<string, LoadedRow> databaseRows)
         {
             var lines = new List<string>();
-            foreach (string key in excel.Materials.Keys.Where(database.Materials.ContainsKey).OrderBy(key => key, NaturalOrder.Instance))
+            foreach (string key in excelRows.Keys.Where(databaseRows.ContainsKey).OrderBy(key => key, NaturalOrder.Instance))
             {
-                IReadOnlyDictionary<string, string> inExcel = excel.Materials[key].Facts, inDatabase = database.Materials[key].Facts;
+                IReadOnlyDictionary<string, string> inExcel = excelRows[key].Facts, inDatabase = databaseRows[key].Facts;
                 foreach (string name in inExcel.Keys.Union(inDatabase.Keys, StringComparer.OrdinalIgnoreCase))
                 {
                     string mine = Fact(inExcel, name), other = Fact(inDatabase, name);
@@ -200,7 +214,7 @@ namespace MH.RevitTools.Database.Comparing
                         lines.Add(key + " · " + name + ": Excel “" + mine + "”, database “" + other + "”");
                 }
             }
-            return new ComparisonSection("Materials that differ", ComparisonSectionKind.Difference, lines);
+            return new ComparisonSection(title, ComparisonSectionKind.Difference, lines);
         }
 
         private static string Fact(IReadOnlyDictionary<string, string> facts, string name)
@@ -241,13 +255,6 @@ namespace MH.RevitTools.Database.Comparing
         {
             string[] parts = parameterKey.Split(new[] { '-' }, 3);
             return parts.Length == 3 && names.Contains(parts[2]);
-        }
-
-        // Studio's placeholders where an ID has its project: MP-9999-99-BET-0101, and 9999-98.
-        private static bool IsGlobal(string materialId)
-        {
-            string[] parts = materialId.Split('-');
-            return parts.Length > 3 && parts[1] == "9999" && (parts[2] == "99" || parts[2] == "98");
         }
 
         private static string NameOf(string key, LoadedProject first, LoadedProject second)

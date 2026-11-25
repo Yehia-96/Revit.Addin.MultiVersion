@@ -53,7 +53,7 @@ namespace MH.RevitTools.Database.Comparing
             foreach (LoadedParameter parameter in Parameters.Values)
             {
                 string key = Renamed(parameter.Key, newKeys);
-                parameters[key] = new LoadedParameter(key, parameter.Name, parameter.Kind);
+                parameters[key] = new LoadedParameter(key, parameter.Name, parameter.Kind, parameter.IsOfMaterials);
             }
             return new LoadedProject(Source, parameters, Rows(Objects, newKeys), Rows(Materials, newKeys), Conflicts, Remarks);
         }
@@ -76,11 +76,12 @@ namespace MH.RevitTools.Database.Comparing
     /// <summary>One parameter as a source defines it. Immutable.</summary>
     public sealed class LoadedParameter
     {
-        public LoadedParameter(string key, string name, string kind)
+        public LoadedParameter(string key, string name, string kind, bool isOfMaterials = false)
         {
             Key = key ?? "";
             Name = string.IsNullOrWhiteSpace(name) ? Key : name.Trim();
             Kind = kind ?? "";
+            IsOfMaterials = isOfMaterials;
         }
 
         /// <summary>E.g. BAU-GEO-Dicke.</summary>
@@ -91,6 +92,9 @@ namespace MH.RevitTools.Database.Comparing
 
         /// <summary>What Revit makes of it, e.g. Length, Text, Integer.</summary>
         public string Kind { get; }
+
+        /// <summary>In Revit it's a parameter of materials; of an object, it only says what the object is made of.</summary>
+        public bool IsOfMaterials { get; }
     }
 
     /// <summary>One value, as the source shows it and as Revit gets it. Immutable.</summary>
@@ -146,7 +150,9 @@ namespace MH.RevitTools.Database.Comparing
         /// <summary>The Bauteil_ID or the Material-ID.</summary>
         public string Key { get; }
 
-        /// <summary>What a material is besides its values: its name, group and fill patterns; empty for objects.</summary>
+        /// <summary>
+        /// What it is besides its values: a material's name, group and fill patterns, or the material an object is made of.
+        /// </summary>
         public IReadOnlyDictionary<string, string> Facts { get; }
 
         /// <summary>By the parameter's dictionary key. Placeholders and empty values aren't in it.</summary>
@@ -191,13 +197,16 @@ namespace MH.RevitTools.Database.Comparing
 
         public void ObjectValue(string bauteilId, string parameterKey, LoadedValue value) => Put(_objects, bauteilId, parameterKey, value);
 
+        /// <summary>The material an object is made of, by the Materialname, which is what Revit gets.</summary>
+        public void ObjectMaterial(string bauteilId, string materialName) => Fact(_objects, bauteilId, "Material", materialName);
+
         /// <summary>A material; its name, group and fill patterns may be empty.</summary>
         public void Material(string materialId, string name, string group, string surfacePattern, string cutPattern)
         {
-            Fact(materialId, "Materialname", name);
-            Fact(materialId, "Materialgruppe", group);
-            Fact(materialId, "surface pattern", surfacePattern);
-            Fact(materialId, "cut pattern", cutPattern);
+            Fact(_materials, materialId, "Materialname", name);
+            Fact(_materials, materialId, "Materialgruppe", group);
+            Fact(_materials, materialId, "surface pattern", surfacePattern);
+            Fact(_materials, materialId, "cut pattern", cutPattern);
         }
 
         public void MaterialValue(string materialId, string parameterKey, LoadedValue value) => Put(_materials, materialId, parameterKey, value);
@@ -212,14 +221,14 @@ namespace MH.RevitTools.Database.Comparing
         public LoadedProject Build() => new LoadedProject(_source, _parameters, Rows(_objects), Rows(_materials), _conflicts, _remarks);
 
         // The first one counts where something repeats, as in the Excel reader; another one is said.
-        private void Fact(string materialId, string name, string value)
+        private void Fact(Dictionary<string, Row> rows, string key, string name, string value)
         {
-            Row row = At(_materials, materialId);
+            Row row = At(rows, key);
             string trimmed = (value ?? "").Trim(), first;
             if (!row.Facts.TryGetValue(name, out first))
                 row.Facts.Add(name, trimmed);
             else if (!string.Equals(first, trimmed, StringComparison.Ordinal))
-                _conflicts.Add((materialId ?? "").Trim() + " · " + name + ": “" + first + "” and “" + trimmed + "”");
+                _conflicts.Add((key ?? "").Trim() + " · " + name + ": “" + first + "” and “" + trimmed + "”");
         }
 
         private void Put(Dictionary<string, Row> rows, string key, string parameterKey, LoadedValue value)

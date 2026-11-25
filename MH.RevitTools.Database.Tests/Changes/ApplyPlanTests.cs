@@ -76,7 +76,7 @@ public sealed class ApplyPlanTests
         LinkParameter Changed(LinkParameter p, string name, Guid guid, LinkTarget target) =>
             new(p.ParameterId, guid, name, p.SetCode, p.GroupCode, name, p.DataType, p.Unit, target, p.Categories);
         LinkProjectData With(LinkParameter guete, LinkParameter dicke) => new(
-            data.ProjectId, 2, new[] { guete, dicke }, data.ObjectValues, data.Materials, data.MaterialValues);
+            data.ProjectId, 2, new[] { guete, dicke }, data.ObjectValues, data.Materials, data.MaterialValues, data.ObjectMaterials);
 
         ApplyPlan plan = ApplyPlan.For(With(
             Changed(UlmData.Guete, "Bauteil_ID", UlmData.Guete.Guid, LinkTarget.Object),

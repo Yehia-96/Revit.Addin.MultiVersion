@@ -536,7 +536,6 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
                     IconColor = "#B7791F";
                     break;
                 case NotAppliedReason.Placeholder:
-                case NotAppliedReason.MaterialReference:
                     Icon = Pencil;
                     IconColor = "#5B6578";
                     break;

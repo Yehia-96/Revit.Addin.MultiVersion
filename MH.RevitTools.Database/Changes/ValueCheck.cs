@@ -31,6 +31,9 @@ namespace MH.RevitTools.Database.Changes
 
         /// <summary>The model doesn't have the fill pattern.</summary>
         NoPattern,
+
+        /// <summary>The model doesn't have the material the object is made of.</summary>
+        NoMaterial,
     }
 
     /// <summary>
@@ -57,6 +60,8 @@ namespace MH.RevitTools.Database.Changes
         public static ValueCheck OutOfDate { get; } = new ValueCheck(ValueState.OutOfDate, null, null, null);
 
         public static ValueCheck NoPattern { get; } = new ValueCheck(ValueState.NoPattern, null, null, null);
+
+        public static ValueCheck NoMaterial { get; } = new ValueCheck(ValueState.NoMaterial, null, null, null);
 
         public ValueState State { get; }
 

@@ -13,7 +13,8 @@ namespace MH.RevitTools.Database.Link
             IEnumerable<LinkParameter> parameters,
             IEnumerable<LinkObjectValue> objectValues,
             IEnumerable<LinkMaterial> materials,
-            IEnumerable<LinkMaterialValue> materialValues)
+            IEnumerable<LinkMaterialValue> materialValues,
+            IEnumerable<LinkObjectMaterial> objectMaterials)
         {
             ProjectId = projectId;
             Stamp = stamp;
@@ -21,6 +22,7 @@ namespace MH.RevitTools.Database.Link
             ObjectValues = Freeze(objectValues);
             Materials = Freeze(materials);
             MaterialValues = Freeze(materialValues);
+            ObjectMaterials = Freeze(objectMaterials);
         }
 
         public int ProjectId { get; }
@@ -37,9 +39,12 @@ namespace MH.RevitTools.Database.Link
 
         public IReadOnlyList<LinkMaterialValue> MaterialValues { get; }
 
+        /// <summary>What the project's objects are made of, as far as they have a material.</summary>
+        public IReadOnlyList<LinkObjectMaterial> ObjectMaterials { get; }
+
         /// <summary>The same data at another stamp, as when the database changed.</summary>
         public LinkProjectData WithStamp(long stamp) =>
-            new LinkProjectData(ProjectId, stamp, Parameters, ObjectValues, Materials, MaterialValues);
+            new LinkProjectData(ProjectId, stamp, Parameters, ObjectValues, Materials, MaterialValues, ObjectMaterials);
 
         private static IReadOnlyList<T> Freeze<T>(IEnumerable<T> items) =>
             new ReadOnlyCollection<T>((items ?? Enumerable.Empty<T>()).ToList());

@@ -19,7 +19,7 @@ namespace MH.RevitTools.Database.Link
             CutPattern = string.IsNullOrWhiteSpace(cutPattern) ? null : cutPattern;
         }
 
-        /// <summary>E.g. MB-1761-01-BET-0031, the same text the objects carry as their Material-ID.</summary>
+        /// <summary>E.g. MB-1761-01-BET-0031, as in <see cref="LinkObjectMaterial.MaterialId"/>.</summary>
         public string MaterialId { get; }
 
         /// <summary>The Materialname, e.g. "31-Beton, C35/45".</summary>

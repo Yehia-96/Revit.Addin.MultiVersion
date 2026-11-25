@@ -7,9 +7,9 @@ using MH.RevitTools.Database.Link;
 namespace MH.RevitTools.Database.Tests.Link;
 
 /// <summary>
-/// The reader over the real revit views in the local dev MH_Database, which Studio's migration
-/// AddRevitLink made. Only reads. Depends on the dev data for project 1761 Ulm: objects with
-/// Bauteil-IDs, materials, and Studio's history of both.
+/// The reader over the real revit views in the local dev MH_Database, which Studio's migrations
+/// AddRevitLink and AddRevitObjectMaterials made. Only reads. Depends on the dev data for project 1761 Ulm: objects
+/// with Bauteil-IDs, materials, what BT-1101-01 is made of, and Studio's history of all of them.
 /// </summary>
 [Trait("Category", "LocalMhDatabase")]
 public sealed class SqlLinkDatabaseLocalMhTests
@@ -110,11 +110,29 @@ public sealed class SqlLinkDatabaseLocalMhTests
 
         Assert.Contains(data.Materials, m => m.MaterialId == "MB-1761-01-BET-0031" && m.GroupCode == "BET");
 
-        // Objects point at materials by Material-ID, e.g. IDE-KAT-Material-ID and BAU-SPE-Betonstahl Mat.-ID.
+        // Objects point at materials by Material-ID, e.g. BAU-SPE-Betonstahl Mat.-ID.
         var materialIdPattern = new Regex(@"^[A-Z]{2}-\d{4}-\d{2}-[A-Z]{2,3}-\d{4}$");
         var pointedAt = data.ObjectValues.Select(v => v.Value).Where(value => value != null && materialIdPattern.IsMatch(value)).ToList();
         Assert.NotEmpty(pointedAt);
         Assert.All(pointedAt, id => Assert.Contains(data.Materials, m => m.MaterialId == id));
         Assert.All(data.MaterialValues, v => Assert.Contains(data.Materials, m => m.MaterialId == v.MaterialId));
+    }
+
+    [Fact]
+    public void ObjectMaterials_NameTheMaterial_AndSayWhoSetItAndWhen()
+    {
+        LinkProjectData data = Database.GetProjectData(Ulm.ProjectId);
+
+        Assert.Contains(data.ObjectMaterials, m => m.BauteilId == "BT-1101-01");
+        Assert.All(data.ObjectMaterials, m =>
+        {
+            Assert.Matches(@"^[A-Z]{2}-\d{4}-\d{2}$", m.BauteilId);
+            Assert.False(string.IsNullOrWhiteSpace(m.MaterialName), m.BauteilId + " is made of a material without a name.");
+            Assert.NotNull(m.ChangedAtUtc);
+            Assert.False(string.IsNullOrWhiteSpace(m.ChangedBy), "Nobody set what " + m.BauteilId + " is made of.");
+            // The project's own is in the project's list, under the same name.
+            LinkMaterial own = data.Materials.SingleOrDefault(material => material.MaterialId == m.MaterialId);
+            Assert.True(own == null || own.Name == m.MaterialName, m.BauteilId + ": " + m.MaterialName);
+        });
     }
 }

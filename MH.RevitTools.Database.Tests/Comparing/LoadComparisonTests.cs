@@ -333,6 +333,90 @@ public sealed class LoadComparisonTests
             Lines(comparison, "Materials that differ"));
     }
 
+    // By its name, which is what Revit gets, whatever the Material-IDs are.
+    [Fact]
+    public void WhatAnObjectIsMadeOf_IsComparedByTheMaterialsName()
+    {
+        LoadedProjectBuilder excel = Excel(), database = Database();
+        excel.ObjectMaterial("BT-1101-01", "31-Beton, C35/45 ");
+        database.ObjectMaterial("bt-1101-01", "13-Beton, C20/25");
+        excel.ObjectMaterial("BT-1102-01", "13-Beton, C20/25");
+        database.ObjectMaterial("BT-1102-01", "13-Beton, C20/25");
+        excel.Object("ET-2101-01");
+        database.ObjectMaterial("ET-2101-01", "0101-Beton");
+        excel.Object("ET-2102-01");
+        database.Object("ET-2102-01");
+
+        LoadComparison comparison = LoadComparison.Of(excel.Build(), database.Build());
+
+        Assert.Equal(
+            new[]
+            {
+                "BT-1101-01 · Material: Excel “31-Beton, C35/45”, database “13-Beton, C20/25”",
+                "ET-2101-01 · Material: Excel “”, database “0101-Beton”",
+            },
+            Lines(comparison, "Objects made of another material"));
+        Assert.Equal(2, comparison.DifferenceCount);
+    }
+
+    [Fact]
+    public void AnObjectGivenTwoMaterials_IsSaid_AndOnlyTheFirstIsCompared()
+    {
+        LoadedProjectBuilder excel = Excel(), database = Database();
+        excel.ObjectMaterial("BT-1101-01", "13-Beton, C20/25");
+        database.ObjectMaterial("BT-1101-01", "13-Beton, C20/25");
+        database.ObjectMaterial("BT-1101-01", "31-Beton, C35/45");
+
+        LoadComparison comparison = LoadComparison.Of(excel.Build(), database.Build());
+
+        Assert.Equal(new[] { "BT-1101-01 · Material: “13-Beton, C20/25” and “31-Beton, C35/45”" }, Lines(comparison, "Given twice in the database"));
+        Assert.Equal(1, comparison.DifferenceCount);
+    }
+
+    // The workbook has it among the object's values too. The database has it once, and nothing differs by that.
+    [Fact]
+    public void WhatTheWorkbookSaysOfAnObjectsMaterial_AmongItsValues_IsKnown()
+    {
+        LoadedProjectBuilder excel = Excel(), database = Database();
+        excel.Parameter(new LoadedParameter("IDE-KAT-Material-ID", "Material-ID", "Text"));
+        database.Parameter(new LoadedParameter("IDE-KAT-Material-ID", "Material-ID", "Text", true));
+        excel.ObjectValue("BT-1101-01", "IDE-KAT-Material-ID", Text("MB-1761-01-BET-0013"));
+        excel.ObjectMaterial("BT-1101-01", "13-Beton, C20/25");
+        database.ObjectMaterial("BT-1101-01", "13-Beton, C20/25");
+
+        LoadComparison comparison = LoadComparison.Of(excel.Build(), database.Build());
+
+        Assert.True(comparison.IsIdentical);
+        Assert.Equal(
+            new[] { "IDE-KAT-Material-ID: 1 object, BT-1101-01 “MB-1761-01-BET-0013”" },
+            Lines(comparison, "By design: what an object is made of"));
+    }
+
+    // Of a material, it's a value like any other; of an object, one that's no parameter of materials is too.
+    [Fact]
+    public void OnlyAnObjectsValues_OfParametersOfMaterials_AreKnown()
+    {
+        LoadedProjectBuilder excel = Excel(), database = Database();
+        excel.Parameter(new LoadedParameter("MAT-BES-Materialname", "Materialname", "Text"));
+        database.Parameter(new LoadedParameter("MAT-BES-Materialname", "Materialname", "Text", true));
+        excel.Parameter(new LoadedParameter("PRI-MAT-Material-ID", "Material-ID (Produktinformation)", "Text"));
+        database.Parameter(new LoadedParameter("PRI-MAT-Material-ID", "Material-ID", "Text"));
+        excel.Material("MB-1", "Beton", "Beton", null, null);
+        database.Material("MB-1", "Beton", "Beton", null, null);
+        excel.MaterialValue("MB-1", "MAT-BES-Materialname", Text("Beton"));
+        excel.ObjectValue("BT-1101-01", "PRI-MAT-Material-ID", Text("89z98"));
+        database.Object("BT-1101-01");
+
+        LoadComparison comparison = LoadComparison.Of(excel.Build(), database.Build());
+
+        Assert.Equal(new[] { "MAT-BES-Materialname: 1 material, MB-1 “Beton”" }, Lines(comparison, "Material values only in the Excel"));
+        Assert.Equal(
+            new[] { "PRI-MAT-Material-ID (Material-ID (Produktinformation)): 1 object, BT-1101-01 “89z98”" },
+            Lines(comparison, "Object values only in the Excel"));
+        Assert.Empty(Lines(comparison, "By design: what an object is made of"));
+        Assert.Equal(2, comparison.DifferenceCount);
+    }
+
     [Fact]
     public void OnlyTheProjectPartOfAMaterialsId_MakesItGlobal()
     {
@@ -393,7 +477,7 @@ public sealed class LoadComparisonTests
     }
 
     [Fact]
-    public void TheDatabasesSide_LeavesPlaceholdersOut_AndKeepsWhatObjectsSayAboutTheirMaterial()
+    public void TheDatabasesSide_LeavesOutPlaceholders_AndCopiesOfAnObjectsMaterial()
     {
         LinkProjectData data = UlmData.With(1,
             new[]
@@ -408,14 +492,24 @@ public sealed class LoadComparisonTests
             {
                 new LinkMaterialValue("MB-1", UlmData.Festigkeit.ParameterId, "C12/15", null, null),
                 new LinkMaterialValue("MB-1", UlmData.MaterialId.ParameterId, " ", null, null),
+            },
+            new[]
+            {
+                new LinkObjectMaterial("BT-1101-01", "MB-1", "Beton", null, null),
+                new LinkObjectMaterial("BT-1102-01", null, "0101-Beton", null, null),
             });
 
         LoadedProject project = DatabaseLoad.From(data, Convert, (dataType, unit) => dataType + "/" + unit);
 
         Assert.Equal("database", project.Source);
         Assert.Equal("Double/m", project.Parameters[Dicke].Kind);
-        Assert.Equal(new[] { Guete, "IDE-KAT-Material-ID" }, project.Objects["BT-1101-01"].Values.Keys);
+        Assert.Equal(new[] { Guete }, project.Objects["BT-1101-01"].Values.Keys);
+        Assert.Equal("Beton", project.Objects["BT-1101-01"].Facts["Material"]);
+        Assert.Equal("0101-Beton", project.Objects["BT-1102-01"].Facts["Material"]);
         Assert.Empty(project.Objects["ET-2101-01"].Values);
+        Assert.Empty(project.Objects["ET-2101-01"].Facts);
+        Assert.True(project.Parameters["IDE-KAT-Material-ID"].IsOfMaterials);
+        Assert.False(project.Parameters[Dicke].IsOfMaterials);
         Assert.Equal("Solid", project.Materials["MB-1"].Facts["surface pattern"]);
         Assert.Equal(new[] { Festigkeit }, project.Materials["MB-1"].Values.Keys);
     }

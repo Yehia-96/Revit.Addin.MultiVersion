@@ -335,8 +335,9 @@ namespace Revit.Addin._2027.DatabaseLink.Pane
                 _isReadOnlyFile = document.IsReadOnlyFile;
                 var values = new RevitValues(document);
                 var patterns = new RevitPatterns(document);
+                var materials = new RevitMaterials(document);
                 _report = ChangeFinder.Find(
-                    data, ModelReader.Elements(document, data), ModelReader.Materials(document), values.Compare, patterns.Compare);
+                    data, ModelReader.Elements(document, data), ModelReader.Materials(document), values.Compare, patterns.Compare, materials.Compare);
                 _comparedVersion = outcome.DataVersion;
                 _compareFault = null;
             }

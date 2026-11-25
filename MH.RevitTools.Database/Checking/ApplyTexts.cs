@@ -119,16 +119,20 @@ namespace MH.RevitTools.Database.Checking
                     return item.Name + " has different values for " + Names(item.Parameters);
                 case NotAppliedReason.MissingParameter:
                     return Names(item.Parameters) + Are(item.Parameters) + " not in this model";
+                case NotAppliedReason.MissingMaterial:
+                    return "The material “" + item.Name + "” is not in this model";
                 case NotAppliedReason.MissingPattern:
                     return "The fill pattern “" + item.Name + "” is not in this model";
+                case NotAppliedReason.NoMaterialParameter:
+                    return PaneTexts.Count(elements, "element has", "elements have") + " no parameter for " + (elements == 1 ? "its" : "their") + " material";
                 case NotAppliedReason.SameMaterialName:
                     return "Two materials are called “" + item.Name + "”";
                 case NotAppliedReason.NotCreatable:
                     return item.Name + " has no " + item.Text;
-                case NotAppliedReason.Placeholder:
-                    return PaneTexts.Count(item.ValueCount, "value is ", "values are ") + item.Name;
+                case NotAppliedReason.OfElements:
+                    return Names(item.Parameters) + (item.Parameters.Count == 1 ? " goes" : " go") + " on elements, not on materials";
                 default:
-                    return Names(item.Parameters) + (item.Parameters.Count == 1 ? " says" : " say") + " which material an object has";
+                    return PaneTexts.Count(item.ValueCount, "value is ", "values are ") + item.Name;
             }
         }
 
@@ -157,6 +161,11 @@ namespace MH.RevitTools.Database.Checking
                         : "Materials in the database share this Material-ID, so none of their values goes in.";
                 case NotAppliedReason.MissingParameter:
                     return "Check parameters adds " + (item.Parameters.Count == 1 ? "it" : "them") + " from the master file.";
+                case NotAppliedReason.MissingMaterial:
+                    return "It's the material of " + PaneTexts.Count(item.ElementIds.Count, "element", "elements") + ". " + WhoMakes(item);
+                case NotAppliedReason.NoMaterialParameter:
+                    return "The database says what " + (one ? "it's" : "they're") + " made of. " + (one ? "Its family needs" : "Their families need")
+                        + " an instance parameter called " + ObjectMaterial.ParameterName + " that takes a material, as for the Excel import.";
                 case NotAppliedReason.MissingPattern:
                     return "It's " + string.Join(" and ", item.Parameters.Select(name => "the " + name.ToLowerInvariant())) + " of "
                         + PaneTexts.Count(item.ElementIds.Count, "material", "materials") + ". Add it to the model (Manage, Additional Settings, Fill "
@@ -165,11 +174,10 @@ namespace MH.RevitTools.Database.Checking
                     return "Revit tells materials apart by name, so " + item.Text + " is left out. Give it another name in Studio.";
                 case NotAppliedReason.NotCreatable:
                     return "So it can't be created in Revit. Give it one in Studio.";
-                case NotAppliedReason.Placeholder:
-                    return PlaceholderDetail(item);
+                case NotAppliedReason.OfElements:
+                    return "The database has values of " + (item.Parameters.Count == 1 ? "it" : "them") + " for materials too; Revit has no place for those.";
                 default:
-                    return "Revit has " + (item.Parameters.Count == 1 ? "it" : "them")
-                        + " on the material, not on the element. Assigning materials comes later.";
+                    return PlaceholderDetail(item);
             }
         }
 
@@ -244,6 +252,15 @@ namespace MH.RevitTools.Database.Checking
             return state == CheckState.Answered
                 ? null
                 : what + " waits until the database answers again, so that nothing outdated goes in.";
+        }
+
+        // How a missing material gets into the model.
+        private static string WhoMakes(NotAppliedItem item)
+        {
+            if (item.Text == null)
+                return "Create… makes it (Not in this model); then it can be applied.";
+            return (item.Text == NotAppliedItem.Global ? "It's a global one, and Create… makes the project's own only." : "Create… can't make it.")
+                + " Once the model has a material of that name, it can be applied.";
         }
 
         private static string PlaceholderDetail(NotAppliedItem item)

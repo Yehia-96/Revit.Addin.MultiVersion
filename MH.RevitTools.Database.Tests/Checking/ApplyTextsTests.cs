@@ -152,7 +152,7 @@ public sealed class ApplyTextsTests
         LinkParameter[] many = Enumerable.Range(1, 6).Select(i => new LinkParameter(900 + i, Guid.NewGuid(), "P" + i, "S", "G", "P" + i, "String",
             null, LinkTarget.Object, new[] { "OST_GenericModel" })).ToArray();
         var data = new LinkProjectData(13, 1, many, many.Select(p => new LinkObjectValue("BT-1101-01", p.ParameterId, "[Modeller]", null, null)),
-            Array.Empty<LinkMaterial>(), Array.Empty<LinkMaterialValue>());
+            Array.Empty<LinkMaterial>(), Array.Empty<LinkMaterialValue>(), Array.Empty<LinkObjectMaterial>());
 
         NotAppliedItem item = Assert.Single(Report(data, (id, parameter, value) => ValueCheck.Same).NotApplied);
 
@@ -161,19 +161,15 @@ public sealed class ApplyTextsTests
     }
 
     [Fact]
-    public void SharedIds_AndMaterialReferences_AreExplained()
+    public void SharedIds_AreExplained()
     {
         NotAppliedItem conflict = Assert.Single(Report(UlmData.With(1, new[]
         {
             UlmData.Value("BT-1101-01", UlmData.Dicke, "0.3"), UlmData.Value("BT-1101-01", UlmData.Dicke, "0.4"),
         }), (id, parameter, value) => ValueCheck.Same).NotApplied);
-        NotAppliedItem reference = Assert.Single(Report(UlmData.With(1, new[] { UlmData.Value("BT-1101-01", UlmData.MaterialId, "MB-1") }),
-            (id, parameter, value) => ValueCheck.Same).NotApplied);
 
         Assert.Equal("BT-1101-01 has different values for Dicke", ApplyTexts.Title(conflict));
         Assert.Contains("another Bauteilunternummer in Studio", ApplyTexts.Detail(conflict));
-        Assert.Equal("Material-ID says which material an object has", ApplyTexts.Title(reference));
-        Assert.Equal("Revit has it on the material, not on the element. Assigning materials comes later.", ApplyTexts.Detail(reference));
     }
 
     [Fact]

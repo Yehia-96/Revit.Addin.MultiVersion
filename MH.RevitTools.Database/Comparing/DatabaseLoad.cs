@@ -26,16 +26,20 @@ namespace MH.RevitTools.Database.Comparing
             foreach (LinkParameter parameter in data.Parameters)
             {
                 byId[parameter.ParameterId] = parameter;
-                project.Parameter(new LoadedParameter(KeyOf(parameter), parameter.RevitName, kindOf(parameter.DataType, parameter.Unit)));
+                project.Parameter(new LoadedParameter(KeyOf(parameter), parameter.RevitName, kindOf(parameter.DataType, parameter.Unit),
+                    parameter.Target == LinkTarget.Material));
             }
 
             foreach (LinkObjectValue value in data.ObjectValues)
             {
                 project.Object(value.BauteilId);
                 LinkParameter parameter;
-                if (byId.TryGetValue(value.ParameterId, out parameter) && !Placeholders.IsPlaceholder(value.Value))
+                // Not the copies of what it's made of, which the link leaves out too.
+                if (byId.TryGetValue(value.ParameterId, out parameter) && parameter.Target == LinkTarget.Object && !Placeholders.IsPlaceholder(value.Value))
                     project.ObjectValue(value.BauteilId, KeyOf(parameter), convert(parameter.DataType, parameter.Unit, value.Value));
             }
+            foreach (LinkObjectMaterial material in data.ObjectMaterials)
+                project.ObjectMaterial(material.BauteilId, material.MaterialName);
             foreach (LinkMaterial material in data.Materials)
                 project.Material(material.MaterialId, material.Name, material.Group, material.SurfacePattern, material.CutPattern);
             foreach (LinkMaterialValue value in data.MaterialValues)

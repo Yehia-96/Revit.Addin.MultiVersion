@@ -23,7 +23,8 @@ namespace MH.RevitTools.Database.Link
         long? GetStamp(int projectId);
 
         /// <summary>
-        /// The parameter dictionary plus the project's values and materials, all read at one stamp.
+        /// The parameter dictionary plus the project's values, its materials and what its objects are made of, all read at
+        /// one stamp.
         /// Null if there is no such project.
         /// </summary>
         LinkProjectData GetProjectData(int projectId);
