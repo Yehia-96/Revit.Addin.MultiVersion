@@ -17,7 +17,7 @@ namespace Revit.Addin._2026.Services
         private const int MaxNames = 15;
 
         /// <param name="notAdded">Parameters that couldn't be added, each with the reason.</param>
-        /// <param name="notWritten">Parameters that an element lacks or has read-only, though the workbook has a value for it.</param>
+        /// <param name="notWritten">Parameters that an element can't take the workbook's value in.</param>
         public ParameterRun(
             int elementsMatched, int parametersAdded, int valuesWritten,
             IEnumerable<string> notAdded = null, IEnumerable<string> notWritten = null)
@@ -56,7 +56,8 @@ namespace Revit.Addin._2026.Services
             if (NotAdded.Count > 0)
                 text += "\n\nNot added: " + Some(NotAdded) + ".";
             if (NotWritten.Count > 0)
-                text += "\n\nNot written, because an element has no such parameter or has it read-only: " + Some(NotWritten) + ".";
+                text += "\n\nNot written, because an element lacks the parameter, or has it read-only or of another kind: "
+                    + Some(NotWritten) + ".";
             return text;
         }
 

@@ -16,9 +16,8 @@ namespace MH.RevitTools.Database.Comparing
     /// </summary>
     public sealed class LoadComparison
     {
-        // The Excel reader leaves these columns out: they identify the row, and families carry Bauteilnummer as
-        // their own parameter. The database holds them as values.
-        private static readonly HashSet<string> ObjectIdentity = Names("Bauteil_ID", "Bauteilnummer", "Bauteilunternummer");
+        // The Excel reader leaves these columns out: they identify the row. The database holds them as values.
+        private static readonly HashSet<string> ObjectIdentity = Names("Bauteil_ID");
         private static readonly HashSet<string> MaterialIdentity = Names("Material-ID");
 
         // A material's fill pattern columns in the workbook. The database holds the patterns with the material,

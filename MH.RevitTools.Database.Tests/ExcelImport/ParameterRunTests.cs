@@ -64,13 +64,13 @@ public sealed class ParameterRunTests
     [InlineData(1, "1 element matches, and nothing was changed: its other parameters already have the values of the Excel file.")]
     [InlineData(2, "2 elements match, and nothing was changed: their other parameters already have the values of the Excel file.")]
     public void NothingChanged_ThoughSomethingCouldntBeWritten_SaysSo(int elements, string first) =>
-        Assert.Equal(first + "\n\nNot written, because an element has no such parameter or has it read-only: Breite, Dicke.",
+        Assert.Equal(first + "\n\nNot written, because an element lacks the parameter, or has it read-only or of another kind: Breite, Dicke.",
             new ParameterRun(elements, 0, 0, notWritten: new[] { "Breite", "Dicke" }).Message(NoMatch, null));
 
     [Fact]
     public void WhatCouldntBeAddedOrWritten_IsSaidAfterTheCounts() =>
         Assert.Equal("1 parameters applied.\n2 values applied\n\nNot added: Ort (refused by Revit)."
-            + "\n\nNot written, because an element has no such parameter or has it read-only: Dicke.",
+            + "\n\nNot written, because an element lacks the parameter, or has it read-only or of another kind: Dicke.",
             new ParameterRun(1, 1, 2, new[] { "Ort (refused by Revit)" }, new[] { "Dicke", "Dicke" }).Message(NoMatch, Workbook));
 
     [Theory]

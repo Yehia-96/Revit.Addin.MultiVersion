@@ -352,15 +352,11 @@ namespace Revit.Addin._2024.Services.Planungsdatenbank
             // Optional: without it, families still read fine and simply get no material assigned.
             int materialIdColumn = TryFindColumn(sheet, nameRow, PlanungsdatenbankLayout.Headers.MaterialId);
 
-            // Identity columns are not parameters to push into Revit. Bauteil_ID is typed in by
-            // hand and must not be overwritten; Bauteilnummer and Bauteilunternummer stay out as
-            // they always were - families carry Bauteilnummer as their own integer parameter.
+            // Bauteil_ID is not a parameter to push into Revit: it's typed in by hand and must not be
+            // overwritten. Bauteilnummer and Bauteilunternummer are parameters like any other (Yehia,
+            // 2026-11-25). They were left out while the two of them were the key.
             var identity = new HashSet<int>();
             identity.Add(idColumn);
-            int bnColumn = TryFindColumn(sheet, nameRow, PlanungsdatenbankLayout.Headers.Bauteilnummer);
-            int bunColumn = TryFindColumn(sheet, nameRow, PlanungsdatenbankLayout.Headers.Bauteilunternummer);
-            if (bnColumn > 0) identity.Add(bnColumn);
-            if (bunColumn > 0) identity.Add(bunColumn);
             result.IdentityDefinitions[PlanungsdatenbankLayout.Headers.BauteilId] = BauteilIdDefinition(sheet, idColumn);
 
             List<Column> columns = PrepareColumns(

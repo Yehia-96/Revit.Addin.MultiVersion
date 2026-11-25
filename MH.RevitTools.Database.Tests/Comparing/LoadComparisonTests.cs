@@ -441,7 +441,6 @@ public sealed class LoadComparisonTests
         excel.ObjectValue("BT-1101-01", Guete, Text("B500B"));
         database.ObjectValue("BT-1101-01", Guete, Text("B500B"));
         database.ObjectValue("BT-1101-01", "IDE-KAT-Bauteil_ID", Text("BT-1101-01"));
-        database.ObjectValue("BT-1101-01", "BAU-KAT-Bauteilnummer", Convert("Integer", null, "1101"));
         excel.Material("MB-1", "Beton", "Beton", null, null);
         database.Material("MB-1", "Beton", "Beton", null, null);
         database.MaterialValue("MB-1", "IDE-KAT-Material-ID", Text("MB-1"));
@@ -451,11 +450,28 @@ public sealed class LoadComparisonTests
 
         Assert.True(comparison.IsIdentical);
         Assert.All(comparison.Sections, section => Assert.Equal(ComparisonSectionKind.ByDesign, section.Kind));
-        Assert.Equal(
-            new[] { "BAU-KAT-Bauteilnummer: 1 object, BT-1101-01 “1101”", "IDE-KAT-Bauteil_ID: 1 object, BT-1101-01 “BT-1101-01”" },
-            Lines(comparison, "By design: what identifies an object"));
+        Assert.Equal(new[] { "IDE-KAT-Bauteil_ID: 1 object, BT-1101-01 “BT-1101-01”" }, Lines(comparison, "By design: what identifies an object"));
         Assert.Equal(new[] { "IDE-KAT-Material-ID: 1 material, MB-1 “MB-1”" }, Lines(comparison, "By design: what identifies a material"));
         Assert.Equal(new[] { "MP-9999-99-BET-0101 (no values)" }, Lines(comparison, "By design: global materials"));
+    }
+
+    // The Excel import fills them since 25.11.2026, so they're compared like any other value.
+    [Fact]
+    public void TheNumbersABauteilIdIsMadeOf_AreComparedLikeAnyOtherValue()
+    {
+        LoadedProjectBuilder excel = Excel(), database = Database();
+        foreach (string id in new[] { "BT-1101-01", "BT-1102-01" })
+        {
+            excel.ObjectValue(id, "BAU-KAT-Bauteilnummer", Convert("[integer]", "[-]", "1101"));
+            database.ObjectValue(id, "BAU-KAT-Bauteilnummer", Convert("Integer", null, id.Substring(3, 4)));
+        }
+        database.ObjectValue("BT-1101-01", "BAU-KAT-Bauteilunternummer", Convert("Integer", null, "1"));
+
+        LoadComparison comparison = LoadComparison.Of(excel.Build(), database.Build());
+
+        Assert.Equal(2, comparison.DifferenceCount);
+        Assert.Equal(new[] { "BT-1102-01 · BAU-KAT-Bauteilnummer: Excel “1101”, database “1102”" }, Lines(comparison, "Object values that differ"));
+        Assert.Equal(new[] { "BAU-KAT-Bauteilunternummer: 1 object, BT-1101-01 “1”" }, Lines(comparison, "Object values only in the database"));
     }
 
     [Fact]

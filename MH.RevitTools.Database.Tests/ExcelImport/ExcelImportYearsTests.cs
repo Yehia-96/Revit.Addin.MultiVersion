@@ -45,6 +45,21 @@ public sealed class ExcelImportYearsTests
     public void The2024Project_HasTheFile(string file) =>
         Assert.Contains("<Compile Include=\"" + file + "\" />", File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "AddinUpdate", "2024", "Revit.Addin.2024.csproj.txt")));
 
+    // A value of another kind than the parameter isn't written, or Parameter.SetMultiple throws and nothing of the run is: a
+    // Bauteilnummer that a family has as a text, or Revit's own "Typ".
+    [Theory]
+    [InlineData("2024")]
+    [InlineData("2026")]
+    [InlineData("2027")]
+    public void OnlyWhatFitsIsWritten(string year)
+    {
+        string text = Read(year, Path.Combine("Own", "SeedProjectElementsParameters.cs.txt"));
+
+        Assert.Equal(2, text.Split("ParamMetaData.ConvertValue(").Length);
+        Assert.Matches(@"ParamMetaData\.Fitting\(\s+parameter, ParamMetaData\.ConvertValue\(", text);
+        Assert.Contains("public static ParameterValue Fitting(", Read(year, Path.Combine("Own", "ParamMetaData.cs.txt")));
+    }
+
     // Revit's ReInsert takes a parameter, with its values, off the categories it isn't given. One place calls it, and gives it all.
     [Theory]
     [InlineData("SeedMaterialParameters.cs.txt")]

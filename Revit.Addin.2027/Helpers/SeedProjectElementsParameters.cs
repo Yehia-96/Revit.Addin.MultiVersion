@@ -146,8 +146,9 @@ namespace Revit.Addin._2027.Helpers
             // -------------------------------
             // PHASE 1B: BIND SHARED PARAMS TO NON-FAMILY CATEGORIES
             // -------------------------------
-            var requiredForOtherElements = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var otherCategorySet = app.Create.NewCategorySet();
+            // Per parameter, the categories of the elements that lack it. An element that has it, from another
+            // shared parameter file say, mustn't get a second one of that name: nobody could tell them apart.
+            var lackingCategories = new Dictionary<string, CategorySet>(StringComparer.OrdinalIgnoreCase);
 
             foreach (Element elem in otherElements)
             {
@@ -157,21 +158,28 @@ namespace Revit.Addin._2027.Helpers
                 if (!familyData.TryGetValue(bnKey, out var expectedParams))
                     continue;
 
+                Category category = elem.Category;
+                if (category == null || !category.AllowsBoundParameters)
+                    continue;
+
                 foreach (string paramName in expectedParams.Keys)
                 {
                     if (ExcelParser.ParametersToIgnore.Contains(paramName))
                         continue;
 
-                    if (parameterMeta.ContainsKey(paramName))
-                        requiredForOtherElements.Add(paramName);
-                }
+                    if (!parameterMeta.ContainsKey(paramName) || HasOwnParameter(elem, paramName))
+                        continue;
 
-                Category category = elem.Category;
-                if (category != null && category.AllowsBoundParameters)
-                {
+                    CategorySet lacking;
+                    if (!lackingCategories.TryGetValue(paramName, out lacking))
+                    {
+                        lacking = app.Create.NewCategorySet();
+                        lackingCategories.Add(paramName, lacking);
+                    }
+
                     try
                     {
-                        otherCategorySet.Insert(category);
+                        lacking.Insert(category);
                     }
                     catch (ArgumentException)
                     {
@@ -180,15 +188,14 @@ namespace Revit.Addin._2027.Helpers
                 }
             }
 
-            if (requiredForOtherElements.Count > 0 && otherCategorySet.Size > 0)
+            if (lackingCategories.Count > 0)
             {
                 int bound = BindParametersToCategories(
                     projectDoc,
                     app,
                     defsByName,
                     parameterMeta,
-                    requiredForOtherElements,
-                    otherCategorySet,
+                    lackingCategories,
                     notAdded);
 
                 parametersAdded += bound;
@@ -213,13 +220,44 @@ namespace Revit.Addin._2027.Helpers
             if (otherTuples.Count > 0)
                 ElementValueWriter.Write(projectDoc, "Apply Non-Family Parameter Values", otherTuples);
 
-            IEnumerable<string> notWritten = NotWritable(matchingElements, keyFormat, familyData, parameterMeta)
+            IEnumerable<string> notWritten = NotWritable(projectDoc, matchingElements, keyFormat, familyData, parameterMeta)
                 .Where(name => !notAdded.ContainsKey(name));
             return new ParameterRun(matchingElements.Count, parametersAdded, valuesWritten, notAdded.Values, notWritten);
         }
 
-        // The parameters an element has a value for in the workbook, and can't take: it lacks them, or has them read-only.
+        // The element's parameter of that name, the project's or the family's before Revit's own: in German, "Dicke"
+        // and "Typ" are Revit's too.
+        private static Parameter Find(Element element, string name)
+        {
+            Parameter parameter = element.LookupParameter(name);
+            if (parameter == null || IsOwn(parameter))
+                return parameter;
+            return element.GetParameters(name).FirstOrDefault(IsOwn) ?? parameter;
+        }
+
+        private static bool IsOwn(Parameter parameter)
+        {
+            var definition = parameter.Definition as InternalDefinition;
+            return definition == null || definition.BuiltInParameter == BuiltInParameter.INVALID;
+        }
+
+        private static bool HasOwnParameter(Element element, string name)
+        {
+            Parameter parameter = Find(element, name);
+            return parameter != null && IsOwn(parameter);
+        }
+
+        // The workbook's value as the parameter can take it; null when it can't.
+        private static ParameterValue ValueFor(Document projectDoc, Parameter parameter, ParamMetaData meta, string value)
+        {
+            return ParamMetaData.Fitting(
+                parameter, ParamMetaData.ConvertValue(projectDoc, meta.DataTypeRevit, value, meta.Unit), value);
+        }
+
+        // The parameters an element has a value for in the workbook, and can't take: it lacks them, or has them
+        // read-only or of another kind. A blank cell isn't a value; the Material-Bauteilliste's reader gives those too.
         private static IEnumerable<string> NotWritable(
+            Document projectDoc,
             IEnumerable<Element> elements,
             ExcelFormat keyFormat,
             Dictionary<string, Dictionary<string, string>> familyData,
@@ -233,14 +271,19 @@ namespace Revit.Addin._2027.Helpers
                 if (key == null || !familyData.TryGetValue(key, out row))
                     continue;
 
-                foreach (string name in row.Keys)
+                foreach (KeyValuePair<string, string> value in row)
                 {
-                    if (names.Contains(name) || ExcelParser.ParametersToIgnore.Contains(name) || !parameterMeta.ContainsKey(name))
+                    ParamMetaData meta;
+                    if (string.IsNullOrWhiteSpace(value.Value) || names.Contains(value.Key)
+                        || ExcelParser.ParametersToIgnore.Contains(value.Key) || !parameterMeta.TryGetValue(value.Key, out meta))
                         continue;
 
-                    Parameter parameter = element.LookupParameter(name);
-                    if (parameter == null || parameter.IsReadOnly)
-                        names.Add(name);
+                    Parameter parameter = Find(element, value.Key);
+                    if (parameter != null && !IsParameterEmpty(parameter) && ParamMetaData.AreValuesEqual(parameter, value.Value))
+                        continue;
+
+                    if (parameter == null || parameter.IsReadOnly || ValueFor(projectDoc, parameter, meta, value.Value) == null)
+                        names.Add(value.Key);
                 }
             }
             return names;
@@ -255,13 +298,13 @@ namespace Revit.Addin._2027.Helpers
             public bool IsIgnored(string parameterName) => ExcelParser.ParametersToIgnore.Contains(parameterName);
 
             public Parameter Find(Element element, string parameterName, ParamMetaData definition) =>
-                element.LookupParameter(parameterName);
+                SeedProjectElementsParameters.Find(element, parameterName);
 
             public bool NeedsValue(Parameter parameter, string value, ParamMetaData definition) =>
                 IsParameterEmpty(parameter) || !ParamMetaData.AreValuesEqual(parameter, value);
 
             public ParameterValue Convert(Document document, Parameter parameter, string value, ParamMetaData definition) =>
-                ParamMetaData.ConvertValue(document, definition.DataTypeRevit, value, definition.Unit);
+                ValueFor(document, parameter, definition, value);
         }
 
         private static int BindParametersToCategories(
@@ -269,21 +312,18 @@ namespace Revit.Addin._2027.Helpers
             RevitApp app,
             Dictionary<string, Definition> defsByName,
             Dictionary<string, ParamMetaData> parameterMeta,
-            IEnumerable<string> requiredParameterNames,
-            CategorySet categories,
+            IDictionary<string, CategorySet> categoriesByParameter,
             IDictionary<string, string> notAdded)
         {
-            if (requiredParameterNames == null || categories == null || categories.Size == 0)
-                return 0;
-
             int bound = 0;
 
             using (Transaction tx = new Transaction(projectDoc, "Bind shared parameters to categories"))
             {
                 tx.Start();
 
-                foreach (string name in requiredParameterNames)
+                foreach (KeyValuePair<string, CategorySet> required in categoriesByParameter)
                 {
+                    string name = required.Key;
                     if (string.IsNullOrWhiteSpace(name))
                         continue;
 
@@ -295,7 +335,7 @@ namespace Revit.Addin._2027.Helpers
 
                     ForgeTypeId groupId = meta.GroupNameRevit ?? GroupTypeId.General;
 
-                    BindingOutcome outcome = ProjectParameterBinder.Add(projectDoc, app, def, categories, groupId);
+                    BindingOutcome outcome = ProjectParameterBinder.Add(projectDoc, app, def, required.Value, groupId);
                     if (outcome == BindingOutcome.Added)
                         bound++;
 
@@ -420,7 +460,7 @@ namespace Revit.Addin._2027.Helpers
                 // Category already in set.
             }
 
-            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var names = new Dictionary<string, CategorySet>(StringComparer.OrdinalIgnoreCase);
             foreach (string name in requiredParameterNames ?? Array.Empty<string>())
             {
                 if (string.IsNullOrWhiteSpace(name))
@@ -428,13 +468,13 @@ namespace Revit.Addin._2027.Helpers
                 if (ExcelParser.ParametersToIgnore.Contains(name))
                     continue;
                 if (parameterMeta.ContainsKey(name))
-                    names.Add(name);
+                    names[name] = categorySet;
             }
 
             if (names.Count == 0)
                 return 0;
 
-            return BindParametersToCategories(projectDoc, app, defsByName, parameterMeta, names, categorySet, notAdded);
+            return BindParametersToCategories(projectDoc, app, defsByName, parameterMeta, names, notAdded);
         }
 
         /// <summary>

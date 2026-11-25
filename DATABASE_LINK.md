@@ -381,8 +381,8 @@ after Yehia has walked it.
   ([Modeller], [ET], -, TBT, empty) and the Bauteil_ID itself are never changes. Numbers are compared in
   Revit's units, converted from the database's unit as the Excel route converts them, so 0.3 m and 300 mm
   match. One change is one parameter of one object, however many elements carry its Bauteil_ID.
-  Bauteilnummer and Bauteilunternummer are values like any other (Yehia, 2026-11-23), although the Excel
-  import leaves them out; a family's own Bauteilnummer is another parameter, which the link never touches.
+  Bauteilnummer and Bauteilunternummer are values like any other (Yehia, 2026-11-23; since 2026-11-25 on the Excel route
+  too); a family's own Bauteilnummer is another parameter, which the link never touches.
 - What it shows:
   - The header: a dot and "Connected", "Not reachable", "Project not found", "Not set up" or "Not
     linked"; the database ("CADSQL · MH_Database · read-only"); "Checked 14:32 · every minute" or
@@ -449,7 +449,7 @@ after Yehia has walked it.
   waits, so nothing outdated goes in.
 - It never adds parameters or touches families and types, never writes placeholders, and never writes the
   Bauteil_ID, which the modellers enter by hand. It does fill Bauteilnummer and Bauteilunternummer (Yehia,
-  2026-11-23), which the Excel import leaves out.
+  2026-11-23), as the Excel import does since 2026-11-25.
 - A banner says what went in ("3 changes applied to 16 elements"), and what didn't and why. Undoing it
   takes the banner back and lists the changes again.
 - **Workshared models:** Apply borrows the elements from central first, all in one go. Those someone else
@@ -495,7 +495,7 @@ after Yehia has walked it.
   - **Parameters** by set, group and name (BAU-GEO-Dicke), as the two number them differently, and whether Revit
     takes them the same. One filed under another set on one side is still the same parameter, said once.
   - What's known to differ is listed apart and doesn't count: the columns the Excel reader leaves out
-    (Bauteil_ID, Bauteilnummer, Bauteilunternummer, a material's Material-ID), the fill pattern columns, global
+    (Bauteil_ID, a material's Material-ID; until 2026-11-25 also Bauteilnummer and Bauteilunternummer), the fill pattern columns, global
     materials, and parameters only the database's dictionary has.
   - What one side gives twice, differently, counts as a difference: only the first is compared.
   - What the Excel reader leaves out or questions (a repeated Bauteil_ID, a row without one, a material without a
@@ -1751,4 +1751,23 @@ Still open:
   5.3.1.0 now, ofcourse without the database link, when colleagues run more extensive tests I will report back here". Committed and pushed
   with this entry: the fixes on `release-5.3.0`, where 5.3.1.0 is released from, and the fixes and step 11 on `database-link`. The database
   session can commit its migration of step 11, and step 12's rows may go into dev once Yehia says so. The 35 tests that need LocalDB still
-  have to run before the merge on master.
+  have to run before the merge on master. A merge of `release-5.3.0` has one conflict, in 2027's `SeedProjectElementsParameters.cs`, where
+  `database-link`'s own version is the right one.
+- **2026-11-25, the Excel import fills Bauteilnummer and Bauteilunternummer** (Yehia, before releasing 5.3.1.0: "I noticed the tool doesnt fcreate
+  bauteilknummer and bauteilunternummer and so they dont get written into the obejcts", then "Yes, fill them"). Both were left out since the two
+  of them were the key; since 2026-11-12 that's the Bauteil_ID. In both folders, all three years. Walked by Yehia the same day ("It works")
+  and committed with this entry, on both branches, as part of what's released as 5.3.1.0.
+  - For the Planungsdatenbank only, they're parameters like any other now: whole numbers, made in the shared parameter file, added, and written.
+    The old Material-Bauteilliste, whose key Bauteilnummer is, and Bauteil_ID stay as they are. An element's own Bauteilnummer gets the Excel's
+    number, also as a text.
+  - A value of another kind than the model's parameter is skipped and named; Revit's notes don't say whether it would have been ignored or
+    have stopped the whole run. A project's own parameter goes before Revit's of the same name ("Dicke", "Typ" in German).
+  - Walls, floors and the like get a parameter only where they lack it, so a model that has Bauteilnummer from another shared parameter file
+    doesn't get a second one.
+  - Compare with Excel compares both. With the real workbook (a copy) and dev's kept pull, BT-1101-01's are the same, and "what identifies an
+    object" has the Bauteil_ID only.
+  - 804 tests pass; the new parts were broken on purpose, and a test failed each time. All three years are compiled in both folders. A second C#
+    review, reading the code only, found no blocker; taken up: the project's own parameter first, and blank cells of the old workbook
+    aren't named as not written. Not tried in Revit. Deployed (Debug) to both 2027 add-in folders on Yehia's PC ("Yes, install it"), Revit closed.
+  - Walk: BT-1101-01 on a Generic Model without the two numbers: Add Parameters adds and fills them (1101 and 1). On one that has another
+    Bauteilnummer: it gets 1101. A new shared parameter file has both, as whole numbers.

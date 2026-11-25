@@ -30,8 +30,8 @@ namespace MH.RevitTools.Database.Changes
         private const string NoAnswer = "Revit gave no answer for it";
 
         // What identifies an element: the key the elements are matched by, in both spellings. The numbers it's
-        // made of (Bauteilnummer, Bauteilunternummer) are values like any other (Yehia, 2026-11-23), although the
-        // Excel route leaves them out.
+        // made of (Bauteilnummer, Bauteilunternummer) are values like any other (Yehia, 2026-11-23), as on the Excel
+        // route.
         private static readonly HashSet<string> IdentityNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "Bauteil_ID", "Bauteil-ID",
