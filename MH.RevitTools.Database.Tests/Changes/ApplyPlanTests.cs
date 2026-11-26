@@ -45,6 +45,19 @@ public sealed class ApplyPlanTests
         Assert.Equal("C16/20", Assert.Single(material.Values).Value);
     }
 
+    // Two objects that share a Bauteil-ID, one note typed in Studio, one imported: the views give them in any order.
+    [Fact]
+    public void AValueThatDiffersOnlyInHowALineBreakIsWritten_IsStillTheListedOne()
+    {
+        LinkProjectData listed = Data("Zeile 1\r\nZeile 2"), now = Data("Zeile 1\nZeile 2"), changed = Data("Zeile 1\nZeile 3");
+
+        ApplyPlan plan = ApplyPlan.For(now, Listed(listed).Groups);
+
+        Assert.Equal(0, plan.Outdated);
+        Assert.Equal("Zeile 1\r\nZeile 2", plan.Objects.Single(o => o.Key == "BT-1101-01").Values.Single(v => v.Parameter == UlmData.Guete).Value);
+        Assert.Equal(1, ApplyPlan.For(changed, Listed(listed).Groups).Outdated);
+    }
+
     [Fact]
     public void OnlyTheListedElements_GetTheListedValues()
     {

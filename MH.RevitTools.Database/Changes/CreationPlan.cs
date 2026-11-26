@@ -81,7 +81,7 @@ namespace MH.RevitTools.Database.Changes
                 LinkParameter parameter;
                 string value = candidates.First().Value ?? "";
                 if (parameters.TryGetValue(candidates.Key, out parameter)
-                    && candidates.Select(candidate => (candidate.Value ?? "").Trim()).Distinct(StringComparer.Ordinal).Count() == 1
+                    && candidates.Select(candidate => candidate.Value).Distinct(SameText.Comparer).Count() == 1
                     && ApplyPlan.MayWrite(parameter, value, true))
                     yield return new PlannedValue(parameter, value);
             }

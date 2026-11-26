@@ -2,9 +2,13 @@
 --
 -- Since 2026-11-19 the views live in Studio's migration AddRevitLink (ProjectsApp, Database.Data,
 -- AddRevitLink.ViewBatches), which is their one source; the last one, revit.ObjectMaterials, since
--- 2026-11-24 in AddRevitObjectMaterials (its View). This copy lets the add-in's tests build the
+-- 2026-11-24 in AddRevitObjectMaterials (its View), and revit.MaterialValues since 2026-11-25 in
+-- AddRevitMaterialFields (its View). This copy lets the add-in's tests build the
 -- same views on stand-in tables with known rows (Link/StandInTables.sql). When a migration changes a
 -- view, change it here the same way. The tests over dev MH_Database read the real views instead.
+--
+-- Not followed yet: revit.ObjectValues of AddObjectReinforcement and AddObjectMainProduct (Studio's steps
+-- 17 and 18, 2026-11-25), which read tables of Studio's own and leave the view's columns as they are.
 --
 -- The add-in reads exactly the columns below, by name; extra columns are ignored. The views:
 --   - build Bauteil-IDs and Material-IDs the way Studio's BauteilIds.Format and MaterialIds.Format do;
@@ -95,7 +99,11 @@ CROSS APPLY (SELECT UPPER(LTRIM(RTRIM(mc.Code)))
                     + N'-' + UPPER(LTRIM(RTRIM(mg.Code))) + N'-' + FORMAT(m.MaterialNumber, '0000') AS MaterialId) id
 WHERE id.MaterialId IS NOT NULL;
 GO
--- One value of one parameter on one material of a project.
+-- One value of one parameter on one material of a project. First the values of the material's group,
+-- then its own fields: the codes as they stand in the Material-ID, everything else as it is stored (Note
+-- with its line breaks), the numbers plain. A blank field has no row. The parameters of the own fields are
+-- found by their number, and for those only the own field counts. Who/when of a field: the newest history
+-- row of the Material. The global materials stay out, as revit.Materials has only a project's own.
 CREATE OR ALTER VIEW revit.MaterialValues AS
 SELECT mat.ProjectId,
        mat.MaterialId,
@@ -106,11 +114,44 @@ SELECT mat.ProjectId,
 FROM dbo.MaterialParameterValues v
 JOIN revit.Materials mat ON mat.MaterialKey = v.MaterialId
 JOIN revit.Parameters rp ON rp.ParameterId = v.ParameterId
+JOIN dbo.Parameters p ON p.ParameterId = v.ParameterId
 OUTER APPLY (SELECT TOP (1) a.OccurredAtUtc, a.UserDisplay
              FROM dbo.AuditLogs a
              WHERE a.EntityName = N'MaterialParameterValue'
                AND a.EntityKey = CONCAT(v.MaterialId, N'|', v.ParameterId)
-             ORDER BY a.AuditLogId DESC) h;
+             ORDER BY a.AuditLogId DESC) h
+WHERE ISNULL(p.Code, N'') NOT IN (N'00031', N'00032', N'00033', N'00036', N'00037', N'00038',
+                                  N'00039', N'00040', N'00041', N'00042', N'00043', N'00044')
+UNION ALL
+SELECT mat.ProjectId,
+       mat.MaterialId,
+       rp.ParameterId,
+       f.Value,
+       h.OccurredAtUtc,
+       h.UserDisplay
+FROM revit.Materials mat
+JOIN dbo.Materials m ON m.MaterialId = mat.MaterialKey
+JOIN dbo.MaterialCategories mc ON mc.MaterialCategoryId = m.MaterialCategoryId
+OUTER APPLY (SELECT TOP (1) a.OccurredAtUtc, a.UserDisplay
+             FROM dbo.AuditLogs a
+             WHERE a.EntityName = N'Material'
+               AND a.EntityKey = CAST(m.MaterialId AS nvarchar(20))
+             ORDER BY a.AuditLogId DESC) h
+CROSS APPLY (VALUES (N'00031', mat.MaterialId),
+                    (N'00032', UPPER(LTRIM(RTRIM(mc.Code)))),
+                    (N'00033', mc.Name),
+                    (N'00036', UPPER(LTRIM(RTRIM(mat.MaterialGroupCode)))),
+                    (N'00037', mat.MaterialGroup),
+                    (N'00038', CAST(m.MaterialNumber AS nvarchar(20))),
+                    (N'00039', CAST(m.LegacyNumber AS nvarchar(20))),
+                    (N'00040', m.Name),
+                    (N'00041', m.AlternativeName),
+                    (N'00042', m.Designation),
+                    (N'00043', m.Note),
+                    (N'00044', m.Norm)) f (Code, Value)
+JOIN dbo.Parameters p ON p.Code = f.Code
+JOIN revit.Parameters rp ON rp.ParameterId = p.ParameterId
+WHERE DATALENGTH(LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(f.Value, NCHAR(9), N' '), NCHAR(10), N' '), NCHAR(13), N' ')))) > 0;
 GO
 -- The change stamp. Studio adds a history row with every change it saves, so the number of rows moves
 -- with every committed change, whatever order transactions commit in; the newest id alone could miss

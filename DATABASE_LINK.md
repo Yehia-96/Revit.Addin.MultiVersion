@@ -21,8 +21,8 @@ connection file is built into the add-in, and Revit asks each person once for th
 The add-in's half is built and committed; Yehia walks it once the office can be reached. The database session's half is
 prepared; CADSQL can't be reached for now, so the login isn't made yet.** Step 10 (create missing materials, set fill patterns)
 is done: built, committed and walked on 2026-11-25. Step 11 (assign materials) is done: built, walked and committed on 2026-11-25.
-**Step 12 (fill the material's own fields) is planned; it needs more rows from the database session.** Versions 5.3.0.0 and 5.3.1.0 (fixes
-of the Excel import) were released on 2026-11-25 without the link.
+Step 12 (fill the material's own fields) is done: built, walked and committed on 2026-11-26. Versions 5.3.0.0 and 5.3.1.0 (fixes of the Excel import)
+were released on 2026-11-25 without the link.
 
 The live link from the MH database into Revit, inside the "Parameter Tools" add-in (MH.RevitTools),
 in `Revit.Addin.2027` only. It only reads from the database. This file holds the plan, the status, and
@@ -733,29 +733,29 @@ sets their fill patterns. This step does the same from the database. It needs no
   9. With a workshared model and a second user: what the other one has borrowed isn't touched.
 
 ### 12. Fill the material's own fields
-Planned on 2026-11-25, nothing built. Yehia: "only the parameters that live under "Values of group (BET for exmaple)" in Studio that gets
+Planned and built on 2026-11-25, walked on 2026-11-26 ("Yes working fine commit and push"). Yehia: "only the parameters that live under "Values of group (BET for exmaple)" in Studio that gets
 its values added, Materil group, category, Material standard materila number materila numbner2 and name 2 do not"; and, asked whether the
 link should fill these too: "Yes it should, so plan it".
 - **What:** twelve parameters of materials: Material-ID, Materialkategorie-ID, Materialkategorie, Materialgruppen-ID, Materialgruppe,
   Materialnummer, Materialnummer2, Materialname, Materialname2, Bezeichnung, Bemerkung, Materialnorm. All are in the dictionary with Target
   Material, so Check parameters has them already.
-- **It needs** more rows of `revit.MaterialValues` ("Needs from the database", item 7). No new view and no new column: the add-in as it is
-  lists and applies them as soon as they come. An add-in with step 12 works without them too; it just doesn't fill these fields.
+- **It needs** more rows of `revit.MaterialValues` ("Needs from the database", item 7), in dev since 2026-11-25. No new view and no new column: the
+  add-in as it is lists and applies them as soon as they come. An add-in with step 12 works without them too; it just doesn't fill these fields.
   - So the rows go into dev only after step 11's walk. Otherwise the pane lists about 400 more changes during it. (Walked on 2026-11-25, so
     they may go in.)
 - **As with the material's other values:** the pane lists them on the material's card, with who last changed the material and when; Apply
   writes them; Create… fills them in what it creates. A field that's blank in Studio leaves the model's as it is, a placeholder is under
   "Not applied", and so is a parameter the model doesn't have, until Check parameters has added it.
 - The Excel import fills all of them but the Material-ID, which it only uses to tell the rows apart.
-- **What's to build here:**
-  1. The tests' copy of the view, the stand-in columns, and LocalDB tests: every field, a blank one, one row per material and parameter, who
-     and when, the stamp.
-  2. Line breaks: Studio's Note can have several lines. Texts that differ only in the kind of line break are the same, in the pane's
-     list and Apply (`RevitValues.IsSame`) and in Compare with Excel (`LoadedValue.IsSameAs`): one rule, in the library. Whether Revit
-     keeps the lines in a text parameter, the walk shows.
+- **What was to build here:**
+  1. The tests' copy of the view, word for word, the stand-in columns, and LocalDB tests (`MaterialFieldsTests`): every field, a blank one,
+     one row per material and parameter, who and when, the stamp. One over dev, too.
+  2. Line breaks: Studio's Note can have several lines. Texts that differ only in how a line break is written are the same (`SameText`, in
+     the library): in the pane's list and Apply (`RevitValues.IsSame`), between objects that share a Bauteil-ID, in Create… and in
+     Compare with Excel. Whether Revit keeps the lines in a text parameter, the walk shows.
   3. Nothing else: the kept pulls keep their layout, and Compare with Excel knows the Material-ID as "By design" already.
-- **How much:** about 400 rows for dev's 1761 if its 38 materials say what the workbook says (Bezeichnung 15, Bemerkung 16, Materialnorm 23). The
-  pane shows the first 300 changes; Apply all applies all.
+- **How much:** 396 rows in dev's 1761, for its 38 materials (Bezeichnung 15, Bemerkung 16, Materialnorm 23), beside the 109 values of the groups. All
+  say TheAdmin, 2026-11-11 20:47 UTC, until someone changes a material. The pane shows the first 300 changes; Apply all applies all.
 - **Not part of it:**
   - Projekt-ID, Projektnummer and Projektunternummer, which the workbook also has on its material sheet: in the dictionary they're
     parameters of Generic Models, so a material doesn't have them.
@@ -765,12 +765,13 @@ link should fill these too: "Yes it should, so plan it".
     the same one; not planned.
 - **Walk** (dev, the linked test model of 1761), once the rows are in dev:
   1. Check parameters: all twelve are there, or it adds the missing ones.
-  2. The materials' cards list the fields. Apply all. In Revit's Materials, 11-Beton, C12/15 has them, and nothing is listed again. Ctrl+Z
-     takes them back.
+  2. The materials' cards list the fields. Apply all. In Revit's Materials, 11-Beton, C12/15 has ten of them (it has no Bezeichnung and no
+     Bemerkung), and nothing is listed again. Ctrl+Z takes them back.
   3. Delete a material in Revit's Materials; Create… makes it with these fields.
   4. In Studio, change a material's Material standard: within a minute it's listed, with your name. Apply. Clear it: nothing is listed, and the
      model keeps its value.
-  5. A Note of two lines: Apply, and it isn't listed again.
+  5. A Note of two lines (Products → Materials → a material → Note takes Enter): Apply, and it isn't listed again. In Revit the material's
+     Bemerkung shows both.
   6. Rename a material group in Studio: its materials list the new Materialgruppe. Put it back.
   7. Compare with Excel: of "Material values only in the Excel", only Projekt-ID, Projektnummer and Projektunternummer are left (114 of 472), as
      far as Studio's materials say what the sheet says.
@@ -787,7 +788,7 @@ the final product as the latest commit".
   files, as it has the released changes already.
 - It isn't a release. That stays Yehia's, with a version above 5.3.0.0, and only once `Test-RevitLogin.ps1` said "All right" and step 9
   is walked.
-- Step 12 came up the same day. Whether the merge waits for it is Yehia's to say.
+- Step 12 came up the same day, and is built. Whether the merge waits for its walk is Yehia's to say.
 
 **Later (phase 3, not now):**
 - auto-apply when Revit is idle
@@ -939,12 +940,38 @@ and both are tested together. Details: REVIT_LINK.md, "The material of each obje
   imported.
 - **Dev's LocalDB can get stuck after Revit has closed:** a server process that Revit started blocked every new start on
   2026-11-25. The database session clears it; this session never stops LocalDB.
+- It's committed there since 2026-11-25 (c7e93f8).
+
+**The material's own fields (2026-11-25),** more rows of `revit.MaterialValues`, from the Studio migration
+`20261125130234_AddRevitMaterialFields` (ProjectsApp, the add-in's step 12). In dev MH_Database since 2026-11-25, after a backup; not committed there
+yet, and it goes out with the same Studio release as the others. Details: REVIT_LINK.md, "A material's own fields".
+- **It's what item 7 asks for;** nothing had to be built differently. Only this view changed; its six columns and their types are the same.
+- A field of spaces, tabs or line breaks alone has no row. Nothing is trimmed but the two codes, which stand as in the Material-ID. A group's value
+  whose parameter has no number stays as it was.
+- Dev's 1761: 38 materials, each with a Materialnummer2 and a Materialname2; 15 have a Bezeichnung, 16 a Bemerkung (none with several lines), 23 a
+  Materialnorm, as in the workbook. 505 rows, one per material and parameter: 396 of these, and the 109 there were.
+- A Note typed in Studio has CR LF; from a cell of the Excel it would be LF.
+
+**Studio's steps 17 and 18 (2026-11-25),** which Yehia asked for and which aren't from "Needs from the database". The add-in has nothing to build: both
+change `revit.ObjectValues` only, whose six columns stay. Not in dev and not committed there yet; Studio's next start applies both. Details: REVIT_LINK.md,
+"The Betonstahl of an object" and "The product values of an object".
+- **Step 17** (`20261125160255_AddObjectReinforcement`): 00114, 00115 and 00116 come from the object's Betonstahl, a material picked on its Material tab.
+- **Step 18** (`20261125164723_AddObjectMainProduct`): 28 values (the 26 PRI ones, 00004 Produkt-ID, 00055 Firmen-ID) come from the object's main
+  product. 00019 (PRI-MAT Material-ID) is one of them; 00031 is as it was.
+- Rows like any other: one per object and parameter, at most 2,000 characters, none for a blank one; numbers plain, dates 2028-06-30, yes/no true/false.
+  An object without a Betonstahl or a main product is as before.
+- A row can also go, when the product or the Betonstahl is taken away: the same as a value removed in Studio, so the model keeps its own.
+- Who and when say who set the Betonstahl, or gave or marked the main product. Editing the steel or the product shows at once, and the stamp moves.
+- **The tests' copy of `revit.ObjectValues` doesn't follow them yet.** It's to, once they're committed there; they read tables of Studio's own.
+- To see it in Revit, once they're in dev (linked model of 1761): BT-1101-01 → Material → Betonstahl → 51-Betonstabstahl lists nothing, as the values
+  are the same; with the steel's Güte set to B500A, Betonstahl Güte is listed. 1761 → Products → Add product → Pfuhler Rinne, then ET-2101-01 → Products
+  → Add → Pfuhler Rinne lists its product values.
 
 ## Needs from the database
 
 *Final version, 2026-11-19. Items 1, 2 and 3 are built and the questions are answered (see "What the
 database session built"). Item 4 is prepared and waits for CADSQL (2026-11-24), item 5 isn't wanted for now, item 6 is built
-and in dev (2026-11-24), and item 7 is asked for (2026-11-25).*
+and in dev (2026-11-24), and so is item 7 (2026-11-25).*
 
 **What the link needs, in order**
 1. **Now: the `revit` views.** The SQL is ready in the add-in repo (branch `database-link`):
@@ -994,8 +1021,8 @@ and in dev (2026-11-24), and item 7 is asked for (2026-11-25).*
    - Setting, changing and clearing an object's material, also by the import, has to move the change stamp.
    - Please say whether the Material-ID and Materialnummer values on objects, from before Studio's step 8b, are to stay.
      The add-in ignores them from then on. (Answered: none come any more, see "What the database session built".)
-7. **For step 12 (asked for on 2026-11-25): the material's own fields, as more rows of `revit.MaterialValues`.** The view gives what Studio shows
-   under "Values of group"; these are the fields above that. The columns stay (ProjectId, MaterialId, ParameterId, Value, ChangedAtUtc,
+7. **For step 12 (asked for and built on 2026-11-25): the material's own fields, as more rows of `revit.MaterialValues`.** The view gave what Studio
+   shows under "Values of group"; these are the fields above that. The columns stay (ProjectId, MaterialId, ParameterId, Value, ChangedAtUtc,
    ChangedBy). In a migration of its own, whose Down puts the present view back. No other view, no procedure and no grant changes.
 
    | Parameter | | Value |
@@ -1780,3 +1807,15 @@ Still open:
   - On Yehia's word ("Yes, to master...bring back the linjk on my pc and give me the prompt for step 12 for teh database session to proceed"): master is
     the released state (c4df996), three commits forward; the link's build is back on Yehia's PC (2027, Debug, says
     5.3.1.0, all 58 files as built in both add-in folders); and the prompt for step 12 is given again, now with the go-ahead for dev.
+- **2026-11-25, step 12 built** (the database session's answer to item 7, which Yehia brought: "And I the database session is done with step 12"), as described
+  there, with the answers about Studio's steps 17 and 18. Nothing didn't fit. The copy of the view here is the migration's, word for word.
+  - Over the real workbook (a copy) and a copy of dev's kept pull with rows like the view's, made up as the pull is older than they are: of "Material values
+    only in the Excel" only Projekt-ID, Projektnummer and Projektunternummer are left for every material, and the Material-ID is "By design". The pane
+    was drawn off screen with those 396 changes, and with a note of two lines.
+  - 825 tests pass, and the new rule was broken on purpose wherever it's used: a test failed each time. The 44 that need LocalDB, nine of them new,
+    weren't run from here; the scripts' syntax was checked with SQL Server's own parser. One of them was broken since step 11 (it inserted a material
+    number the stand-in tables have since) and is corrected. The library is built for both frameworks, all three years are compiled.
+  - A C# review, reading the code and the SQL only, found nothing serious. Taken up: Apply's "still the same" check uses the same rule.
+  - Deployed (Debug) to both 2027 add-in folders on Yehia's PC, Revit closed. Not tried in Revit. Yehia: "Yes install it so I can do a full walk
+    and I will do the powershell test tomorrow" (the LocalDB tests, on 2026-11-26).
+- **2026-11-26, step 12 walked and committed:** Yehia: "Yes working fine commit and push". The 44 tests that need LocalDB are still to run (Yehia).

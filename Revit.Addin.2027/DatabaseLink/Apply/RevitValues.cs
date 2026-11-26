@@ -98,7 +98,7 @@ namespace Revit.Addin._2027.DatabaseLink.Apply
         public static bool IsSame(Parameter target, ParameterValue wanted)
         {
             if (wanted is StringParameterValue text)
-                return string.Equals((target.AsString() ?? "").Trim(), text.Value, StringComparison.Ordinal);
+                return SameText.Is(target.AsString(), text.Value);
             if (!target.HasValue)
                 return false;
             if (wanted is IntegerParameterValue number)

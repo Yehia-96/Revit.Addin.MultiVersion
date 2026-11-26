@@ -12,7 +12,7 @@ CREATE TABLE dbo.ParameterGroups (ParameterGroupId int NOT NULL PRIMARY KEY, Cod
 CREATE TABLE dbo.Parameters (
     ParameterId int NOT NULL PRIMARY KEY, Name nvarchar(200) NOT NULL, DataType nvarchar(max) NOT NULL,
     Unit nvarchar(max) NOT NULL, ParameterSetId int NULL, ParameterGroupId int NULL, RevitCategory nvarchar(50) NULL,
-    SharedParameterGuid uniqueidentifier NOT NULL, RevitName nvarchar(250) NULL);
+    SharedParameterGuid uniqueidentifier NOT NULL, RevitName nvarchar(250) NULL, Code nvarchar(5) NULL);
 CREATE TABLE dbo.ProjectObjectParameters (
     ProjectId int NOT NULL, ObjectEntityId int NOT NULL, ParameterId int NOT NULL, Value nvarchar(2000) NOT NULL);
 CREATE TABLE dbo.MaterialCategories (
@@ -23,7 +23,8 @@ CREATE TABLE dbo.RevitAppearances (
     RevitAppearanceId int NOT NULL PRIMARY KEY, SurfacePattern nvarchar(100) NULL, CutPattern nvarchar(100) NULL);
 CREATE TABLE dbo.Materials (
     MaterialId int NOT NULL PRIMARY KEY, Name nvarchar(200) NOT NULL, ProjectId int NULL, MaterialCategoryId int NULL,
-    MaterialGroupId int NULL, MaterialNumber int NULL, RevitAppearanceId int NULL);
+    MaterialGroupId int NULL, MaterialNumber int NULL, RevitAppearanceId int NULL, LegacyNumber int NULL,
+    AlternativeName nvarchar(200) NULL, Designation nvarchar(200) NULL, Note nvarchar(max) NULL, Norm nvarchar(200) NULL);
 CREATE TABLE dbo.MaterialParameterValues (
     MaterialId int NOT NULL, ParameterId int NOT NULL, ProjectId int NULL, Value nvarchar(max) NULL);
 CREATE TABLE dbo.ProjectObjects (
@@ -47,7 +48,7 @@ INSERT dbo.Objects VALUES
     (72, N'Stütze', 2, 1104, 1);                 -- BT-1104-01, made of another project's material
 INSERT dbo.ParameterSets VALUES (1, N'BAU'), (2, N'MAT');
 INSERT dbo.ParameterGroups VALUES (1, N'GEO'), (2, N'BES');
-INSERT dbo.Parameters VALUES
+INSERT dbo.Parameters (ParameterId, Name, DataType, Unit, ParameterSetId, ParameterGroupId, RevitCategory, SharedParameterGuid, RevitName) VALUES
     (61, N'Dicke', N'Double', N'm', 1, 1, N'Allgemeines Modell',
         '3f1c2a6e-8b4d-4c1e-9a7f-61d1c4e0a061', NULL),                     -- no Revit name yet: the plain name
     (140, N'Bezeichnung', N'String', N'', 2, 2, N'Material',
@@ -67,7 +68,7 @@ INSERT dbo.MaterialCategories VALUES
     (4, N'MP', N'Produkt', 0, 9999, 99);
 INSERT dbo.MaterialGroups VALUES (1, N'BET', N'Beton');
 INSERT dbo.RevitAppearances VALUES (1, NULL, N'Ortbeton - bewehrt');
-INSERT dbo.Materials VALUES
+INSERT dbo.Materials (MaterialId, Name, ProjectId, MaterialCategoryId, MaterialGroupId, MaterialNumber, RevitAppearanceId) VALUES
     (123, N'31-Beton, C35/45', 13, 1, 1, 31, 1),    -- MB-1761-01-BET-0031
     (124, N'Produkt', NULL, 4, 1, 7, NULL),         -- a global product: in no project's data
     (125, N'1-Beton', 1, 1, 1, 1, NULL),            -- another project's

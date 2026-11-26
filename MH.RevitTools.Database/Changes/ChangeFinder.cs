@@ -142,7 +142,7 @@ namespace MH.RevitTools.Database.Changes
         private static string FromText(IReadOnlyCollection<string> modelTexts)
         {
             List<string> distinct = modelTexts.Select(text => string.IsNullOrWhiteSpace(text) ? "" : text.Trim())
-                .Distinct(StringComparer.Ordinal).ToList();
+                .Distinct(SameText.Comparer).ToList();
             if (distinct.Count > 1)
                 return distinct.Count.ToString(CultureInfo.InvariantCulture) + " different values";
             return distinct.Count == 0 || distinct[0].Length == 0 ? "(empty)" : distinct[0];
@@ -458,7 +458,7 @@ namespace MH.RevitTools.Database.Changes
 
                     // Several values under one ID, as when two objects share a Bauteil_ID: nothing says which one
                     // is meant, so none goes in, and Apply never goes back and forth between them.
-                    if (candidates.Select(value => value.Value.Trim()).Distinct(StringComparer.Ordinal).Count() > 1)
+                    if (candidates.Select(value => value.Value).Distinct(SameText.Comparer).Count() > 1)
                     {
                         _notApplied.Conflict(key, target == LinkTarget.Material, parameter);
                         continue;

@@ -304,6 +304,33 @@ public sealed class ChangeFinderTests
         Assert.DoesNotContain(model.Asked, asked => asked.ParameterId == UlmData.Guete.ParameterId);
     }
 
+    // One typed in Studio, the other imported from the Excel.
+    [Fact]
+    public void ObjectsThatShareABauteilId_AndDifferOnlyInHowALineBreakIsWritten_Agree()
+    {
+        LinkProjectData data = UlmData.With(1, new[]
+        {
+            UlmData.Value("ET-2101-01", UlmData.Guete, "Zeile 1\r\nZeile 2"),
+            UlmData.Value("et-2101-01", UlmData.Guete, "Zeile 1\nZeile 2"),
+        });
+
+        ChangeReport report = Find(data, new FakeModel().Has(1, UlmData.Guete, ""), new[] { new ModelElement(1, "ET-2101-01", null) });
+
+        Assert.Empty(report.NotApplied);
+        Assert.Equal("Zeile 1\r\nZeile 2", Assert.Single(Assert.Single(report.Groups).Rows).Value);
+    }
+
+    [Fact]
+    public void ElementsThatDifferOnlyInHowALineBreakIsWritten_HaveOneValue()
+    {
+        LinkProjectData data = UlmData.With(1, new[] { UlmData.Value("ET-2101-01", UlmData.Guete, "neu") });
+        var model = new FakeModel().Has(1, UlmData.Guete, "Zeile 1\r\nZeile 2").Has(2, UlmData.Guete, "Zeile 1\nZeile 2");
+
+        ChangeReport report = Find(data, model, new[] { new ModelElement(1, "ET-2101-01", null), new ModelElement(2, "ET-2101-01", null) });
+
+        Assert.Equal("Zeile 1\r\nZeile 2", Assert.Single(Assert.Single(report.Groups).Rows).From);
+    }
+
     [Fact]
     public void MaterialsOfTheSameName_OnlyTheFirstIsUsed()
     {

@@ -116,6 +116,22 @@ public sealed class LoadComparisonTests
         Assert.False(Text("0.3").IsSameAs(null));
     }
 
+    // A note typed in Studio has CR LF, a cell of the workbook LF.
+    [Fact]
+    public void ALineBreak_IsTheSame_HoweverItsWritten()
+    {
+        LoadedProjectBuilder excel = Excel(), database = Database();
+        excel.Material("MB-1", "Beton", "Beton", null, null);
+        database.Material("MB-1", "Beton", "Beton", null, null);
+        excel.MaterialValue("MB-1", "MAT-BES-Bemerkung", Text("Zeile 1\nZeile 2"));
+        database.MaterialValue("MB-1", "MAT-BES-Bemerkung", Text("Zeile 1\r\nZeile 2"));
+
+        LoadComparison comparison = LoadComparison.Of(excel.Build(), database.Build());
+
+        Assert.True(comparison.IsIdentical);
+        Assert.False(Text("Zeile 1\nZeile 2").IsSameAs(Text("Zeile 1 Zeile 2")));
+    }
+
     [Fact]
     public void WhatTheExcelReaderLeftOut_IsSaid_SoNothingIsCalledIdenticalThatWasntCompared()
     {

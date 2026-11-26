@@ -112,7 +112,7 @@ namespace MH.RevitTools.Database.Changes
                     string now;
                     if (!parameters.TryGetValue(row.ParameterId, out parameter)
                         || !current.TryGetValue(KeyOf(group.Key, row.ParameterId), out now)
-                        || !string.Equals(now, row.Value, StringComparison.Ordinal))
+                        || !SameText.Is(now, row.Value))
                     {
                         outdated++;
                         continue;

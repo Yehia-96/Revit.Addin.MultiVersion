@@ -128,6 +128,16 @@ public sealed class MissingMaterialsTests
     }
 
     [Fact]
+    public void Create_TakesValuesThatDifferOnlyInHowALineBreakIsWritten_AsOne()
+    {
+        LinkProjectData data = Data(new[] { Beton }, Value(Beton, UlmData.Festigkeit, "Zeile 1\r\nZeile 2"), Value(Beton, UlmData.Festigkeit, "Zeile 1\nZeile 2"));
+
+        PlannedMaterial planned = Assert.Single(CreationPlan.For(data, Find(data).MissingMaterials).Materials);
+
+        Assert.Equal("Zeile 1\r\nZeile 2", Assert.Single(planned.Values).Value);
+    }
+
+    [Fact]
     public void Create_LeavesOut_WhatApplyWouldLeaveOut()
     {
         var other = new LinkParameter(500, Guid.Empty, "Ohne GUID", "MAT", "BET", "Ohne GUID", "String", null, LinkTarget.Material, new[] { "OST_Materials" });

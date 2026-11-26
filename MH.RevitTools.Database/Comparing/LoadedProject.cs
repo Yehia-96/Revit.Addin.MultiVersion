@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using MH.RevitTools.Database.Changes;
 
 namespace MH.RevitTools.Database.Comparing
 {
@@ -126,7 +127,7 @@ namespace MH.RevitTools.Database.Comparing
             if (other == null)
                 return false;
             if (!Number.HasValue || !other.Number.HasValue)
-                return string.Equals(Text, other.Text, StringComparison.Ordinal);
+                return SameText.Is(Text, other.Text);
 
             double mine = Number.Value, theirs = other.Number.Value;
             if (IsWhole(mine) && IsWhole(theirs))

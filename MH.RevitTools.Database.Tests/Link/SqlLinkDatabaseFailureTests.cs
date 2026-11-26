@@ -42,7 +42,8 @@ public sealed class SqlLinkDatabaseFailureTests
         using var database = StandIn();
         database.Execute(
             "INSERT dbo.MaterialGroups VALUES (2, N' ', N'Ohne Code');"
-            + " INSERT dbo.Materials VALUES (126, N'Ohne Gruppe', 13, 1, 2, 5, NULL);");
+            + " INSERT dbo.Materials (MaterialId, Name, ProjectId, MaterialCategoryId, MaterialGroupId, MaterialNumber)"
+            + " VALUES (130, N'Ohne Gruppe', 13, 1, 2, 5);");
         var link = new SqlLinkDatabase(database.Settings);
 
         // Studio trims the code to nothing and keeps the material: MB-1761-01--0005.

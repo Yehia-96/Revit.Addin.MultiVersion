@@ -118,6 +118,30 @@ public sealed class SqlLinkDatabaseLocalMhTests
         Assert.All(data.MaterialValues, v => Assert.Contains(data.Materials, m => m.MaterialId == v.MaterialId));
     }
 
+    // Step 12: among its values, each material's own fields.
+    [Fact]
+    public void MaterialValues_HaveTheMaterialsOwnFields_OnceEach()
+    {
+        LinkProjectData data = Database.GetProjectData(Ulm.ProjectId);
+        string Value(LinkMaterial material, string setCode, string groupCode, string name)
+        {
+            LinkParameter parameter = data.Parameters.Single(p => p.SetCode == setCode && p.GroupCode == groupCode && p.Name == name);
+            Assert.Equal(LinkTarget.Material, parameter.Target);
+            return data.MaterialValues.Single(v => v.MaterialId == material.MaterialId && v.ParameterId == parameter.ParameterId).Value;
+        }
+
+        Assert.All(data.Materials, material =>
+        {
+            Assert.Equal(material.MaterialId, Value(material, "IDE", "KAT", "Material-ID"));
+            Assert.Equal(material.Name, Value(material, "MAT", "BES", "Materialname"));
+            Assert.Equal(material.Group, Value(material, "MAT", "KAT", "Materialgruppe"));
+            Assert.Equal(material.GroupCode.Trim(), Value(material, "IDE", "KAT", "Materialgruppen-ID"), ignoreCase: true);
+            Assert.EndsWith("-" + int.Parse(Value(material, "MAT", "KAT", "Materialnummer")).ToString("0000"), material.MaterialId);
+            Assert.StartsWith(Value(material, "IDE", "KAT", "Materialkategorie-ID") + "-", material.MaterialId);
+        });
+        Assert.All(data.MaterialValues.GroupBy(v => (v.MaterialId, v.ParameterId)), rows => Assert.Single(rows));
+    }
+
     [Fact]
     public void ObjectMaterials_NameTheMaterial_AndSayWhoSetItAndWhen()
     {
